@@ -1,0 +1,263 @@
+/* ============================================================
+   CTRLpanel — Global design system
+   Dark theme · glass-morphism · red accent (swappable)
+   ============================================================ */
+
+:root {
+  /* Surfaces */
+  --bg-base: #0a0808;
+  --bg-surface: #141010;
+  --bg-elevated: #1a1414;
+  --border: #1e1818;
+  --border-bright: #2a2020;
+
+  /* Accent — DEFAULT RED, swappable by user in Settings */
+  --accent: #e11d48;
+  --accent-dim: rgba(225, 29, 72, 0.12);
+  --accent-glow: rgba(225, 29, 72, 0.25);
+
+  /* Text */
+  --text-primary: #f0e8e8;
+  --text-secondary: #8a7070;
+  --text-muted: #3d2e2e;
+
+  /* Semantic */
+  --green: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+
+  /* Type */
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Motion */
+  --transition: 150ms ease;
+
+  /* Layout */
+  --sidebar-width: 148px;
+
+  font-size: var(--font-scale, 16px);
+}
+
+/* ---- Reset ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text-primary);
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+/* ---- Scrollbars ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* ---- Typography helpers ---- */
+.page-title {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.body-text {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.value-lg {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.value-md {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* ---- Glass-morphism card ---- */
+.card {
+  background: rgba(20, 16, 16, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 0.5px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition), transform var(--transition);
+}
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.card--static:hover {
+  border-color: var(--border-bright);
+  transform: none;
+}
+
+/* ---- Active nav item ---- */
+.nav-item.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-right: 2px solid var(--accent);
+}
+
+/* ---- Animations ---- */
+@keyframes pulse-border {
+  0%,
+  100% {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px 2px var(--accent-glow);
+  }
+}
+
+.master-controller-input {
+  animation: pulse-border 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot.running {
+  background: var(--accent);
+  animation: breathe 2s ease-in-out infinite;
+}
+.status-dot.stopped {
+  background: var(--text-muted);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Utility ---- */
+.fade-in {
+  animation: fade-in var(--transition);
+}
+.text-accent {
+  color: var(--accent);
+}
+.text-green {
+  color: var(--green);
+}
+.text-amber {
+  color: var(--amber);
+}
+.text-red {
+  color: var(--red);
+}
