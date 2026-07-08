@@ -2,6 +2,7 @@
 // CTRLpanel — fetch helpers for the Express backend (/api/*)
 // In dev, Vite proxies /api → http://localhost:3001 (see vite.config.js).
 // ============================================================
+import { supabase } from './supabase.js';
 
 const BASE = '/api';
 
@@ -80,7 +81,33 @@ export const finance = {
   prices: (tickers) => api.get(`/finance/prices?tickers=${encodeURIComponent(tickers.join(','))}`),
 };
 
-export const calendar = {
-  events: () => api.get('/calendar/events'),
-  create: (event) => api.post('/calendar/events', event),
+// Google Calendar — authenticated with the current Supabase session so the
+// backend knows which user's calendar to act on.
+async function authHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+async function gfetch(path, options = {}) {
+  const res = await fetch(`${BASE}/calendar${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) },
+  });
+  if (!res.ok) throw new Error((await res.text().catch(() => res.statusText)) || `API ${res.status}`);
+  return res.json();
+}
+
+export const gcal = {
+  status: () => gfetch('/status'),
+  connect: async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token || '';
+    window.location.href = `${BASE}/calendar/connect?token=${encodeURIComponent(token)}`;
+  },
+  disconnect: () => gfetch('/disconnect', { method: 'POST' }),
+  calendars: () => gfetch('/calendars'),
+  list: (params = {}) => gfetch(`/events?${new URLSearchParams(params).toString()}`),
+  create: (ev) => gfetch('/events', { method: 'POST', body: JSON.stringify(ev) }),
+  update: (id, ev) => gfetch(`/events/${encodeURIComponent(id)}?calendarId=${encodeURIComponent(ev.cal_id || 'primary')}`, { method: 'PATCH', body: JSON.stringify(ev) }),
+  remove: (id, calId = 'primary') => gfetch(`/events/${encodeURIComponent(id)}?calendarId=${encodeURIComponent(calId)}`, { method: 'DELETE' }),
 };

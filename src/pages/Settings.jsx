@@ -26,6 +26,9 @@ export default function Settings() {
   const [font, setFont] = useState('Medium');
   const [sidebar, setSidebar] = useState(localStorage.getItem('ctrlpanel-sidebar') || 'full');
   const [conns, setConns] = useState([]);
+  const [lifeWidget, setLifeWidget] = useState(
+    localStorage.getItem('ctrlpanel-life-widget') === 'true'
+  );
   const [addCustom, setAddCustom] = useState(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [saved, setSaved] = useState('');
@@ -39,6 +42,7 @@ export default function Settings() {
   useEffect(() => {
     if (settings?.accent_color) setAccent(settings.accent_color);
     if (settings?.font_size) setFont(settings.font_size);
+    if (typeof settings?.show_life_widget === 'boolean') setLifeWidget(settings.show_life_widget);
     // Merge saved connectors with the known built-ins for display
     const list = [...(connectors || [])];
     KNOWN_CONNECTORS.forEach((k) => {
@@ -89,6 +93,13 @@ export default function Settings() {
     localStorage.setItem('ctrlpanel-sidebar', mode);
     persistSettings({ sidebar_collapsed: mode === 'collapsed' });
     window.location.reload();
+  };
+
+  const toggleLifeWidget = () => {
+    const next = !lifeWidget;
+    setLifeWidget(next);
+    localStorage.setItem('ctrlpanel-life-widget', String(next));
+    persistSettings({ show_life_widget: next });
   };
 
   const toggleConnector = (id) =>
@@ -191,7 +202,7 @@ export default function Settings() {
             <button className={sidebar === 'collapsed' ? 'active' : ''} onClick={() => setSidebarMode('collapsed')}>Collapsed</button>
           </div>
         </div>
-        <div className="spread">
+        <div className="spread" style={{ marginBottom: 12 }}>
           <span className="body-text">Font size</span>
           <div className="segmented">
             {Object.keys(FONT_SIZES).map((s) => (
@@ -199,6 +210,9 @@ export default function Settings() {
             ))}
           </div>
         </div>
+        <p className="list-row-meta" style={{ marginTop: 12 }}>
+          Dashboard widgets (Life View, Habits, finances, and more) are managed on the Dashboard via <strong>Add Widget</strong>.
+        </p>
       </Card>
 
       {/* Connectors */}

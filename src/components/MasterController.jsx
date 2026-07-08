@@ -3,33 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { streamChat } from '../lib/api.js';
 import { useAuth } from './AuthProvider.jsx';
-import { formatLongDate, formatClock } from '../lib/helpers.js';
+import Modal from './shared/Modal.jsx';
+import { buildSnapshot, executeTool } from '../lib/mcTools.js';
 
-// ---- Page name → route map for the navigate_to tool ----
-const PAGE_ROUTES = {
-  dashboard: '/',
-  calendar: '/calendar',
-  todo: '/todo',
-  agents: '/agents',
-  projects: '/projects',
-  crm: '/crm',
-  nutrition: '/health/nutrition',
-  supplements: '/health/supplements',
-  fitness: '/health/fitness',
-  networth: '/finance/networth',
-  budget: '/finance/budget',
-  investing: '/finance/investing',
-  settings: '/settings',
-};
+const MAX_TOOL_ITERATIONS = 8; // safety cap on the agentic loop per user message
 
-// Build the data snapshot sent to Claude with every turn (see MASTER_CONTROLLER_PROMPT.md).
-function buildContext(userName) {
-  const now = new Date();
-  return {
-    user: userName,
-    date: formatLongDate(now),
-    time: formatClock(now),
-  };
+// Short, human-readable label for a tool call shown as a chip in the thread.
+function describeTool(name, input = {}) {
+  switch (name) {
+    case 'navigate_to':
+      return `Opening ${input.page}`;
+    case 'query_records':
+      return `Looking up ${input.table}${input.search ? ` "${input.search}"` : ''}`;
+    case 'create_record':
+      return `Adding to ${input.table}`;
+    case 'update_record':
+      return `Updating ${input.table}`;
+    case 'delete_record':
+      return `Deleting from ${input.table}`;
+    default:
+      return name;
+  }
 }
 
 const MasterControllerContext = createContext(null);
@@ -47,10 +41,14 @@ export function MasterControllerProvider({ children }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
   const navigate = useNavigate();
   const abortRef = useRef(null);
   const { displayName, connectors } = useAuth();
   const apiKeyRef = useRef('');
+  // Conversation in Anthropic message format (text + tool_use/tool_result
+  // blocks), preserved across turns so the model keeps full context.
+  const convoRef = useRef([]);
 
   // Mirror the user's Anthropic connector key into a ref so send() stays stable.
   useEffect(() => {
@@ -60,41 +58,22 @@ export function MasterControllerProvider({ children }) {
 
   const toggle = useCallback(() => setOpen((o) => !o), []);
   const close = useCallback(() => setOpen(false), []);
-  const clear = useCallback(() => setMessages([]), []);
+  const clear = useCallback(() => {
+    setMessages([]);
+    convoRef.current = [];
+  }, []);
 
-  // Execute a tool the model requested. Most actions are placeholders until
-  // Supabase is wired; navigate_to is fully functional.
-  const runTool = useCallback(
-    (name, input = {}) => {
-      switch (name) {
-        case 'navigate_to': {
-          const route = PAGE_ROUTES[(input.page || '').toLowerCase()];
-          if (route) {
-            navigate(route);
-            return `Navigated to ${input.page}`;
-          }
-          return `Unknown page: ${input.page}`;
-        }
-        case 'create_task':
-          return `Created task "${input.title || 'Untitled'}"${input.board ? ` on ${input.board}` : ''}`;
-        case 'move_task':
-          return `Moved task to ${input.column}`;
-        case 'log_expense':
-          return `Logged ${input.amount ? `$${input.amount}` : 'expense'} → ${input.category || 'uncategorized'}`;
-        case 'log_weight':
-          return `Logged weight: ${input.weight} lbs`;
-        case 'add_crm_contact':
-          return `Added contact: ${input.business_name || 'New contact'}`;
-        case 'get_summary':
-          return `Pulled ${input.module} summary`;
-        case 'toggle_agent':
-          return `Turned ${input.status === 'running' ? 'on' : 'off'} ${input.agent_name}`;
-        default:
-          return `Ran ${name}`;
-      }
-    },
-    [navigate]
+  // Promise-based confirmation surfaced as a modal (used before deletes).
+  const requestConfirm = useCallback(
+    (message) => new Promise((resolve) => setPendingConfirm({ message, resolve })),
+    []
   );
+  const answerConfirm = useCallback((ok) => {
+    setPendingConfirm((pc) => {
+      pc?.resolve(ok);
+      return null;
+    });
+  }, []);
 
   const send = useCallback(
     async (text) => {
@@ -102,69 +81,94 @@ export function MasterControllerProvider({ children }) {
       if (!trimmed || isStreaming) return;
 
       setOpen(true);
-      const userMsg = { id: nextId(), role: 'user', text: trimmed };
-      const assistantId = nextId();
-
-      // Snapshot the history we send to the API (text turns only).
-      let history;
-      setMessages((prev) => {
-        history = prev
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .map((m) => ({ role: m.role, content: m.text }));
-        return [...prev, userMsg, { id: assistantId, role: 'assistant', text: '' }];
-      });
-
-      const apiMessages = [...(history || []), { role: 'user', content: trimmed }];
+      setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: trimmed }]);
+      convoRef.current.push({ role: 'user', content: trimmed });
 
       setIsStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        await streamChat(
-          { messages: apiMessages, context: buildContext(displayName), apiKey: apiKeyRef.current || undefined },
-          (event) => {
-            if (event.type === 'text') {
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + event.text } : m))
-              );
-            } else if (event.type === 'tool_use') {
-              const result = runTool(event.name, event.input);
-              setMessages((prev) => [
-                ...prev,
-                { id: nextId(), role: 'tool', text: result, toolName: event.name },
-              ]);
-            } else if (event.type === 'error') {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? {
-                        ...m,
-                        text:
-                          m.text ||
-                          `⚠️ ${event.message}\n\nMake sure the backend is running (npm run server) and ANTHROPIC_API_KEY is set in .env.`,
-                      }
-                    : m
-                )
-              );
-            }
-          },
-          controller.signal
-        );
+        // Fresh account snapshot for awareness; precise data comes via tools.
+        const snapshot = await buildSnapshot(displayName);
+        const apiKey = apiKeyRef.current || undefined;
+
+        for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+          let assistantId = null;
+          let done = null;
+          let errored = false;
+
+          await streamChat(
+            { messages: convoRef.current, context: snapshot, apiKey },
+            (event) => {
+              if (event.type === 'text') {
+                if (!assistantId) {
+                  assistantId = nextId();
+                  setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', text: '' }]);
+                }
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + event.text } : m))
+                );
+              } else if (event.type === 'done') {
+                done = event;
+              } else if (event.type === 'error') {
+                errored = true;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: nextId(),
+                    role: 'assistant',
+                    text: `⚠️ ${event.message}\n\nMake sure the backend is running (npm run server) and your Anthropic key is set in Settings → Connectors (or ANTHROPIC_API_KEY in .env).`,
+                  },
+                ]);
+              }
+            },
+            controller.signal
+          );
+
+          if (errored || !done) break;
+
+          const assistant = done.assistant?.length ? done.assistant : [{ type: 'text', text: '' }];
+          convoRef.current.push({ role: 'assistant', content: assistant });
+
+          const toolUses = assistant.filter((b) => b.type === 'tool_use');
+          if (done.stop_reason !== 'tool_use' || toolUses.length === 0) break;
+
+          // Execute each requested tool, show a chip, and collect results.
+          const results = [];
+          for (const tu of toolUses) {
+            const chipId = nextId();
+            setMessages((prev) => [
+              ...prev,
+              { id: chipId, role: 'tool', text: describeTool(tu.name, tu.input), toolName: tu.name, pending: true },
+            ]);
+
+            const result = await executeTool(tu.name, tu.input, { navigate, confirm: requestConfirm });
+
+            const failed = /^(Error|User declined|Unknown|Tool error)/.test(String(result));
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === chipId
+                  ? { ...m, pending: false, failed, text: failed ? String(result) : describeTool(tu.name, tu.input) }
+                  : m
+              )
+            );
+            results.push({ type: 'tool_result', tool_use_id: tu.id, content: String(result) });
+          }
+
+          convoRef.current.push({ role: 'user', content: results });
+          // Loop: send tool results back so the model can continue.
+        }
       } catch (err) {
         if (err.name !== 'AbortError') {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, text: m.text || `⚠️ ${err.message}` } : m
-            )
-          );
+          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: `⚠️ ${err.message}` }]);
         }
       } finally {
         setIsStreaming(false);
         abortRef.current = null;
       }
     },
-    [isStreaming, runTool, displayName]
+    [isStreaming, displayName, navigate, requestConfirm]
   );
 
   const value = { open, setOpen, toggle, close, clear, send, messages, isStreaming };
@@ -173,6 +177,20 @@ export function MasterControllerProvider({ children }) {
     <MasterControllerContext.Provider value={value}>
       {children}
       {open && <MasterControllerPanel />}
+      {pendingConfirm && (
+        <Modal
+          title="Confirm action"
+          onClose={() => answerConfirm(false)}
+          footer={
+            <>
+              <button className="btn btn--ghost" onClick={() => answerConfirm(false)}>Cancel</button>
+              <button className="btn btn--danger" onClick={() => answerConfirm(true)}>Delete</button>
+            </>
+          }
+        >
+          <p className="body-text">{pendingConfirm.message}</p>
+        </Modal>
+      )}
     </MasterControllerContext.Provider>
   );
 }
@@ -227,7 +245,6 @@ function MasterControllerPanel() {
 
   return (
     <>
-      <div className="mc-overlay" onClick={close} />
       <div className="mc-panel">
         <div className="mc-panel-header">
           <div className="mc-panel-title">
@@ -257,8 +274,12 @@ function MasterControllerPanel() {
           {messages.map((m) => {
             if (m.role === 'tool') {
               return (
-                <div key={m.id} className="mc-bubble mc-bubble--tool">
-                  <i className="ti ti-bolt" />
+                <div key={m.id} className={`mc-bubble mc-bubble--tool ${m.failed ? 'mc-bubble--tool-failed' : ''}`}>
+                  {m.pending ? (
+                    <span className="spinner" style={{ width: 12, height: 12 }} />
+                  ) : (
+                    <i className={`ti ${m.failed ? 'ti-alert-triangle' : 'ti-bolt'}`} />
+                  )}
                   {m.text}
                 </div>
               );

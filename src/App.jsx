@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
 import { MasterControllerProvider, useMasterController } from './components/MasterController.jsx';
+import { WorkspaceProvider } from './components/WorkspaceProvider.jsx';
 import { useAuth } from './components/AuthProvider.jsx';
 import { initials } from './lib/helpers.js';
 
@@ -27,16 +28,18 @@ export default function App() {
   const collapsed = localStorage.getItem('ctrlpanel-sidebar') === 'collapsed';
 
   return (
-    <MasterControllerProvider>
-      <div className="app-shell">
-        <Sidebar collapsed={collapsed} />
-        <main className="app-main">
-          <Topbar />
-          <div className="app-content">
-            <Outlet />
-          </div>
-        </main>
-      </div>
-    </MasterControllerProvider>
+    <WorkspaceProvider>
+      <MasterControllerProvider>
+        <div className="app-shell">
+          <Sidebar collapsed={collapsed} />
+          <main className="app-main">
+            <Topbar />
+            <div className="app-content">
+              <Outlet />
+            </div>
+          </main>
+        </div>
+      </MasterControllerProvider>
+    </WorkspaceProvider>
   );
 }

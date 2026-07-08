@@ -129,8 +129,47 @@ export function number(n) {
   return (Number(n) || 0).toLocaleString('en-US');
 }
 
+// Short, human form for very large counts (e.g. 2.6B heartbeats).
+export function compactNumber(n) {
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
+    Number(n) || 0
+  );
+}
+
 export function clamp(n, min, max) {
   return Math.min(Math.max(n, min), max);
+}
+
+/* ---- Life View ---- */
+const DAYS_PER_YEAR = 365.25;
+
+// Derive lived/remaining stats from a birthdate (YYYY-MM-DD) and a lifespan.
+export function lifeStats(birthdate, expectancyYears = 90) {
+  if (!birthdate) return null;
+  const birth = new Date(`${birthdate}T00:00:00`);
+  if (isNaN(birth)) return null;
+
+  const msPerDay = 86400000;
+  const now = new Date();
+  const daysLived = Math.max(0, Math.floor((now - birth) / msPerDay));
+  const totalDays = Math.round(expectancyYears * DAYS_PER_YEAR);
+  const daysRemaining = Math.max(0, totalDays - daysLived);
+  const ageYears = Math.floor(daysLived / DAYS_PER_YEAR);
+  const pctLived = Math.min(100, (daysLived / totalDays) * 100);
+  const weeksLived = Math.floor(daysLived / 7);
+  const totalWeeks = Math.floor(totalDays / 7);
+
+  return { daysLived, totalDays, daysRemaining, ageYears, pctLived, weeksLived, totalWeeks };
+}
+
+// Convert an age in years to an approximate birthdate (used when the user
+// gives an age instead of an exact date).
+export function ageToBirthdate(age) {
+  const yrs = Number(age);
+  if (!yrs || yrs < 0) return '';
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - Math.floor(yrs));
+  return d.toISOString().slice(0, 10);
 }
 
 /* ---- Strings ---- */

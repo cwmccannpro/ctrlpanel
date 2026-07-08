@@ -14,8 +14,11 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calendar from './pages/Calendar.jsx';
 import ToDo from './pages/ToDo.jsx';
+import Habits from './pages/Habits.jsx';
 import Agents from './pages/Agents.jsx';
+import AgentDetail from './pages/AgentDetail.jsx';
 import Projects from './pages/Projects.jsx';
+import ProjectDetail from './pages/ProjectDetail.jsx';
 import CRM from './pages/CRM.jsx';
 import Settings from './pages/Settings.jsx';
 import Nutrition from './pages/health/Nutrition.jsx';
@@ -57,9 +60,13 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'calendar', element: <Calendar /> },
       { path: 'todo', element: <ToDo /> },
+      { path: 'habits', element: <Habits /> },
       { path: 'agents', element: <Agents /> },
+      { path: 'agents/:id', element: <AgentDetail /> },
       { path: 'projects', element: <Projects /> },
+      { path: 'projects/:id', element: <ProjectDetail /> },
       { path: 'crm', element: <CRM /> },
+      { path: 'crm/:boardId', element: <CRM /> },
       { path: 'health/nutrition', element: <Nutrition /> },
       { path: 'health/supplements', element: <Supplements /> },
       { path: 'health/fitness', element: <Fitness /> },

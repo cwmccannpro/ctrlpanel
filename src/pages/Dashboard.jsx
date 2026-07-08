@@ -1,33 +1,34 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Card from '../components/shared/Card.jsx';
-import Badge from '../components/shared/Badge.jsx';
-import QuickAdd from '../components/QuickAdd.jsx';
+import Modal from '../components/shared/Modal.jsx';
 import { useMasterController } from '../components/MasterController.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
-import { useRows } from '../lib/useData.js';
-import { calendar as calApi } from '../lib/api.js';
-import {
-  greeting,
-  formatClock,
-  formatLongDate,
-  compactCurrency,
-  relativeDay,
-} from '../lib/helpers.js';
+import { saveUserSettings } from '../lib/supabase.js';
+import { WIDGETS, WIDGETS_BY_ID, DEFAULT_WIDGETS, sizeFor } from '../components/dashboardWidgets.jsx';
+import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
 
-const CAL_GOAL = 2400;
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const COLS = 6;       // board grid columns
+const ROW_H = 96;     // one row unit (px) — keep in sync with CSS grid-auto-rows
+const MAX_H = 10;
 
-function StatCard({ icon, label, value, meta }) {
-  return (
-    <Card className="stat-card">
-      <div className="stat-card-head">
-        <span className="section-label">{label}</span>
-        <i className={`ti ${icon}`} />
-      </div>
-      <div className="stat-card-value">{value}</div>
-      {meta && <div className="stat-card-meta">{meta}</div>}
-    </Card>
-  );
+let uidSeq = 0;
+const newUid = () => `wg-${Date.now()}-${uidSeq++}`;
+
+// Accept both the legacy string[] layout and the sized object layout.
+function normalizeLayout(arr) {
+  return (arr || [])
+    .map((it, i) => {
+      if (typeof it === 'string') return { uid: `w${i}-${it}`, id: it, ...sizeFor(it) };
+      if (it && it.id) {
+        const d = sizeFor(it.id);
+        return { uid: it.uid || `w${i}-${it.id}`, id: it.id, w: clamp(Number(it.w) || d.w, 1, COLS), h: clamp(Number(it.h) || d.h, 1, MAX_H) };
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 function ChatBar() {
@@ -54,114 +55,164 @@ function ChatBar() {
   );
 }
 
-export default function Dashboard() {
-  const { displayName } = useAuth();
-  const [now, setNow] = useState(new Date());
-  const [events, setEvents] = useState([]);
+function SortableWidget({ item, onRemove, onResizeStart, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.uid });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    '--w': item.w,
+    '--h': item.h,
+    zIndex: isDragging ? 30 : undefined,
+    opacity: isDragging ? 0.8 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="widget">
+      <button className="widget-grip" {...attributes} {...listeners} title="Drag to move">
+        <i className="ti ti-grip-vertical" />
+      </button>
+      <button className="widget-remove" onClick={() => onRemove(item.uid)} title="Remove widget">
+        <i className="ti ti-x" />
+      </button>
+      {children}
+      <div className="widget-resize" onPointerDown={(e) => onResizeStart(item.uid, e)} title="Drag to resize" />
+    </div>
+  );
+}
 
-  // Per-user data (empty for new accounts)
-  const { rows: tasks } = useRows('tasks', []);
-  const { rows: agents } = useRows('agents', []);
-  const { rows: accounts } = useRows('accounts', []);
-  const { rows: nutrition } = useRows('nutrition_logs', []);
+export default function Dashboard() {
+  const { displayName, user, settings } = useAuth();
+  const [now, setNow] = useState(new Date());
+  const [picker, setPicker] = useState(false);
+  const [widgets, setWidgets] = useState(() => normalizeLayout(DEFAULT_WIDGETS));
+  const boardRef = useRef(null);
+  const loadedRef = useRef(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Load the saved layout once (later edits are local + saved silently, so we
+  // don't resync/remount widgets on every settings refresh).
   useEffect(() => {
-    calApi.events().then((r) => setEvents(r.events || [])).catch(() => setEvents([]));
-  }, []);
+    if (loadedRef.current) return;
+    if (Array.isArray(settings?.dashboard_widgets)) {
+      setWidgets(normalizeLayout(settings.dashboard_widgets));
+      loadedRef.current = true;
+    }
+  }, [settings?.dashboard_widgets]);
 
-  const openTasks = tasks.filter((t) => t.column_name !== 'Done');
-  const activeAgents = agents.filter((a) => a.status === 'running');
-  const netWorth = accounts.reduce(
-    (s, a) => s + (a.type === 'Liability' ? -Number(a.balance || 0) : Number(a.balance || 0)),
-    0
+  const save = useCallback(
+    (list) => {
+      if (user?.id) {
+        saveUserSettings(user.id, { dashboard_widgets: list.map(({ id, w, h }) => ({ id, w, h })) }).catch(() => {});
+      }
+    },
+    [user?.id]
   );
-  const caloriesToday = nutrition
-    .filter((n) => (n.logged_at || '').slice(0, 10) === todayKey())
-    .reduce((s, n) => s + Number(n.calories || 0), 0);
 
-  const priorityTasks = [...openTasks]
-    .filter((t) => t.due_date)
-    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
-    .slice(0, 3);
+  const apply = (updater) =>
+    setWidgets((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      save(next);
+      return next;
+    });
 
-  const todaysEvents = events.filter((e) => (e.start || '').slice(0, 10) === todayKey());
+  const addWidget = (id) => {
+    apply((prev) => [...prev, { uid: newUid(), id, ...sizeFor(id) }]);
+    setPicker(false);
+  };
+  const removeWidget = (uid) => apply((prev) => prev.filter((w) => w.uid !== uid));
+
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    apply((prev) => {
+      const from = prev.findIndex((w) => w.uid === active.id);
+      const to = prev.findIndex((w) => w.uid === over.id);
+      return arrayMove(prev, from, to);
+    });
+  };
+
+  // ---- Corner-drag resize (snaps to grid units) ----
+  const onResizeStart = (uid, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const board = boardRef.current;
+    const item = widgets.find((w) => w.uid === uid);
+    if (!board || !item) return;
+    const gap = 16;
+    const colW = (board.clientWidth - gap * (COLS - 1)) / COLS;
+    const start = { x: e.clientX, y: e.clientY, w: item.w, h: item.h };
+
+    const onMove = (ev) => {
+      const dw = Math.round((ev.clientX - start.x) / (colW + gap));
+      const dh = Math.round((ev.clientY - start.y) / (ROW_H + gap));
+      setWidgets((prev) =>
+        prev.map((w) =>
+          w.uid === uid ? { ...w, w: clamp(start.w + dw, 1, COLS), h: clamp(start.h + dh, 1, MAX_H) } : w
+        )
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setWidgets((prev) => {
+        save(prev);
+        return prev;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%' }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <div className="dash-greeting">{greeting(now)}, {displayName}</div>
           <div className="dash-clock">{formatLongDate(now)} · {formatClock(now)}</div>
         </div>
+        <button className="btn btn--accent btn--sm" onClick={() => setPicker(true)}>
+          <i className="ti ti-plus" /> Add Widget
+        </button>
       </div>
 
-      <div className="grid grid-4">
-        <StatCard icon="ti-wallet" label="Net Worth" value={compactCurrency(netWorth)} meta={accounts.length ? `${accounts.length} accounts` : 'add accounts'} />
-        <StatCard icon="ti-checkbox" label="Open Tasks" value={openTasks.length} meta="across all boards" />
-        <StatCard icon="ti-flame" label="Calories Today" value={caloriesToday.toLocaleString()} meta={`of ${CAL_GOAL.toLocaleString()} goal`} />
-        <StatCard icon="ti-robot" label="Active Agents" value={`${activeAgents.length} / ${agents.length}`} meta="running now" />
-      </div>
-
-      <div className="grid grid-2" style={{ flex: 1, minHeight: 0 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card className="card-section" static>
-            <div className="card-section-title">
-              <span>Today's Schedule</span>
-              <span className="muted">{todaysEvents.length} events</span>
-            </div>
-            {todaysEvents.length === 0 && <p className="body-text">Nothing scheduled today.</p>}
-            {todaysEvents.map((e) => (
-              <div className="list-row" key={e.id}>
-                <span className="list-row-time">{new Date(e.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-                <span className="list-row-dot" style={{ background: e.color }} />
-                <span className="list-row-title">{e.title}</span>
-                <span className="list-row-meta">{e.calendar}</span>
-              </div>
-            ))}
-          </Card>
-
-          <Card className="card-section" static>
-            <div className="card-section-title">
-              <span>Top Priorities</span>
-              <span className="muted">due soonest</span>
-            </div>
-            {priorityTasks.length === 0 && <p className="body-text">No upcoming tasks. Add some on the To Do board.</p>}
-            {priorityTasks.map((t) => (
-              <div className="list-row" key={t.id}>
-                <Badge variant={t.priority}>{t.priority}</Badge>
-                <span className="list-row-title">{t.title}</span>
-                <span className="list-row-meta">{relativeDay(t.due_date)}</span>
-              </div>
-            ))}
-          </Card>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card className="card-section" static>
-            <div className="card-section-title"><span>Quick Add</span></div>
-            <QuickAdd />
-          </Card>
-
-          <Card className="card-section" static>
-            <div className="card-section-title"><span>Agents</span></div>
-            {agents.length === 0 && <p className="body-text">No agents yet. Add them on the Agents page.</p>}
-            {agents.map((a) => (
-              <div className="list-row" key={a.id}>
-                <span className={`status-dot ${a.status}`} />
-                <span className="list-row-title">{a.name}</span>
-                <span className="list-row-meta">{a.status === 'running' ? 'Running' : 'Stopped'}</span>
-              </div>
-            ))}
-          </Card>
-        </div>
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={widgets.map((w) => w.uid)} strategy={rectSortingStrategy}>
+          <div className="widget-board" ref={boardRef}>
+            {widgets.map((item) => {
+              const def = WIDGETS_BY_ID[item.id];
+              if (!def) return null;
+              const C = def.Component;
+              return (
+                <SortableWidget key={item.uid} item={item} onRemove={removeWidget} onResizeStart={onResizeStart}>
+                  <C />
+                </SortableWidget>
+              );
+            })}
+            <button className="widget-add-tile" onClick={() => setPicker(true)}>
+              <i className="ti ti-plus" />
+              <span>Add Widget</span>
+            </button>
+          </div>
+        </SortableContext>
+      </DndContext>
 
       <ChatBar />
+
+      {picker && (
+        <Modal title="Add a Widget" onClose={() => setPicker(false)}>
+          <div className="widget-picker">
+            {WIDGETS.map((w) => (
+              <button className="widget-pick" key={w.id} onClick={() => addWidget(w.id)}>
+                <i className={`ti ${w.icon}`} />
+                <span>{w.title}</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

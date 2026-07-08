@@ -89,3 +89,24 @@ export async function remove(table, id) {
   if (!supabase) return { data: null, error: { message: 'supabase-not-configured' } };
   return supabase.from(table).delete().eq('id', id);
 }
+
+/**
+ * Flexible read used by the Master Controller's query tool. RLS still scopes
+ * every result to the current user. `search` runs a case-insensitive OR across
+ * `searchColumns`; `filters` are exact-match equals.
+ */
+export async function queryTable(
+  table,
+  { search, searchColumns = [], filters = {}, order, ascending = false, limit = 50 } = {}
+) {
+  if (!supabase) return { data: [], error: { message: 'supabase-not-configured' } };
+  let q = supabase.from(table).select('*');
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== '') q = q.eq(k, v);
+  }
+  if (search && searchColumns.length) {
+    q = q.or(searchColumns.map((c) => `${c}.ilike.%${search}%`).join(','));
+  }
+  if (order) q = q.order(order, { ascending });
+  return q.limit(limit);
+}
