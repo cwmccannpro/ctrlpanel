@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   PointerSensor,
@@ -10,12 +11,13 @@ import {
 import Badge from '../components/shared/Badge.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import { useCrud } from '../lib/useData.js';
+import { useWorkspace } from '../components/WorkspaceProvider.jsx';
 import { relativeDay } from '../lib/helpers.js';
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 const DEFAULT_COLUMNS = ['Backlog', 'In Progress', 'Review', 'Done'];
 
-function KanbanCard({ task, onClick }) {
+function KanbanCard({ task, boardName, onClick }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, zIndex: 50 } : undefined;
   return (
@@ -23,6 +25,7 @@ function KanbanCard({ task, onClick }) {
       <span className="kanban-card-title">{task.title}</span>
       <div className="kanban-card-meta">
         <Badge variant={task.priority}>{task.priority}</Badge>
+        {boardName && <span className="badge">{boardName}</span>}
         {task.project_id && <span className="badge">{task.project_id}</span>}
         {task.due_date && <span className="list-row-meta">{relativeDay(task.due_date)}</span>}
       </div>
@@ -30,7 +33,7 @@ function KanbanCard({ task, onClick }) {
   );
 }
 
-function Column({ name, index, total, tasks, onCardClick, onAdd, onMove, onRename, onDelete }) {
+function Column({ name, index, total, tasks, boardNameFor, locked, onCardClick, onAdd, onMove, onRename, onDelete }) {
   const { setNodeRef, isOver } = useDroppable({ id: name });
   return (
     <div ref={setNodeRef} className={`kanban-col ${isOver ? 'drag-over' : ''}`}>
@@ -39,15 +42,17 @@ function Column({ name, index, total, tasks, onCardClick, onAdd, onMove, onRenam
           <span>{name}</span>
           <span className="kanban-col-count">{tasks.length}</span>
         </div>
-        <div className="col-actions">
-          <button title="Move left" onClick={() => onMove(index, -1)} disabled={index === 0}><i className="ti ti-chevron-left" /></button>
-          <button title="Move right" onClick={() => onMove(index, 1)} disabled={index === total - 1}><i className="ti ti-chevron-right" /></button>
-          <button title="Rename column" onClick={() => onRename(name)}><i className="ti ti-pencil" /></button>
-          <button title="Delete column" onClick={() => onDelete(name)}><i className="ti ti-trash" /></button>
-        </div>
+        {!locked && (
+          <div className="col-actions">
+            <button title="Move left" onClick={() => onMove(index, -1)} disabled={index === 0}><i className="ti ti-chevron-left" /></button>
+            <button title="Move right" onClick={() => onMove(index, 1)} disabled={index === total - 1}><i className="ti ti-chevron-right" /></button>
+            <button title="Rename column" onClick={() => onRename(name)}><i className="ti ti-pencil" /></button>
+            <button title="Delete column" onClick={() => onDelete(name)}><i className="ti ti-trash" /></button>
+          </div>
+        )}
       </div>
       {tasks.map((t) => (
-        <KanbanCard key={t.id} task={t} onClick={() => onCardClick(t)} />
+        <KanbanCard key={t.id} task={t} boardName={boardNameFor?.(t)} onClick={() => onCardClick(t)} />
       ))}
       <button className="kanban-add" onClick={() => onAdd(name)}>
         <i className="ti ti-plus" /> Add card
@@ -57,32 +62,23 @@ function Column({ name, index, total, tasks, onCardClick, onAdd, onMove, onRenam
 }
 
 export default function ToDo() {
-  const boards = useCrud('boards', 'created_at');
+  const { todoBoards: boards } = useWorkspace();
   const tasks = useCrud('tasks', 'created_at');
-  const [boardId, setBoardId] = useState(null);
+  const { boardId: boardIdParam } = useParams();
+  const navigate = useNavigate();
+  const boardId = boardIdParam || null;
+  const goToBoard = (id, opts) => navigate(id ? `/todo/${id}` : '/todo', opts);
   const [editing, setEditing] = useState(null);
-  const seededRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  // Auto-create a starter board for brand-new accounts.
-  useEffect(() => {
-    if (boards.loading || seededRef.current) return;
-    if (boards.rows.length === 0) {
-      seededRef.current = true;
-      boards.add({ name: 'My Board', columns: DEFAULT_COLUMNS }).then((b) => b?.id && setBoardId(b.id));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boards.loading, boards.rows.length]);
-
-  // Keep a valid selected board.
-  useEffect(() => {
-    if (boards.rows.length === 0) return;
-    if (!boardId || !boards.rows.find((b) => b.id === boardId)) setBoardId(boards.rows[0].id);
-  }, [boards.rows, boardId]);
-
-  const board = boards.rows.find((b) => b.id === boardId) || null;
+  // No board selected → "All Boards", a virtual view combining every board's cards.
+  const board = boardId ? boards.rows.find((b) => b.id === boardId) || null : null;
   const columns = board?.columns?.length ? board.columns : DEFAULT_COLUMNS;
-  const visibleTasks = useMemo(() => tasks.rows.filter((t) => t.board_id === boardId), [tasks.rows, boardId]);
+  const visibleTasks = useMemo(
+    () => (boardId ? tasks.rows.filter((t) => t.board_id === boardId) : tasks.rows),
+    [tasks.rows, boardId]
+  );
+  const boardNameFor = !board ? (t) => boards.rows.find((b) => b.id === t.board_id)?.name : undefined;
 
   const setColumns = (next) => board && boards.patch(board.id, { columns: next });
 
@@ -91,7 +87,7 @@ export default function ToDo() {
     const name = prompt('New board name?');
     if (!name) return;
     const created = await boards.add({ name, columns: DEFAULT_COLUMNS });
-    if (created?.id) setBoardId(created.id);
+    if (created?.id) goToBoard(created.id);
   };
   const renameBoard = () => {
     const name = prompt('Rename board', board.name);
@@ -101,7 +97,7 @@ export default function ToDo() {
     if (!board) return;
     if (!confirm(`Delete board "${board.name}" and all its cards?`)) return;
     boards.remove(board.id);
-    setBoardId(null);
+    goToBoard(null, { replace: true });
   };
 
   /* ---- Column actions (stored on board.columns) ---- */
@@ -173,13 +169,13 @@ export default function ToDo() {
       <div className="page-header">
         <div>
           <h1 className="page-title">To Do</h1>
-          <div className="page-header-sub">Boards & columns save to your account · drag cards between columns</div>
+          <div className="page-header-sub">{board ? board.name : 'All Boards'} · drag cards between columns</div>
         </div>
       </div>
 
       <div className="toolbar">
-        <select className="select" value={boardId || ''} onChange={(e) => setBoardId(e.target.value)} style={{ width: 'auto' }}>
-          {boards.rows.length === 0 && <option value="">Loading…</option>}
+        <select className="select" value={boardId || ''} onChange={(e) => goToBoard(e.target.value)} style={{ width: 'auto' }}>
+          <option value="">All Boards</option>
           {boards.rows.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
@@ -187,7 +183,7 @@ export default function ToDo() {
         <button className="btn" onClick={addBoard}><i className="ti ti-plus" /> Board</button>
         {board && <button className="btn btn--ghost btn--icon" onClick={renameBoard} title="Rename board"><i className="ti ti-pencil" /></button>}
         {board && <button className="btn btn--ghost btn--icon" onClick={deleteBoard} title="Delete board"><i className="ti ti-trash" /></button>}
-        <button className="btn" style={{ marginLeft: 'auto' }} onClick={addColumn} disabled={!board}><i className="ti ti-columns-3" /> Add column</button>
+        {board && <button className="btn" style={{ marginLeft: 'auto' }} onClick={addColumn}><i className="ti ti-columns-3" /> Add column</button>}
       </div>
 
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -199,6 +195,8 @@ export default function ToDo() {
               index={i}
               total={columns.length}
               tasks={visibleTasks.filter((t) => t.column_name === col)}
+              boardNameFor={boardNameFor}
+              locked={!board}
               onCardClick={setEditing}
               onAdd={openNew}
               onMove={moveColumn}

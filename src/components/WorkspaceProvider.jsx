@@ -15,8 +15,9 @@ export function WorkspaceProvider({ children }) {
   const projects = useCrud('projects', 'created_at');
   const agents = useCrud('agents', 'created_at');
   const crmBoards = useCrud('crm_boards', 'created_at');
+  const todoBoards = useCrud('boards', 'created_at');
   return (
-    <WorkspaceContext.Provider value={{ projects, agents, crmBoards }}>
+    <WorkspaceContext.Provider value={{ projects, agents, crmBoards, todoBoards }}>
       {children}
     </WorkspaceContext.Provider>
   );

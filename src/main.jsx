@@ -60,6 +60,7 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'calendar', element: <Calendar /> },
       { path: 'todo', element: <ToDo /> },
+      { path: 'todo/:boardId', element: <ToDo /> },
       { path: 'habits', element: <Habits /> },
       { path: 'agents', element: <Agents /> },
       { path: 'agents/:id', element: <AgentDetail /> },

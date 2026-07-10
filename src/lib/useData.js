@@ -64,7 +64,7 @@ export function useCrud(table, order) {
   const patch = useCallback(
     async (id, changes) => {
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...changes } : r)));
-      await sbUpdate(table, id, changes);
+      return sbUpdate(table, id, changes);
     },
     [table, setRows]
   );

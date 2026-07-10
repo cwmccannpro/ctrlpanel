@@ -1890,9 +1890,18 @@ table.data-table {
 }
 
 /* ---- Project: Excalidraw canvas ---- */
+.excalidraw-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 22px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
 .excalidraw-wrap {
-  height: calc(100vh - 320px);
-  min-height: 480px;
+  height: calc(100vh - 348px);
+  min-height: 460px;
   border: 0.5px solid var(--border-bright);
   border-radius: var(--radius-md);
   overflow: hidden;

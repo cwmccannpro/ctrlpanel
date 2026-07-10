@@ -45,7 +45,7 @@ function Rollup({ icon, title, onClick, children }) {
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { projects, crmBoards } = useWorkspace();
+  const { projects, crmBoards, todoBoards } = useWorkspace();
   const { rows: tasks } = useRows('tasks', []);
   const { rows: contacts } = useRows('crm_contacts', []);
   const [tab, setTab] = useState('Project Dashboard');
@@ -54,7 +54,10 @@ export default function ProjectDetail() {
 
   const project = projects.rows.find((p) => p.id === id);
 
-  const patch = useCallback((changes) => projects.patch(id, changes), [projects, id]);
+  // projects.patch is stable (memoized in useCrud), so depend on it directly —
+  // depending on the whole `projects` object would recreate these every render
+  // and make ExcalidrawBoard's onPersist churn, causing a save/re-render loop.
+  const patch = useCallback((changes) => projects.patch(id, changes), [projects.patch, id]);
   const persistScene = useCallback(
     (scene, thumb) => patch(thumb ? { excalidraw: scene, excalidraw_preview: thumb } : { excalidraw: scene }),
     [patch]
@@ -77,7 +80,8 @@ export default function ProjectDetail() {
   };
 
   /* ---- Derived data shared by Dashboard + tabs ---- */
-  const projectTasks = tasks.filter((t) => t.project_id === project.name);
+  const linkedTodoBoard = project.todo_board_id ? todoBoards.rows.find((b) => b.id === project.todo_board_id) : null;
+  const projectTasks = project.todo_board_id ? tasks.filter((t) => t.board_id === project.todo_board_id) : [];
   const taskCounts = projectTasks.reduce((acc, t) => {
     const col = t.column_name || '—';
     acc[col] = (acc[col] || 0) + 1;
@@ -175,14 +179,20 @@ export default function ProjectDetail() {
             {/* Roll-ups — live, read-only, click through to their tab */}
             <div className="grid grid-3">
               <Rollup icon="ti-layout-kanban" title="Board" onClick={() => setTab('Board')}>
-                {projectTasks.length === 0 && <p className="body-text">No tasks tagged to this project.</p>}
-                {Object.entries(taskCounts).map(([col, n]) => (
-                  <div className="spread" key={col} style={{ padding: '3px 0' }}>
-                    <span className="body-text">{col}</span>
-                    <span className="kanban-col-count">{n}</span>
-                  </div>
-                ))}
-                {blockedCount > 0 && <Badge variant="urgent" className="mt-16">{blockedCount} blocked</Badge>}
+                {!project.todo_board_id ? (
+                  <p className="body-text">Not linked to a To Do board.</p>
+                ) : (
+                  <>
+                    {projectTasks.length === 0 && <p className="body-text">No cards yet.</p>}
+                    {Object.entries(taskCounts).map(([col, n]) => (
+                      <div className="spread" key={col} style={{ padding: '3px 0' }}>
+                        <span className="body-text">{col}</span>
+                        <span className="kanban-col-count">{n}</span>
+                      </div>
+                    ))}
+                    {blockedCount > 0 && <Badge variant="urgent" className="mt-16">{blockedCount} blocked</Badge>}
+                  </>
+                )}
               </Rollup>
 
               <Rollup icon="ti-pencil" title="Excalidraw" onClick={() => setTab('Excalidraw')}>
@@ -240,21 +250,46 @@ export default function ProjectDetail() {
 
         {/* ============ 3. BOARD ============ */}
         {tab === 'Board' && (
-          <div className="kanban">
-            {KANBAN_COLUMNS.map((col) => {
-              const items = projectTasks.filter((t) => t.column_name === col);
-              return (
-                <div className="kanban-col" key={col}>
-                  <div className="kanban-col-head"><span>{col}</span><span className="kanban-col-count">{items.length}</span></div>
-                  {items.map((t) => (
-                    <div className="kanban-card" key={t.id} style={{ cursor: 'default' }}>
-                      <span className="kanban-card-title">{t.title}</span>
-                      <Badge variant={t.priority}>{t.priority}</Badge>
+          <div>
+            <div className="field" style={{ maxWidth: 340, marginBottom: 16 }}>
+              <label className="field-label">Linked To Do board</label>
+              <div className="row">
+                <select
+                  className="select"
+                  value={project.todo_board_id || ''}
+                  onChange={(e) => patch({ todo_board_id: e.target.value || null })}
+                >
+                  <option value="">— Not linked —</option>
+                  {todoBoards.rows.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                {project.todo_board_id && (
+                  <button className="btn btn--icon" title="Open in To Do" onClick={() => navigate(`/todo/${project.todo_board_id}`)}>
+                    <i className="ti ti-external-link" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!project.todo_board_id ? (
+              <p className="body-text">Link this project to a To Do board to see its columns here. Cards stay in sync with the To Do module.</p>
+            ) : (
+              <div className="kanban">
+                {(linkedTodoBoard?.columns?.length ? linkedTodoBoard.columns : KANBAN_COLUMNS).map((col) => {
+                  const items = projectTasks.filter((t) => t.column_name === col);
+                  return (
+                    <div className="kanban-col" key={col}>
+                      <div className="kanban-col-head"><span>{col}</span><span className="kanban-col-count">{items.length}</span></div>
+                      {items.map((t) => (
+                        <div className="kanban-card" key={t.id} style={{ cursor: 'default' }}>
+                          <span className="kanban-card-title">{t.title}</span>
+                          <Badge variant={t.priority}>{t.priority}</Badge>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
