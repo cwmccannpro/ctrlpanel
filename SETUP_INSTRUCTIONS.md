@@ -1,227 +1,101 @@
-# CTRLpanel — Complete Setup Instructions
-# For Antigravity 2.0
-# Cameron McCann | cwmccann.pro
+# CTRLpanel — Setup & Deployment
 
-==============================================
-BEFORE YOU OPEN ANTIGRAVITY — DO THESE FIRST
-==============================================
+Multi-user Life OS: React + Vite frontend, Supabase (auth + Postgres + RLS),
+Express API for local dev, **Cloudflare Worker for production** (one deploy
+story — the Worker serves both the API and the built frontend).
 
-STEP 1: CREATE YOUR SUPABASE PROJECT
-──────────────────────────────────────
-1. Go to https://supabase.com and sign in
-2. Click "New Project"
-3. Name it: ctrlpanel
-4. Choose a region close to you
-5. Set a database password (save it somewhere)
-6. Wait ~2 minutes for it to provision
-7. Go to Settings → API
-8. Copy your Project URL and anon public key — you'll need these
+---
 
-STEP 2: RUN THE DATABASE SCHEMA
-──────────────────────────────────────
-1. In your Supabase project, click "SQL Editor" in the left sidebar
-2. Click "New Query"
-3. Open the file: supabase-schema.sql (included in this folder)
-4. Copy the entire contents and paste into the SQL Editor
-5. Click "Run"
-6. You should see "Success. No rows returned"
-7. Click "Table Editor" to verify all tables were created
+## 1. Supabase (required)
 
-STEP 3: GET YOUR API KEYS
-──────────────────────────────────────
-Anthropic (Claude API):
-1. Go to https://console.anthropic.com
-2. Click API Keys → Create Key
-3. Copy the key (starts with sk-ant-)
+1. https://supabase.com → **New Project** (name it anything, e.g. `ctrlpanel`).
+2. **SQL Editor → New query** → paste the ENTIRE contents of
+   `supabase-schema.sql` → **Run** → expect "Success. No rows returned."
+   - The file is idempotent — re-run it any time the schema changes.
+3. **Authentication → Providers → Email** → enable.
+   For instant test logins, turn OFF "Confirm email" (turn it back on for production).
+4. **Project Settings → API** — you need THREE values:
+   | Value | Goes in | Notes |
+   |---|---|---|
+   | Project URL | `VITE_SUPABASE_URL` | safe for frontend |
+   | `anon` `public` key | `VITE_SUPABASE_ANON_KEY` | safe for frontend (RLS-scoped) |
+   | `service_role` SECRET | `SUPABASE_SERVICE_ROLE_KEY` | **backend only — bypasses RLS.** Required for Google Calendar OAuth (`google_tokens` is service-role-only) and for headless agents writing `agent_runs`. Never expose or commit it. |
 
-Google Calendar (optional, do later):
-1. Go to https://console.cloud.google.com
-2. Create a new project called "ctrlpanel"
-3. Enable the Google Calendar API
-4. Go to Credentials → Create OAuth 2.0 Client ID
-5. Application type: Web application
-6. Authorized redirect URI: http://localhost:3001/api/calendar/callback
-7. Copy Client ID and Client Secret
+## 2. Anthropic (Master Controller + supplement AI)
 
-STEP 4: CREATE YOUR PROJECT FOLDER
-──────────────────────────────────────
-1. Create a new folder on your computer: ~/Projects/ctrlpanel
-2. Copy ALL files from this package into that folder:
-   - AGENTS.md          → ctrlpanel/AGENTS.md
-   - MASTER_CONTROLLER_PROMPT.md → ctrlpanel/MASTER_CONTROLLER_PROMPT.md
-   - PROMPTS.md         → ctrlpanel/PROMPTS.md
-   - supabase-schema.sql → ctrlpanel/supabase-schema.sql (already ran, keep for reference)
-   - .env.example       → ctrlpanel/.env.example
-   - .agents/skills/ctrlpanel.md → ctrlpanel/.agents/skills/ctrlpanel.md
+- console.anthropic.com → API Keys → create → `ANTHROPIC_API_KEY`.
+- Optional: individual users can instead add their own key in
+  **Settings → Connectors** inside the app (per-user keys take precedence).
 
-3. Copy .env.example to .env:
-   - On Mac/Linux: cp .env.example .env
-   - On Windows: copy .env.example .env
+## 3. Google Calendar OAuth (optional but recommended)
 
-4. Open .env and fill in your actual values:
-   VITE_SUPABASE_URL=https://your-actual-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-actual-anon-key
-   ANTHROPIC_API_KEY=sk-ant-your-actual-key
-   (leave Google keys blank for now if you skipped Step 3)
+1. console.cloud.google.com → create a project → **enable "Google Calendar API"**.
+2. **OAuth consent screen**: External · fill app name/emails · add scope
+   `https://www.googleapis.com/auth/calendar` · while in **Testing** mode, add
+   each Google account that will connect under **Test users** (refresh tokens
+   expire every 7 days in Testing; publish + verify the app for public use).
+3. **Credentials → Create → OAuth client ID → Web application** and add BOTH
+   redirect URIs:
+   - `http://localhost:3001/api/calendar/callback` (local dev)
+   - `https://YOUR-DOMAIN/api/calendar/callback` (production Worker)
+4. Copy Client ID/Secret → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and set
+   `GOOGLE_REDIRECT_URI` to whichever environment you're configuring.
 
-STEP 5: CREATE A .gitignore
-──────────────────────────────────────
-Create a file called .gitignore in your ctrlpanel folder with:
+## 4. Local development
 
-   .env
-   node_modules/
-   dist/
-   .DS_Store
+```bash
+cp .env.example .env    # fill in the values from steps 1–3
+npm install
+npm run server          # Express API  → http://localhost:3001
+npm run dev             # Vite frontend → http://localhost:5173  (proxies /api)
+```
 
-==============================================
-NOW OPEN ANTIGRAVITY 2.0
-==============================================
+Open http://localhost:5173 → **Create one** (register) → you land in your own
+empty workspace. Restart both processes whenever `.env` changes.
 
-STEP 6: OPEN YOUR PROJECT IN ANTIGRAVITY
-──────────────────────────────────────
-1. Launch Antigravity 2.0
-2. File → Open Folder → select your ctrlpanel folder
-3. Antigravity will scan the folder and read AGENTS.md automatically
+## 5. Production — Cloudflare (the one deploy story)
 
-STEP 7: PASTE THE INITIAL PROMPT
-──────────────────────────────────────
-Open PROMPTS.md and copy the INITIAL PROMPT section.
-Paste it into the Antigravity agent chat and press Enter.
+The Worker (`worker/index.js`) serves the same `/api` surface as Express by
+reusing the same `backend/` modules, and `wrangler.jsonc` serves `./dist` as a
+single-page app with `/api/*` routed to the Worker first.
 
-The agent will:
-- Read AGENTS.md
-- Scaffold the React + Vite project
-- Set up the Express backend
-- Install all dependencies
-- Build the design system (globals.css)
-- Build the Sidebar navigation
-- Build the Dashboard
-- Open it in the built-in browser
+```bash
+# one-time: authenticate wrangler
+npx wrangler login
 
-This will take several minutes. Let it run.
+# set every secret (same names as .env):
+npx wrangler secret put VITE_SUPABASE_URL
+npx wrangler secret put VITE_SUPABASE_ANON_KEY
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_REDIRECT_URI   # https://YOUR-DOMAIN/api/calendar/callback
+npx wrangler secret put FRONTEND_URL          # https://YOUR-DOMAIN
+npx wrangler secret put ALPHA_VANTAGE_KEY     # optional (stock prices)
 
-STEP 8: VERIFY IT WORKS
-──────────────────────────────────────
-When the agent finishes, you should see CTRLpanel running in the browser:
-- Dark background (#0a0808)
-- Red accent sidebar with CTRLpanel logo
-- Dashboard with stats, calendar strip, tasks, and chat bar
-- All nav items clickable
+# build + deploy (also available as: npm run deploy)
+npm run build && npx wrangler deploy
+```
 
-If something looks wrong, tell the agent specifically what's off.
+Then attach your domain in the Cloudflare dashboard (Workers → your worker →
+Domains & Routes), and make sure that domain's callback URL is registered on
+the Google OAuth client (step 3.3).
 
-==============================================
-CONTINUING DEVELOPMENT
-==============================================
+Notes
+- `VITE_*` values are baked into the frontend at **build time** from `.env` —
+  build with the same values you set as secrets.
+- Local test of the production bundle: `npm run cf:dev` (wrangler dev).
+- If you add an API route: implement the logic in a shared `backend/*.js`
+  module and register it in BOTH `backend/routes/*` and `worker/index.js`.
 
-EVERY NEW ANTIGRAVITY SESSION:
-Open the chat and paste:
-   "Read AGENTS.md, scan /src/pages/ to see what's built, 
-    continue with the next page in the build order."
+## 6. Troubleshooting
 
-TO BUILD A SPECIFIC MODULE:
-Find the module-specific prompt in PROMPTS.md and paste it.
-
-TO FIX SOMETHING:
-   "Read AGENTS.md. The [page name] page has [issue]. Fix it 
-    without breaking anything else."
-
-TO ADD A FEATURE:
-   "Read AGENTS.md. On the [page name] page, add [feature]. 
-    Match the existing design system exactly."
-
-==============================================
-FOLDER STRUCTURE AFTER BUILD
-==============================================
-
-ctrlpanel/
-├── AGENTS.md                 ← Antigravity reads this every session
-├── MASTER_CONTROLLER_PROMPT.md
-├── PROMPTS.md
-├── supabase-schema.sql
-├── .env                      ← your keys (never commit)
-├── .env.example              ← template (safe to commit)
-├── .gitignore
-├── .agents/
-│   └── skills/
-│       └── ctrlpanel.md     ← resume skill
-├── package.json
-├── vite.config.js
-├── index.html
-├── backend/
-│   ├── server.js
-│   ├── claude.js
-│   ├── calendar.js
-│   ├── finance.js
-│   └── routes/
-│       ├── ai.js
-│       ├── calendar.js
-│       └── finance.js
-└── src/
-    ├── main.jsx
-    ├── App.jsx
-    ├── styles/
-    │   ├── globals.css
-    │   └── components.css
-    ├── lib/
-    │   ├── supabase.js
-    │   ├── api.js
-    │   └── helpers.js
-    ├── components/
-    │   ├── Sidebar.jsx
-    │   ├── MasterController.jsx
-    │   ├── QuickAdd.jsx
-    │   └── shared/
-    │       ├── Card.jsx
-    │       ├── Badge.jsx
-    │       ├── Modal.jsx
-    │       └── Spinner.jsx
-    └── pages/
-        ├── Dashboard.jsx
-        ├── Calendar.jsx
-        ├── ToDo.jsx
-        ├── Agents.jsx
-        ├── Projects.jsx
-        ├── CRM.jsx
-        ├── health/
-        │   ├── Nutrition.jsx
-        │   ├── Supplements.jsx
-        │   └── Fitness.jsx
-        ├── finance/
-        │   ├── NetWorth.jsx
-        │   ├── Budget.jsx
-        │   └── Investing.jsx
-        └── Settings.jsx
-
-==============================================
-WHEN YOU'RE READY TO DEPLOY
-==============================================
-
-1. Push to GitHub:
-   git init
-   git add .
-   git commit -m "initial ctrlpanel build"
-   git remote add origin your-github-repo-url
-   git push -u origin main
-
-2. Deploy frontend to Vercel:
-   - Go to vercel.com → New Project → Import your GitHub repo
-   - Add all .env variables in Vercel's Environment Variables section
-   - Deploy → your app will be live
-
-3. Point ctrlpanel.cwmccann.pro to Vercel:
-   - In Vercel → your project → Settings → Domains
-   - Add: ctrlpanel.cwmccann.pro
-   - Add a CNAME record in your DNS pointing to cname.vercel-dns.com
-
-4. Deploy backend to Railway:
-   - Go to railway.app → New Project → from GitHub
-   - Select your repo, set root to /backend
-   - Add environment variables
-   - Deploy
-
-==============================================
-SUPPORT
-==============================================
-Built for Cameron McCann | cwmccann.pro
-App: CTRLpanel | ctrlpanel.cwmccann.pro
+| Symptom | Fix |
+|---|---|
+| Login page says "Supabase isn't configured" | `.env` missing `VITE_*` values, or dev server not restarted |
+| Register succeeds but can't sign in | Email confirmation is ON — click the link, or disable it (step 1.3) |
+| Calendar `status` returns `ready:false` | `SUPABASE_SERVICE_ROLE_KEY` (or Google vars) missing on the backend |
+| Google consent shows "access blocked / unverified" | Add your Gmail under OAuth consent → Test users |
+| Master Controller errors about API key | Set `ANTHROPIC_API_KEY`, or add a key in Settings → Connectors |
+| Table/column "does not exist" errors | Re-run `supabase-schema.sql` (it's idempotent) |

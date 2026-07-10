@@ -1,8 +1,23 @@
 {
+  // CTRLpanel — Cloudflare deployment (single Worker: API + static SPA)
+  //
+  // Deploy:   npm run build && npx wrangler deploy
+  // Secrets:  npx wrangler secret put <NAME>   for each of:
+  //   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+  //   ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  //   GOOGLE_REDIRECT_URI (https://<your-domain>/api/calendar/callback),
+  //   FRONTEND_URL (https://<your-domain>), ALPHA_VANTAGE_KEY (optional)
+  //
+  // NOTE: VITE_* values are ALSO baked into the frontend at build time from
+  // .env — keep .env and the Worker secrets in sync.
   "name": "ctrlpanel",
   "compatibility_date": "2026-07-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "worker/index.js",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   }
 }

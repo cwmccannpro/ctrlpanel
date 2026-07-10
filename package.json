@@ -9,10 +9,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node backend/server.js",
-    "server:watch": "node --watch backend/server.js"
+    "server:watch": "node --watch backend/server.js",
+    "deploy": "npm run build && npx wrangler deploy",
+    "cf:dev": "npm run build && npx wrangler dev"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "latest",
+    "@anthropic-ai/sdk": "0.104.2",
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
     "@excalidraw/excalidraw": "^0.18.1",
@@ -20,7 +22,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "googleapis": "^173.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",

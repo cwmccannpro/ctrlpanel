@@ -126,15 +126,14 @@ const NO_KEY_MSG =
  * The frontend drives the agentic loop: when stop_reason === 'tool_use' it
  * executes the tool_use blocks against Supabase and calls back with results.
  */
-export async function streamChat(res, { messages = [], context = {}, apiKey } = {}) {
-  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache');
-  const write = (obj) => res.write(JSON.stringify(obj) + '\n');
-
+// Transport-agnostic core: `write(obj)` emits one NDJSON event. Used by the
+// Express route locally and the Cloudflare Worker in production, so both
+// runtimes share one implementation.
+export async function streamChatCore({ messages = [], context = {}, apiKey } = {}, write) {
   const anthropic = getClient(apiKey);
   if (!anthropic) {
     write({ type: 'error', message: NO_KEY_MSG });
-    return res.end();
+    return;
   }
 
   const userName = context.user || 'the user';
@@ -161,6 +160,16 @@ export async function streamChat(res, { messages = [], context = {}, apiKey } = 
     write({ type: 'done', stop_reason: final.stop_reason, assistant: final.content });
   } catch (err) {
     write({ type: 'error', message: err?.message || 'Claude API error' });
+  }
+}
+
+// Express wrapper around the core (local dev server).
+export async function streamChat(res, params = {}) {
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  const write = (obj) => res.write(JSON.stringify(obj) + '\n');
+  try {
+    await streamChatCore(params, write);
   } finally {
     res.end();
   }

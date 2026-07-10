@@ -1,0 +1,158 @@
+// ============================================================
+// CTRLpanel — Cloudflare Worker (production API + static assets)
+//
+// Serves the same /api surface as the local Express server, reusing the
+// exact same backend modules (backend/claude.js, backend/google.js,
+// backend/finance.js are all plain fetch + Workers-compatible SDKs).
+// Static frontend assets are served by the `assets` binding in
+// wrangler.jsonc; run_worker_first routes /api/* here.
+//
+// Requires compatibility flag "nodejs_compat" (node:crypto, Buffer, and
+// process.env populated from Worker secrets/vars).
+// ============================================================
+import { streamChatCore, supplementAnalyze, interactionCheck } from '../backend/claude.js';
+import { getPrices } from '../backend/finance.js';
+import {
+  backendReady,
+  authUrl,
+  signState,
+  verifyState,
+  verifyUserToken,
+  exchangeCode,
+  getStatus,
+  disconnect,
+  listCalendars,
+  listEvents,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+} from '../backend/google.js';
+
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
+
+const redirect = (url) => Response.redirect(url, 302);
+
+async function userFrom(request, url) {
+  const h = request.headers.get('authorization') || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : url.searchParams.get('token') || '';
+  return verifyUserToken(token);
+}
+
+// The SPA origin for post-OAuth redirects: explicit env var, else this deploy.
+const frontendBase = (url) => process.env.FRONTEND_URL || url.origin;
+
+export default {
+  async fetch(request, env, ctx) {
+    // nodejs_compat populates process.env from env on modern compat dates,
+    // but assign defensively so module code always sees the bindings.
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v === 'string' && process.env[k] === undefined) process.env[k] = v;
+    }
+
+    const url = new URL(request.url);
+    const { pathname } = url;
+    const method = request.method;
+
+    try {
+      /* ---- health ---- */
+      if (pathname === '/api/health') {
+        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), ts: Date.now() });
+      }
+
+      /* ---- AI ---- */
+      if (pathname === '/api/ai/chat' && method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const { readable, writable } = new TransformStream();
+        const writer = writable.getWriter();
+        const enc = new TextEncoder();
+        const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n'));
+        ctx.waitUntil(
+          streamChatCore(body, write)
+            .catch((e) => write({ type: 'error', message: e?.message || 'Claude API error' }))
+            .finally(() => writer.close().catch(() => {}))
+        );
+        return new Response(readable, {
+          headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
+        });
+      }
+      if (pathname === '/api/ai/supplement-analyze' && method === 'POST') {
+        return json(await supplementAnalyze(await request.json().catch(() => ({}))));
+      }
+      if (pathname === '/api/ai/interaction-check' && method === 'POST') {
+        return json(await interactionCheck(await request.json().catch(() => ({}))));
+      }
+
+      /* ---- Finance ---- */
+      if (pathname === '/api/finance/prices' && method === 'GET') {
+        const tickers = (url.searchParams.get('tickers') || '').split(',').map((t) => t.trim()).filter(Boolean);
+        return json(await getPrices(tickers));
+      }
+
+      /* ---- Calendar ---- */
+      if (pathname.startsWith('/api/calendar')) {
+        if (pathname === '/api/calendar/status' && method === 'GET') {
+          const ready = backendReady();
+          const user = await userFrom(request, url);
+          if (!user) return json({ connected: false, ready });
+          return json({ ...(await getStatus(user.id)), ready });
+        }
+
+        if (pathname === '/api/calendar/connect' && method === 'GET') {
+          if (!backendReady()) return new Response('Google Calendar is not configured on the server.', { status: 500 });
+          const user = await userFrom(request, url);
+          if (!user) return new Response('Not authenticated.', { status: 401 });
+          return redirect(authUrl(signState(user.id)));
+        }
+
+        if (pathname === '/api/calendar/callback' && method === 'GET') {
+          const base = frontendBase(url);
+          try {
+            if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
+            const userId = verifyState(url.searchParams.get('state'));
+            await exchangeCode(userId, url.searchParams.get('code'));
+            return redirect(`${base}/calendar?google=connected`);
+          } catch (e) {
+            return redirect(`${base}/calendar?google=error&message=${encodeURIComponent(e.message)}`);
+          }
+        }
+
+        // Everything below requires auth
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+
+        if (pathname === '/api/calendar/disconnect' && method === 'POST') {
+          await disconnect(user.id);
+          return json({ ok: true });
+        }
+        if (pathname === '/api/calendar/calendars' && method === 'GET') {
+          return json(await listCalendars(user.id));
+        }
+        if (pathname === '/api/calendar/events' && method === 'GET') {
+          return json(await listEvents(user.id, Object.fromEntries(url.searchParams)));
+        }
+        if (pathname === '/api/calendar/events' && method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          return json(await createEvent(user.id, body, body.cal_id || 'primary'));
+        }
+        const evMatch = pathname.match(/^\/api\/calendar\/events\/([^/]+)$/);
+        if (evMatch && method === 'PATCH') {
+          const body = await request.json().catch(() => ({}));
+          const calId = url.searchParams.get('calendarId') || body.cal_id || 'primary';
+          return json(await updateEvent(user.id, decodeURIComponent(evMatch[1]), body, calId));
+        }
+        if (evMatch && method === 'DELETE') {
+          return json(await deleteEvent(user.id, decodeURIComponent(evMatch[1]), url.searchParams.get('calendarId') || 'primary'));
+        }
+      }
+
+      if (pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
+
+      // Non-/api paths shouldn't reach the Worker (assets handle them), but
+      // fall through gracefully if they do.
+      return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
+    } catch (e) {
+      return json({ error: e?.message || 'Internal error' }, 500);
+    }
+  },
+};
