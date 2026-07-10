@@ -13,6 +13,8 @@
   "name": "ctrlpanel",
   "compatibility_date": "2026-07-08",
   "compatibility_flags": ["nodejs_compat"],
+  // Preserve dashboard-set variables across wrangler deploys
+  "keep_vars": true,
   "main": "worker/index.js",
   "assets": {
     "directory": "./dist",
