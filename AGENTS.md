@@ -70,6 +70,10 @@
 - Finance: `accounts`, `net_worth_snapshots`, `income_sources`,
   `expense_categories`, `transactions`, `holdings`, `portfolio_snapshots`, `dividends`
 - Agents: `agents`, `agent_runs` (headless run log; read by AgentDetail)
+- Email Triage: `gmail_accounts` (per-user multi-account OAuth tokens +
+  alias — service-role only, same pattern as google_tokens),
+  `triage_runs` + `triage_items` (one brief per run; written by the backend
+  with explicit user_id, read by the client under "own rows" RLS)
 - **Schema changes**: append idempotent SQL (`create table if not exists`,
   `add column if not exists`) to `supabase-schema.sql` and add the table to the
   RLS loop. The whole file must always be safe to re-run.
@@ -115,7 +119,22 @@
   against the RLS-scoped client; calendar tools route to Google when connected;
   delete requires in-app confirmation.
 - **Settings**: profile, accent (8 swatches → CSS vars, per-user), font size,
-  Connectors (Anthropic key, Alpha Vantage, custom) saved to `user_settings.connectors`.
+  Connectors (Anthropic key, Alpha Vantage, custom) saved to `user_settings.connectors`;
+  Gmail Accounts panel (connect N Gmail accounts for Email Triage, each with
+  a short alias, disconnect per account).
+- **Email Triage (Reports → Mail Triage)**: multi-account Gmail scan → Claude
+  categorization (needs_reply | client_lead | payments | ignore) + suggested
+  replies. OAuth in `backend/gmail.js` (same Google client as Calendar, own
+  redirect URI, scopes readonly/modify/compose — NO send scope ever).
+  Armed via an "Email Triage" agent (`config.type = 'email_triage'`,
+  `schedule_hour` UTC); scheduler = setInterval in Express dev + Worker cron
+  trigger (`wrangler.jsonc` triggers.crons → `runDueTriage`), plus "Run now".
+  One brief per run (`triage_runs`/`triage_items`), grouped by account in
+  `src/pages/reports/MailTriage.jsx`; "Approve → create draft" makes a native
+  Gmail draft — the user always sends from Gmail, CTRLpanel never sends.
+  Dashboard `mail_triage` widget rolls up the latest brief; the Master
+  Controller reads `triage_runs`/`triage_items` (read-only) and gets a
+  snapshot summary under `email_triage`.
 
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
@@ -149,6 +168,8 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   (all Supabase-token auth; logic in `backend/social.js`, emails in `backend/email.js`)
 - `POST /api/nutrition/log` — external clients; auth = per-user API key
   (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
+- `GET /api/gmail/status|connect|callback` · `POST /api/gmail/disconnect|run|draft`
+  (Supabase-token auth; logic in `backend/gmail.js` — Email Triage)
 
 ## Deployment — ONE story: Cloudflare
 - `worker/index.js` is the production backend; it reuses the modules in

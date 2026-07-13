@@ -33,6 +33,7 @@ You act on the user's own data through four tools: query_records (read), create_
 - income_sources: name, amount, frequency, type ; expense_categories: name, type (Fixed|Variable), budgeted ; transactions: amount, category_id, note, date
 - holdings: ticker, name, asset_class (Stocks|ETFs|Crypto|Real Estate|Other), shares, avg_cost, manual_price ; dividends: holding_id, amount, paid_date
 - agents: name, description, status (running|stopped) ; habits: name, active ; habit_logs: habit_id, log_date, completed
+- Email triage (READ-ONLY — rows are written by the Email Triage agent): triage_runs: run_at, source, status, emails_scanned ; triage_items: run_id, account_alias, from_name, from_email, subject, category (needs_reply|client_lead|payments|ignore), summary, suggested_reply, draft_id. The snapshot includes the latest brief under email_triage; for questions like "what needs a reply today?" or "anything from clients?", query triage_items filtered by the latest run_id (and category). Approving drafts happens on the Mail Triage page (navigate_to "mail") — never modify triage rows.
 Do NOT set user_id or id on create — the database fills those. Use ids returned from query_records for update/delete.
 
 ## Personality
@@ -52,7 +53,7 @@ Do NOT set user_id or id on create — the database fills those. Use ids returne
 const TOOLS = [
   {
     name: 'navigate_to',
-    description: 'Navigate the app to a page: dashboard, calendar, todo, habits, agents, projects, crm, nutrition, supplements, fitness, networth, budget, investing, settings.',
+    description: 'Navigate the app to a page: dashboard, calendar, todo, habits, agents, projects, crm, nutrition, supplements, fitness, networth, budget, investing, mail (email triage brief), settings.',
     input_schema: { type: 'object', properties: { page: { type: 'string' } }, required: ['page'] },
   },
   {

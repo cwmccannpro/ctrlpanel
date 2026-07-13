@@ -28,6 +28,7 @@ import Fitness from './pages/health/Fitness.jsx';
 import NetWorth from './pages/finance/NetWorth.jsx';
 import Budget from './pages/finance/Budget.jsx';
 import Investing from './pages/finance/Investing.jsx';
+import MailTriage from './pages/reports/MailTriage.jsx';
 
 // Apply saved theme + display preferences on start.
 loadAccent();
@@ -77,6 +78,7 @@ const router = createBrowserRouter([
       { path: 'finance/networth', element: <NetWorth /> },
       { path: 'finance/budget', element: <Budget /> },
       { path: 'finance/investing', element: <Investing /> },
+      { path: 'reports/mail', element: <MailTriage /> },
       { path: 'settings', element: <Settings /> },
       { path: '*', element: <Dashboard /> },
     ],

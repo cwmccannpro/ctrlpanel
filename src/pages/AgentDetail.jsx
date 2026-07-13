@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import Card from '../components/shared/Card.jsx';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
 import { queryTable } from '../lib/supabase.js';
+import { gmail } from '../lib/api.js';
 import { currency } from '../lib/helpers.js';
 
 function timeAgo(ts) {
@@ -47,6 +48,8 @@ export default function AgentDetail() {
   const [runs, setRuns] = useState([]);
   const [runsLoading, setRunsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [triageBusy, setTriageBusy] = useState(false);
+  const [triageNote, setTriageNote] = useState('');
 
   const loadRuns = useCallback(async () => {
     // Temp (optimistic) ids from useCrud.add aren't real rows yet — skip.
@@ -100,6 +103,22 @@ export default function AgentDetail() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch { /* clipboard blocked — user can select manually */ }
+  };
+
+  // Email Triage agent — "Run now" triggers the backend triage job directly.
+  const isTriage = config.type === 'email_triage';
+  const runTriageNow = async () => {
+    setTriageBusy(true);
+    setTriageNote('');
+    try {
+      const res = await gmail.runNow();
+      setTriageNote(`Scanned ${res.emails_scanned} emails · ${res.needs_reply} need a reply.`);
+      loadRuns();
+    } catch (e) {
+      setTriageNote(e.message);
+    } finally {
+      setTriageBusy(false);
+    }
   };
 
   // ---- Stats derived from run history ----
@@ -208,6 +227,38 @@ export default function AgentDetail() {
           <p className="list-row-meta mt-16">Paste this into the agent's <code>.env</code> as <code>OUTREACH_AGENT_ID</code> so it knows which agent it is.</p>
         </div>
 
+        {isTriage && (
+          <>
+            <div className="field">
+              <label className="field-label">Daily schedule (UTC hour)</label>
+              <select
+                className="input"
+                value={Number(config.schedule_hour ?? 13)}
+                onChange={(e) => patchConfig({ schedule_hour: Number(e.target.value) })}
+                style={{ maxWidth: 160 }}
+              >
+                {Array.from({ length: 24 }).map((_, h) => (
+                  <option key={h} value={h}>{`${h}:00 UTC`}</option>
+                ))}
+              </select>
+              <p className="list-row-meta mt-16">
+                While the agent is running, unread mail from the last 24h is triaged daily at this hour across every
+                account in Settings → Gmail Accounts. Suggested replies always wait for your approval.
+              </p>
+            </div>
+            <div className="row" style={{ gap: 8, marginBottom: 16 }}>
+              <button className="btn btn--accent" onClick={runTriageNow} disabled={triageBusy}>
+                <i className="ti ti-refresh" /> {triageBusy ? 'Scanning…' : 'Run now'}
+              </button>
+              <Link to="/reports/mail" className="btn">
+                <i className="ti ti-report" /> Open Mail Triage brief
+              </Link>
+              {triageNote && <span className="list-row-meta">{triageNote}</span>}
+            </div>
+          </>
+        )}
+
+        {!isTriage && (
         <div className="field">
           <label className="field-label">Daily send limit</label>
           <input
@@ -218,7 +269,9 @@ export default function AgentDetail() {
             onChange={(e) => patchConfig({ daily_limit: Number(e.target.value) })}
           />
         </div>
+        )}
 
+        {!isTriage && (
         <div className="field">
           <label className="field-label">Niches (JSON)</label>
           <textarea
@@ -235,6 +288,7 @@ export default function AgentDetail() {
           />
           <p className="list-row-meta mt-16">List of niches the agent works, as JSON. Invalid JSON is ignored on save.</p>
         </div>
+        )}
 
         <div className="field">
           <label className="field-label">Webhook URL <span className="list-row-meta">(optional — unused for polling agents)</span></label>

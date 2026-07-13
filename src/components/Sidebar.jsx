@@ -37,6 +37,14 @@ const STATIC_FOLDERS = [
       { label: 'Investing', to: '/finance/investing' },
     ],
   },
+  {
+    label: 'Reports',
+    icon: 'ti-report',
+    base: '/reports/mail',
+    items: [
+      { label: 'Mail Triage', to: '/reports/mail' },
+    ],
+  },
 ];
 
 function navClass({ isActive }) {
