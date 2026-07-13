@@ -13,6 +13,19 @@
 import { streamChatCore, supplementAnalyze, interactionCheck } from '../backend/claude.js';
 import { getPrices } from '../backend/finance.js';
 import {
+  createBoardShare,
+  acceptInvite,
+  createFriendInvite,
+  getFriends,
+  removeFriend,
+  getLeaderboard,
+  createChallenge,
+  listChallenges,
+  respondChallenge,
+  deleteChallenge,
+} from '../backend/social.js';
+import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../backend/nutritionApi.js';
+import {
   backendReady,
   authUrl,
   signState,
@@ -27,6 +40,18 @@ import {
   updateEvent,
   deleteEvent,
 } from '../backend/google.js';
+import {
+  gmailReady,
+  gmailAuthUrl,
+  signGmailState,
+  verifyGmailState,
+  exchangeGmailCode,
+  listGmailAccounts,
+  disconnectGmailAccount,
+  runTriage,
+  createDraftForItem,
+  runDueTriage,
+} from '../backend/gmail.js';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
@@ -57,7 +82,7 @@ export default {
     try {
       /* ---- health ---- */
       if (pathname === '/api/health') {
-        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), ts: Date.now() });
+        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), email: Boolean(process.env.RESEND_API_KEY), ts: Date.now() });
       }
 
       /* ---- AI ---- */
@@ -87,6 +112,67 @@ export default {
       if (pathname === '/api/finance/prices' && method === 'GET') {
         const tickers = (url.searchParams.get('tickers') || '').split(',').map((t) => t.trim()).filter(Boolean);
         return json(await getPrices(tickers));
+      }
+
+      /* ---- External nutrition logging (per-user API key, not a session) ---- */
+      if (pathname === '/api/nutrition/log' && method === 'POST') {
+        try {
+          const key = apiKeyFromHeaders((h) => request.headers.get(h) || '');
+          const userId = await userIdForApiKey(key);
+          if (!userId) return json({ error: 'Invalid or revoked API key.' }, 401);
+          return json(await logNutritionEntry(userId, await request.json().catch(() => ({}))));
+        } catch (e) {
+          return json({ error: e?.message || 'Request failed' }, 400);
+        }
+      }
+
+      /* ---- Sharing + social (Supabase session auth) ---- */
+      if (
+        pathname.startsWith('/api/shares') ||
+        pathname.startsWith('/api/invites') ||
+        pathname.startsWith('/api/social')
+      ) {
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+        const appUrl = frontendBase(url);
+        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
+        try {
+          if (pathname === '/api/shares/board' && method === 'POST') {
+            return json(await createBoardShare(user, body, appUrl));
+          }
+          if (pathname === '/api/invites/accept' && method === 'POST') {
+            return json(await acceptInvite(user, body.token));
+          }
+          if (pathname === '/api/social/friends' && method === 'GET') {
+            return json(await getFriends(user));
+          }
+          if (pathname === '/api/social/friends' && method === 'POST') {
+            return json(await createFriendInvite(user, body, appUrl));
+          }
+          const frMatch = pathname.match(/^\/api\/social\/friends\/([^/]+)$/);
+          if (frMatch && method === 'DELETE') {
+            return json(await removeFriend(user, decodeURIComponent(frMatch[1])));
+          }
+          if (pathname === '/api/social/leaderboard' && method === 'GET') {
+            return json(await getLeaderboard(user, Object.fromEntries(url.searchParams)));
+          }
+          if (pathname === '/api/social/challenges' && method === 'GET') {
+            return json(await listChallenges(user));
+          }
+          if (pathname === '/api/social/challenges' && method === 'POST') {
+            return json(await createChallenge(user, body));
+          }
+          const chRespond = pathname.match(/^\/api\/social\/challenges\/([^/]+)\/respond$/);
+          if (chRespond && method === 'POST') {
+            return json(await respondChallenge(user, decodeURIComponent(chRespond[1]), Boolean(body.accept)));
+          }
+          const chMatch = pathname.match(/^\/api\/social\/challenges\/([^/]+)$/);
+          if (chMatch && method === 'DELETE') {
+            return json(await deleteChallenge(user, decodeURIComponent(chMatch[1])));
+          }
+        } catch (e) {
+          return json({ error: e?.message || 'Request failed' }, 400);
+        }
       }
 
       /* ---- Calendar ---- */
@@ -146,6 +232,55 @@ export default {
         }
       }
 
+      /* ---- Gmail / Email Triage ---- */
+      if (pathname.startsWith('/api/gmail')) {
+        if (pathname === '/api/gmail/status' && method === 'GET') {
+          const ready = gmailReady();
+          const user = await userFrom(request, url);
+          if (!user) return json({ ready, accounts: [] });
+          return json({ ready, accounts: await listGmailAccounts(user.id) });
+        }
+
+        if (pathname === '/api/gmail/connect' && method === 'GET') {
+          if (!gmailReady()) return new Response('Gmail triage is not configured on the server.', { status: 500 });
+          const user = await userFrom(request, url);
+          if (!user) return new Response('Not authenticated.', { status: 401 });
+          const alias = String(url.searchParams.get('alias') || '').trim().toLowerCase().slice(0, 24);
+          if (!alias) return new Response('An account alias is required.', { status: 400 });
+          return redirect(gmailAuthUrl(signGmailState(user.id, alias)));
+        }
+
+        if (pathname === '/api/gmail/callback' && method === 'GET') {
+          const base = frontendBase(url);
+          try {
+            if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
+            const { userId, alias } = verifyGmailState(url.searchParams.get('state'));
+            await exchangeGmailCode(userId, alias, url.searchParams.get('code'));
+            return redirect(`${base}/settings?gmail=connected&alias=${encodeURIComponent(alias)}`);
+          } catch (e) {
+            return redirect(`${base}/settings?gmail=error&message=${encodeURIComponent(e.message)}`);
+          }
+        }
+
+        // Everything below requires auth
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
+        try {
+          if (pathname === '/api/gmail/disconnect' && method === 'POST') {
+            return json(await disconnectGmailAccount(user.id, body.account_id));
+          }
+          if (pathname === '/api/gmail/run' && method === 'POST') {
+            return json(await runTriage(user.id, 'manual'));
+          }
+          if (pathname === '/api/gmail/draft' && method === 'POST') {
+            return json(await createDraftForItem(user.id, body.item_id));
+          }
+        } catch (e) {
+          return json({ error: e?.message || 'Request failed' }, 400);
+        }
+      }
+
       if (pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
       // Non-/api paths shouldn't reach the Worker (assets handle them), but
@@ -154,5 +289,14 @@ export default {
     } catch (e) {
       return json({ error: e?.message || 'Internal error' }, 500);
     }
+  },
+
+  // Cron trigger (wrangler.jsonc → triggers.crons): every 15 min, run the
+  // Email Triage job for every user whose agent is toggled ON and due.
+  async scheduled(event, env, ctx) {
+    for (const [k, v] of Object.entries(env)) {
+      if (typeof v === 'string' && process.env[k] === undefined) process.env[k] = v;
+    }
+    ctx.waitUntil(runDueTriage().catch((e) => console.error('triage cron:', e?.message)));
   },
 };

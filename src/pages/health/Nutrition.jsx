@@ -11,11 +11,12 @@ import {
 } from 'recharts';
 import Card from '../../components/shared/Card.jsx';
 import Modal from '../../components/shared/Modal.jsx';
+import NutritionSocial from './NutritionSocial.jsx';
 import { useCrud } from '../../lib/useData.js';
 import { formatDate } from '../../lib/helpers.js';
 
-const RING_COLORS = { Calories: '#e11d48', Protein: '#3b82f6', Carbs: '#f59e0b', Fat: '#10b981' };
-const DEFAULT_GOALS = { calories: 2400, protein: 180, carbs: 250, fat: 80 };
+const RING_COLORS = { Calories: '#e11d48', Protein: '#3b82f6', Carbs: '#f59e0b', Fat: '#10b981', Water: '#14b8a6' };
+const DEFAULT_GOALS = { calories: 2400, protein: 180, carbs: 250, fat: 80, water: 64 };
 const day = (ts) => (ts || '').slice(0, 10);
 
 function Ring({ label, current, goal, unit }) {
@@ -42,9 +43,11 @@ function Ring({ label, current, goal, unit }) {
 export default function Nutrition() {
   const meals = useCrud('nutrition_logs', 'logged_at');
   const weights = useCrud('weight_logs', 'logged_at');
+  const water = useCrud('water_logs', 'logged_at');
   const goalsCrud = useCrud('user_goals');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [weight, setWeight] = useState('');
+  const [waterOz, setWaterOz] = useState('');
   const [addingMeal, setAddingMeal] = useState(null);
 
   const goalsRow = goalsCrud.rows[0];
@@ -57,6 +60,16 @@ export default function Nutrition() {
   };
 
   const todaysMeals = meals.rows.filter((m) => day(m.logged_at) === date);
+  const todaysWater = water.rows
+    .filter((w) => day(w.logged_at) === date)
+    .reduce((t, w) => t + Number(w.amount || 0), 0);
+
+  const logWater = (oz) => {
+    const amount = Number(oz);
+    if (!amount) return;
+    water.add({ amount, logged_at: new Date(`${date}T12:00:00`).toISOString() });
+    setWaterOz('');
+  };
   const totals = todaysMeals.reduce(
     (t, m) => ({
       calories: t.calories + Number(m.calories || 0),
@@ -122,6 +135,7 @@ export default function Nutrition() {
           <Ring label="Protein" current={totals.protein} goal={goals.protein} unit="g" />
           <Ring label="Carbs" current={totals.carbs} goal={goals.carbs} unit="g" />
           <Ring label="Fat" current={totals.fat} goal={goals.fat} unit="g" />
+          <Ring label="Water" current={todaysWater} goal={goals.water} unit="oz" />
         </div>
       </Card>
 
@@ -130,9 +144,9 @@ export default function Nutrition() {
         <Card className="card-section" static>
           <div className="card-section-title">Daily Goals</div>
           <div className="grid grid-2">
-            {['calories', 'protein', 'carbs', 'fat'].map((k) => (
+            {['calories', 'protein', 'carbs', 'fat', 'water'].map((k) => (
               <div className="field" key={k} style={{ marginBottom: 8 }}>
-                <label className="field-label">{k}{k === 'calories' ? '' : ' (g)'}</label>
+                <label className="field-label">{k}{k === 'calories' ? '' : k === 'water' ? ' (oz)' : ' (g)'}</label>
                 <input className="input" type="number" value={goals[k] ?? ''} onChange={(e) => setGoal(k, e.target.value)} />
               </div>
             ))}
@@ -155,6 +169,35 @@ export default function Nutrition() {
           ))}
         </Card>
       </div>
+
+      {/* Water */}
+      <Card className="card-section" static>
+        <div className="card-section-title">
+          <span>Water</span>
+          <span className="list-row-meta">{Math.round(todaysWater)} / {goals.water} oz</span>
+        </div>
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <button className="btn" onClick={() => logWater(8)}><i className="ti ti-droplet" /> +8 oz</button>
+          <button className="btn" onClick={() => logWater(16)}><i className="ti ti-droplet" /> +16 oz</button>
+          <input
+            className="input"
+            type="number"
+            placeholder="Custom (oz)"
+            style={{ width: 130 }}
+            value={waterOz}
+            onChange={(e) => setWaterOz(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && logWater(waterOz)}
+          />
+          <button className="btn btn--accent" onClick={() => logWater(waterOz)} disabled={!waterOz}><i className="ti ti-plus" /> Log</button>
+        </div>
+        {water.rows.filter((w) => day(w.logged_at) === date).map((w) => (
+          <div className="list-row" key={w.id}>
+            <i className="ti ti-droplet" style={{ color: '#14b8a6' }} />
+            <span className="list-row-title">{Math.round(w.amount)} oz</span>
+            <button className="btn btn--ghost btn--icon" onClick={() => water.remove(w.id)} title="Delete"><i className="ti ti-x" /></button>
+          </div>
+        ))}
+      </Card>
 
       {/* Trend chart */}
       <Card className="card-section" static>
@@ -194,6 +237,9 @@ export default function Nutrition() {
           </div>
         ))}
       </Card>
+
+      {/* Friends, leaderboard + challenges */}
+      <NutritionSocial />
 
       {addingMeal && (
         <Modal

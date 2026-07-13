@@ -1,5 +1,7 @@
-import { Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
+import { PENDING_INVITE_KEY } from './pages/InviteAccept.jsx';
 import { MasterControllerProvider, useMasterController } from './components/MasterController.jsx';
 import { WorkspaceProvider } from './components/WorkspaceProvider.jsx';
 import { useAuth } from './components/AuthProvider.jsx';
@@ -26,6 +28,14 @@ function Topbar() {
 
 export default function App() {
   const collapsed = localStorage.getItem('ctrlpanel-sidebar') === 'collapsed';
+  const navigate = useNavigate();
+
+  // Resume an invite link the user opened while signed out (the token was
+  // stashed before the login redirect — see pages/InviteAccept.jsx).
+  useEffect(() => {
+    const token = localStorage.getItem(PENDING_INVITE_KEY);
+    if (token) navigate(`/invite/${token}`, { replace: true });
+  }, [navigate]);
 
   return (
     <WorkspaceProvider>

@@ -49,7 +49,9 @@
 ## Database (summary — schema file is authoritative)
 - Identity: `profiles`, `user_settings` (accent, font, connectors jsonb,
   dashboard_widgets jsonb, birthdate/life_expectancy for Life View)
-- Tasks: `boards` (per-user, `columns` jsonb = custom Kanban columns), `tasks`
+- Tasks: `boards` (per-user, `columns` jsonb = custom Kanban columns), `tasks`,
+  `board_shares` (email invites → collaborators; boards/tasks have extra RLS
+  policies via `can_access_board()` security-definer fn)
 - Projects: `projects` (+ `charter` jsonb, `notes_list` jsonb, `files` jsonb
   [{title,url,type,added_at}], `excalidraw` scene jsonb, `excalidraw_preview`,
   `crm_board_id` → linked CRM page)
@@ -57,8 +59,13 @@
   `crm_contacts` (+ `board_id`, `custom` jsonb for custom-column values)
 - Calendar: `calendar_events` (local fallback; Google is primary when connected),
   `google_tokens` (service-role only)
-- Health: `nutrition_logs`, `weight_logs`, `user_goals`, `supplements`,
-  `supplement_logs`, `fitness_schedule`, `workout_logs`
+- Health: `nutrition_logs` (+ `notes`), `weight_logs`, `water_logs`,
+  `user_goals` (+ `water`), `supplements`, `supplement_logs`,
+  `fitness_schedule`, `workout_logs`
+- Nutrition social: `nutrition_friends`, `nutrition_challenges`,
+  `nutrition_challenge_members` (service-role only — read/written via
+  `/api/social/*` so users only see friends' aggregates, never raw logs);
+  `api_keys` (hashed per-user keys for the external logging endpoint)
 - Habits: `habits`, `habit_logs` (unique habit_id+log_date)
 - Finance: `accounts`, `net_worth_snapshots`, `income_sources`,
   `expense_categories`, `transactions`, `holdings`, `portfolio_snapshots`, `dividends`
@@ -77,7 +84,10 @@
   calendar picker on events (colors follow calendar, hue-mapped to app palette);
   local Supabase fallback when not connected.
 - **To Do**: multiple persisted boards; per-board custom columns (add/rename/
-  reorder/delete); drag cards.
+  reorder/delete); drag cards; cards auto-sort by priority within a column
+  (Urgent→High→Medium→Low, stable within a tier); share a board by email
+  (Resend invite → `/invite/:token` accept → full read/write for the
+  collaborator, Realtime live sync, owner can revoke).
 - **Projects**: list + per-project sub-pages (`/projects/:id`, dynamic sidebar
   items) with 6 tabs: Project Dashboard (Charter + live roll-ups), Excalidraw
   (persisted scene + thumbnail), Board, Notes (pinnable, markdown), Files &
@@ -88,6 +98,14 @@
   config (jsonb), run history/stats from `agent_runs`.
 - **Habits**: tracker (14-day toggle grid, streaks) + Life View (birthdate,
   weeks-of-life; feeds the Life View widget).
+- **Nutrition social**: water logging (rings + goal), email friend invites
+  (Resend, same `/invite/:token` flow), leaderboard (calorie/protein goal
+  adherence %, water, logging streak over 7/30 days), time-boxed challenges
+  with live standings + winner at end. UI in `src/pages/health/NutritionSocial.jsx`;
+  aggregates computed server-side in `backend/social.js`.
+- **Nutrition external API**: `POST /api/nutrition/log` authenticated by a
+  per-user API key (Settings → Nutrition API; SHA-256 hash stored in
+  `api_keys`). Entries land in `nutrition_logs` like manual ones.
 - **Health / Finance**: full CRUD everywhere (inline edit + delete on every row);
   charts compute from real user data; Investing polls live prices every 10s
   (`/api/finance/prices`: CoinGecko free for crypto, Alpha Vantage optional for stocks).
@@ -123,6 +141,14 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - `GET  /api/calendar/status|connect|callback|calendars|events` ·
   `POST /api/calendar/disconnect|events` · `PATCH|DELETE /api/calendar/events/:id`
   (auth = Supabase access token via `Authorization: Bearer` or `?token=`)
+- `POST /api/shares/board` (share a to-do board by email) ·
+  `POST /api/invites/accept` (redeem a board OR friend invite token)
+- `GET|POST /api/social/friends` · `DELETE /api/social/friends/:id` ·
+  `GET /api/social/leaderboard?metric=&days=` · `GET|POST /api/social/challenges` ·
+  `POST /api/social/challenges/:id/respond` · `DELETE /api/social/challenges/:id`
+  (all Supabase-token auth; logic in `backend/social.js`, emails in `backend/email.js`)
+- `POST /api/nutrition/log` — external clients; auth = per-user API key
+  (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
 
 ## Deployment — ONE story: Cloudflare
 - `worker/index.js` is the production backend; it reuses the modules in

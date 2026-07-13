@@ -11,6 +11,7 @@ import Spinner from './components/shared/Spinner.jsx';
 import App from './App.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import InviteAccept from './pages/InviteAccept.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Calendar from './pages/Calendar.jsx';
 import ToDo from './pages/ToDo.jsx';
@@ -49,6 +50,8 @@ function RequireAuth({ children }) {
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
   { path: '/register', element: <Register /> },
+  // Handles its own auth: signed-out visitors are sent through login first.
+  { path: '/invite/:token', element: <InviteAccept /> },
   {
     path: '/',
     element: (

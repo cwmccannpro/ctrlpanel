@@ -201,3 +201,81 @@ export async function interactionCheck({ a, b, apiKey }) {
   const prompt = `Check the interaction between "${a}" and "${b}".`;
   return { result: await complete(system, prompt, 1000, apiKey) };
 }
+
+/* ---- Email Triage (headless — used by backend/gmail.js) ------------------
+   Categorizes a batch of unread emails from ONE Gmail account and drafts
+   suggested replies for the ones that need one. Output is forced through a
+   tool so it always comes back as structured JSON. Nothing here sends mail —
+   suggested replies are text stored with the triage result. */
+const TRIAGE_TOOL = {
+  name: 'submit_triage',
+  description: 'Submit the triage verdict for every email in the batch.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'The Gmail message id, exactly as given' },
+            category: { type: 'string', enum: ['needs_reply', 'client_lead', 'payments', 'ignore'] },
+            summary: { type: 'string', description: 'One line: who/what/why it matters' },
+            suggested_reply: { type: 'string', description: 'Draft reply text — ONLY for needs_reply items' },
+          },
+          required: ['id', 'category', 'summary'],
+        },
+      },
+    },
+    required: ['items'],
+  },
+};
+
+const TRIAGE_SYSTEM = `You are the email-triage step of CTRLpanel's Master Controller. You receive unread emails (metadata + snippet) from one of the user's Gmail accounts and must categorize EVERY one:
+
+- needs_reply: a real person is waiting on the user (questions, requests, follow-ups, scheduling). Write a suggested reply.
+- client_lead: client or sales-lead activity worth knowing about but not necessarily replying to (new inquiry confirmations, project updates, prospect opens).
+- payments: invoices, receipts, payouts, billing, subscription charges, banking alerts.
+- ignore: newsletters, promotions, notifications, spam, anything not worth the user's time.
+
+Rules:
+- Return a verdict for every id you were given, each exactly once.
+- summary is ONE tight line (max ~15 words), specific enough to act on without opening the email.
+- suggested_reply only for needs_reply: short, friendly-professional, in the user's voice, ready to lightly edit and send. No subject line, no signature block beyond a simple sign-off with the user's first name. You only see snippets, so keep replies safe: acknowledge, answer what is clear, and ask for specifics rather than inventing details.
+- Never fabricate facts, prices, or commitments the snippet does not support.`;
+
+export async function triageCategorize({ alias, email, messages = [], userName, apiKey }) {
+  const anthropic = getClient(apiKey);
+  if (!anthropic) throw new Error(NO_KEY_MSG);
+  if (!messages.length) return {};
+
+  const payload = messages.map((m) => ({
+    id: m.gmail_message_id,
+    from: `${m.from_name || ''} <${m.from_email || ''}>`.trim(),
+    subject: m.subject || '(no subject)',
+    received_at: m.received_at,
+    snippet: m.snippet || '',
+  }));
+
+  const prompt =
+    `User: ${userName || 'the user'}\nAccount: "${alias}" (${email || 'unknown address'})\n` +
+    `Unread emails from the last 24h (${payload.length}):\n${JSON.stringify(payload, null, 2)}\n\n` +
+    'Triage every email via submit_triage.';
+
+  const msg = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    system: TRIAGE_SYSTEM,
+    tools: [TRIAGE_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_triage' },
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const call = msg.content.find((b) => b.type === 'tool_use' && b.name === 'submit_triage');
+  const items = Array.isArray(call?.input?.items) ? call.input.items : [];
+  const byId = {};
+  for (const it of items) {
+    if (it?.id) byId[it.id] = it;
+  }
+  return byId;
+}

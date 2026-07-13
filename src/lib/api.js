@@ -81,6 +81,24 @@ export const finance = {
   prices: (tickers) => api.get(`/finance/prices?tickers=${encodeURIComponent(tickers.join(','))}`),
 };
 
+// Session-authenticated requests (sharing, invites, nutrition social) — the
+// backend verifies the Supabase access token to know who's asking.
+async function authRequest(path, options = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || `API ${res.status}`);
+  return body;
+}
+
+export const authApi = {
+  get: (path) => authRequest(path),
+  post: (path, body) => authRequest(path, { method: 'POST', body: JSON.stringify(body || {}) }),
+  del: (path) => authRequest(path, { method: 'DELETE' }),
+};
+
 // Google Calendar — authenticated with the current Supabase session so the
 // backend knows which user's calendar to act on.
 async function authHeaders() {
@@ -96,6 +114,21 @@ async function gfetch(path, options = {}) {
   if (!res.ok) throw new Error((await res.text().catch(() => res.statusText)) || `API ${res.status}`);
   return res.json();
 }
+
+// Gmail Email Triage — multi-account connect + triage actions. Accounts are
+// managed server-side (tokens never reach the browser); the brief itself
+// (triage_runs / triage_items) is read via the RLS-scoped Supabase client.
+export const gmail = {
+  status: () => authApi.get('/gmail/status'),
+  connect: async (alias) => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token || '';
+    window.location.href = `${BASE}/gmail/connect?alias=${encodeURIComponent(alias)}&token=${encodeURIComponent(token)}`;
+  },
+  disconnect: (accountId) => authApi.post('/gmail/disconnect', { account_id: accountId }),
+  runNow: () => authApi.post('/gmail/run'),
+  createDraft: (itemId) => authApi.post('/gmail/draft', { item_id: itemId }),
+};
 
 export const gcal = {
   status: () => gfetch('/status'),

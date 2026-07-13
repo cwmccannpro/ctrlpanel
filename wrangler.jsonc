@@ -6,7 +6,10 @@
   //   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
   //   ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
   //   GOOGLE_REDIRECT_URI (https://<your-domain>/api/calendar/callback),
-  //   FRONTEND_URL (https://<your-domain>), ALPHA_VANTAGE_KEY (optional)
+  //   GMAIL_REDIRECT_URI (https://<your-domain>/api/gmail/callback — optional,
+  //     defaults to GOOGLE_REDIRECT_URI with /calendar/ swapped for /gmail/),
+  //   FRONTEND_URL (https://<your-domain>), ALPHA_VANTAGE_KEY (optional),
+  //   RESEND_API_KEY (invite emails), RESEND_FROM (optional verified sender)
   //
   // NOTE: VITE_* values are ALSO baked into the frontend at build time from
   // .env — keep .env and the Worker secrets in sync.
@@ -16,6 +19,8 @@
   // Preserve dashboard-set variables across wrangler deploys
   "keep_vars": true,
   "main": "worker/index.js",
+  // Email Triage scheduler — worker `scheduled()` runs due triage jobs
+  "triggers": { "crons": ["*/15 * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
