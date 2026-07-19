@@ -10,21 +10,31 @@ import { saveUserSettings } from '../lib/supabase.js';
 import { WIDGETS, WIDGETS_BY_ID, DEFAULT_WIDGETS, sizeFor } from '../components/dashboardWidgets.jsx';
 import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
 
-const COLS = 6;       // board grid columns
-const ROW_H = 96;     // one row unit (px) — keep in sync with CSS grid-auto-rows
-const MAX_H = 10;
+const COLS = 12;      // board grid columns — keep in sync with CSS grid-template-columns
+const ROW_H = 84;     // one row unit (px) — keep in sync with CSS grid-auto-rows
+const GAP = 12;       // board gap (px) — keep in sync with CSS gap
+const MAX_H = 12;
 
 let uidSeq = 0;
 const newUid = () => `wg-${Date.now()}-${uidSeq++}`;
 
-// Accept both the legacy string[] layout and the sized object layout.
+// Accept every saved shape: legacy string[] entries, legacy 6-column sized
+// objects (no `v` — widths are doubled onto the 12-column board), and the
+// current v2 objects that also carry per-widget `cfg`.
 function normalizeLayout(arr) {
   return (arr || [])
     .map((it, i) => {
-      if (typeof it === 'string') return { uid: `w${i}-${it}`, id: it, ...sizeFor(it) };
+      if (typeof it === 'string') return { uid: `w${i}-${it}`, id: it, ...sizeFor(it), cfg: {} };
       if (it && it.id) {
         const d = sizeFor(it.id);
-        return { uid: it.uid || `w${i}-${it.id}`, id: it.id, w: clamp(Number(it.w) || d.w, 1, COLS), h: clamp(Number(it.h) || d.h, 1, MAX_H) };
+        const w = it.w != null && !it.v ? Number(it.w) * 2 : Number(it.w) || d.w;
+        return {
+          uid: it.uid || `w${i}-${it.id}`,
+          id: it.id,
+          w: clamp(w || d.w, 1, COLS),
+          h: clamp(Number(it.h) || d.h, 1, MAX_H),
+          cfg: it.cfg && typeof it.cfg === 'object' ? it.cfg : {},
+        };
       }
       return null;
     })
@@ -106,7 +116,7 @@ export default function Dashboard() {
   const save = useCallback(
     (list) => {
       if (user?.id) {
-        saveUserSettings(user.id, { dashboard_widgets: list.map(({ id, w, h }) => ({ id, w, h })) }).catch(() => {});
+        saveUserSettings(user.id, { dashboard_widgets: list.map(({ id, w, h, cfg }) => ({ id, w, h, cfg, v: 2 })) }).catch(() => {});
       }
     },
     [user?.id]
@@ -120,10 +130,13 @@ export default function Dashboard() {
     });
 
   const addWidget = (id) => {
-    apply((prev) => [...prev, { uid: newUid(), id, ...sizeFor(id) }]);
+    apply((prev) => [...prev, { uid: newUid(), id, ...sizeFor(id), cfg: {} }]);
     setPicker(false);
   };
   const removeWidget = (uid) => apply((prev) => prev.filter((w) => w.uid !== uid));
+  // Per-widget settings (view mode, board filter, …) saved with the layout.
+  const updateCfg = (uid, patch) =>
+    apply((prev) => prev.map((w) => (w.uid === uid ? { ...w, cfg: { ...w.cfg, ...patch } } : w)));
 
   const onDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id) return;
@@ -141,13 +154,12 @@ export default function Dashboard() {
     const board = boardRef.current;
     const item = widgets.find((w) => w.uid === uid);
     if (!board || !item) return;
-    const gap = 16;
-    const colW = (board.clientWidth - gap * (COLS - 1)) / COLS;
+    const colW = (board.clientWidth - GAP * (COLS - 1)) / COLS;
     const start = { x: e.clientX, y: e.clientY, w: item.w, h: item.h };
 
     const onMove = (ev) => {
-      const dw = Math.round((ev.clientX - start.x) / (colW + gap));
-      const dh = Math.round((ev.clientY - start.y) / (ROW_H + gap));
+      const dw = Math.round((ev.clientX - start.x) / (colW + GAP));
+      const dh = Math.round((ev.clientY - start.y) / (ROW_H + GAP));
       setWidgets((prev) =>
         prev.map((w) =>
           w.uid === uid ? { ...w, w: clamp(start.w + dw, 1, COLS), h: clamp(start.h + dh, 1, MAX_H) } : w
@@ -187,7 +199,7 @@ export default function Dashboard() {
               const C = def.Component;
               return (
                 <SortableWidget key={item.uid} item={item} onRemove={removeWidget} onResizeStart={onResizeStart}>
-                  <C />
+                  <C cfg={item.cfg} onCfg={(patch) => updateCfg(item.uid, patch)} />
                 </SortableWidget>
               );
             })}
@@ -204,7 +216,7 @@ export default function Dashboard() {
       {picker && (
         <Modal title="Add a Widget" onClose={() => setPicker(false)}>
           <div className="widget-picker">
-            {WIDGETS.map((w) => (
+            {WIDGETS.filter((w) => !w.hidden).map((w) => (
               <button className="widget-pick" key={w.id} onClick={() => addWidget(w.id)}>
                 <i className={`ti ${w.icon}`} />
                 <span>{w.title}</span>

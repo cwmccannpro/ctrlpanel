@@ -1466,10 +1466,10 @@ table.data-table {
 /* ---- Dashboard widget board (drag to move, corner-drag to resize) ---- */
 .widget-board {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  grid-auto-rows: 96px; /* one row unit — keep in sync with ROW_H in Dashboard.jsx */
+  grid-template-columns: repeat(12, 1fr); /* keep in sync with COLS in Dashboard.jsx */
+  grid-auto-rows: 84px; /* one row unit — keep in sync with ROW_H in Dashboard.jsx */
   grid-auto-flow: dense;
-  gap: 16px;
+  gap: 12px; /* keep in sync with GAP in Dashboard.jsx */
 }
 .widget {
   position: relative;
@@ -1485,6 +1485,192 @@ table.data-table {
 }
 .widget .stat-card {
   height: 100%;
+}
+
+/* Denser widget internals so more fits on the board */
+.widget .card-section {
+  padding: 12px 14px;
+}
+.widget .card-section-title {
+  margin-bottom: 8px;
+}
+.widget .stat-card {
+  padding: 12px 14px;
+  gap: 4px;
+  justify-content: center;
+}
+.widget .list-row {
+  padding: 6px 0;
+  gap: 10px;
+}
+.widget .list-row-time {
+  min-width: 52px;
+}
+.widget .checklist-item {
+  padding: 5px 0;
+}
+/* keep header tools clear of the hover ✕ remove button */
+.widget .card-section-title .widget-tools,
+.widget .stat-card-head .widget-tools {
+  margin-right: 22px;
+}
+
+/* Widget header tools (view switcher, board picker, open-page link) */
+.widget-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.widget-tools .btn--icon {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  font-size: 12px;
+}
+.widget-title-meta {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.segmented--xs button {
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.segmented--xs button i {
+  font-size: 12px;
+  vertical-align: middle;
+}
+.select--xs {
+  width: auto;
+  font-size: 11px;
+  padding: 2px 6px;
+  height: 20px;
+  max-width: 110px;
+}
+
+/* Flex widget body so charts fill the remaining height */
+.widget-card--flex {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.widget-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Donut + always-visible legend */
+.donut-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.donut-chart {
+  flex: 0 0 45%;
+  height: 100%;
+  min-width: 0;
+}
+.donut-legend {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  max-height: 100%;
+}
+.donut-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.donut-legend-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.donut-legend-value {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Labeled progress-bar rows (spending by category, macros) */
+.bar-list-row {
+  margin-bottom: 8px;
+}
+.bar-list-row .spread {
+  margin-bottom: 4px;
+}
+.bar-list-name {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+/* Calendar widget: 7-day strip + selected-day preview */
+.week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.week-strip-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 2px 7px;
+  border-radius: var(--radius-md);
+  border: 0.5px solid transparent;
+  position: relative;
+  transition: background var(--transition), border-color var(--transition);
+}
+.week-strip-day:hover {
+  background: var(--bg-elevated);
+}
+.week-strip-day.sel {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.week-strip-day.today .week-strip-num {
+  color: var(--accent);
+  font-weight: 600;
+}
+.week-strip-dow {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+.week-strip-num {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.week-strip-day .mini-cal-dots {
+  position: absolute;
+  bottom: 3px;
+}
+.cal-day-detail {
+  border-top: 0.5px solid var(--border);
+  padding-top: 4px;
+}
+.cal-group-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 6px 0 0;
+}
+.mini-cal-day.sel {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .widget-grip {
   position: absolute;
@@ -1859,7 +2045,7 @@ table.data-table {
   padding-bottom: 2px;
 }
 .mini-cal-day {
-  aspect-ratio: 1;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -1,0 +1,123 @@
+# CTRLpanel — OpenAPI schema for a ChatGPT Custom GPT Action.
+#
+# Paste this into the GPT Builder (Configure → Actions → Schema), replacing
+# the server URL with your own origin. Auth: API Key → Bearer, using a key
+# generated in CTRLpanel → Settings → Nutrition API.
+openapi: 3.1.0
+info:
+  title: CTRLpanel Nutrition
+  description: Log meals to a CTRLpanel nutrition tracker and get back the day's running totals versus the user's goals.
+  version: 1.0.0
+servers:
+  - url: https://YOUR-DOMAIN
+paths:
+  /api/nutrition/log:
+    post:
+      operationId: logNutritionEntry
+      summary: Log one meal or food item
+      description: >-
+        Records a single food or meal in the user's nutrition log. Estimate
+        calories and macros from the food description if the user does not give
+        them. Returns the created entry, the totals for that day so far, and the
+        user's daily goals, so you can report progress back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NutritionEntry'
+      responses:
+        '200':
+          description: Entry logged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogResult'
+        '400':
+          description: Invalid payload (e.g. missing food_name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or revoked API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    NutritionEntry:
+      type: object
+      required: [food_name]
+      properties:
+        food_name:
+          type: string
+          description: Name of the food or meal, e.g. "Chicken burrito bowl".
+        calories:
+          type: number
+          description: Calories (kcal). Estimate if not stated.
+        protein:
+          type: number
+          description: Protein in grams.
+        carbs:
+          type: number
+          description: Carbohydrates in grams.
+        fat:
+          type: number
+          description: Fat in grams.
+        notes:
+          type: string
+          description: Optional free-text note, e.g. portion size or how it was cooked.
+        timestamp:
+          type: string
+          format: date-time
+          description: When the food was eaten (ISO 8601). Defaults to now.
+        image_url:
+          type: string
+          description: Optional URL of a photo of the meal.
+    LogResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        entry:
+          type: object
+          properties:
+            id: { type: string }
+            meal_name: { type: string }
+            calories: { type: number }
+            protein: { type: number }
+            carbs: { type: number }
+            fat: { type: number }
+            logged_at: { type: string, format: date-time }
+        day:
+          type: string
+          description: The calendar day the entry counted toward (YYYY-MM-DD).
+        day_totals:
+          type: object
+          description: Running totals for that day, including this entry.
+          properties:
+            calories: { type: number }
+            protein: { type: number }
+            carbs: { type: number }
+            fat: { type: number }
+        goals:
+          type: object
+          description: The user's daily targets.
+          properties:
+            calories: { type: number }
+            protein: { type: number }
+            carbs: { type: number }
+            fat: { type: number }
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+security:
+  - bearerAuth: []
