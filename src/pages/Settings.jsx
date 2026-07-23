@@ -5,7 +5,6 @@ import { useAuth } from '../components/AuthProvider.jsx';
 import SharingCenter from '../components/SharingCenter.jsx';
 import { saveUserSettings, saveProfile } from '../lib/supabase.js';
 import { useCrud } from '../lib/useData.js';
-import { gmail } from '../lib/api.js';
 import { ACCENT_OPTIONS, getSavedAccent, saveAccent, FONT_SIZES, formatDate } from '../lib/helpers.js';
 
 function applyFontSize(size) {
@@ -43,48 +42,6 @@ export default function Settings() {
   const [keyName, setKeyName] = useState('');
   const [newKey, setNewKey] = useState(null); // plaintext, shown once
   const [keyBusy, setKeyBusy] = useState(false);
-
-  // Gmail accounts for Email Triage — connected + managed on the backend
-  // (tokens never reach the browser); this panel only sees alias + email.
-  const [gmailState, setGmailState] = useState({ ready: false, accounts: [], loaded: false });
-  const [gmailAlias, setGmailAlias] = useState('');
-  const [gmailBusy, setGmailBusy] = useState(false);
-
-  const loadGmail = () =>
-    gmail
-      .status()
-      .then((s) => setGmailState({ ready: !!s.ready, accounts: s.accounts || [], loaded: true }))
-      .catch(() => setGmailState((p) => ({ ...p, loaded: true })));
-
-  useEffect(() => {
-    loadGmail();
-    // Post-OAuth redirect lands back here with ?gmail=connected|error
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('gmail') === 'connected') flash(`Gmail account "${params.get('alias') || ''}" connected.`);
-    if (params.get('gmail') === 'error') flash(`Gmail connection failed: ${params.get('message') || 'unknown error'}`);
-    if (params.get('gmail')) window.history.replaceState({}, '', '/settings');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const connectGmail = () => {
-    const alias = gmailAlias.trim().toLowerCase();
-    if (!alias) return;
-    gmail.connect(alias); // redirects to Google consent
-  };
-
-  const disconnectGmail = async (acct) => {
-    if (!confirm(`Disconnect Gmail account "${acct.alias}" (${acct.email || 'unknown'})? Triage stops scanning it.`)) return;
-    setGmailBusy(true);
-    try {
-      await gmail.disconnect(acct.id);
-      await loadGmail();
-      flash(`Disconnected "${acct.alias}".`);
-    } catch (e) {
-      flash(e.message);
-    } finally {
-      setGmailBusy(false);
-    }
-  };
 
   const hex = (buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -339,56 +296,6 @@ export default function Settings() {
             </div>
           );
         })}
-      </Card>
-
-      {/* Gmail Accounts — Email Triage sources */}
-      <Card className="card-section" static>
-        <div className="card-section-title">Gmail Accounts</div>
-        <p className="body-text" style={{ marginBottom: 12 }}>
-          Connect the Gmail accounts the <strong>Email Triage</strong> agent should scan. Each account gets a short
-          alias (e.g. <code style={{ color: 'var(--text-primary)' }}>viridian</code>,{' '}
-          <code style={{ color: 'var(--text-primary)' }}>personal</code>) so the brief stays grouped per account.
-          CTRLpanel only reads mail and creates drafts you approve — it can <strong>never send</strong> email.
-          Non-Gmail mailboxes must be imported into a Gmail account first (Gmail → Settings → Accounts → Check mail
-          from other accounts), then connect that Gmail account here.
-        </p>
-
-        {!gmailState.ready && gmailState.loaded && (
-          <p className="list-row-meta" style={{ marginBottom: 12 }}>
-            Gmail is not configured on the server — set the Google OAuth env vars (see .env.example) to enable this.
-          </p>
-        )}
-
-        <div className="row" style={{ gap: 8, marginBottom: gmailState.accounts.length ? 12 : 0 }}>
-          <input
-            className="input"
-            placeholder="Alias (e.g. viridian)"
-            value={gmailAlias}
-            onChange={(e) => setGmailAlias(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && connectGmail()}
-            style={{ maxWidth: 220 }}
-          />
-          <button className="btn btn--accent" onClick={connectGmail} disabled={!gmailState.ready || !gmailAlias.trim()}>
-            <i className="ti ti-brand-gmail" /> Connect account
-          </button>
-        </div>
-
-        {gmailState.accounts.map((a) => (
-          <div className="list-row" key={a.id}>
-            <span className={`status-dot ${a.connected ? 'running' : 'stopped'}`} />
-            <span className="list-row-title">{a.alias}</span>
-            <span className="list-row-meta">{a.email || 'unknown address'}</span>
-            <span className="list-row-meta">{a.connected ? 'connected' : 'token expired — reconnect'}</span>
-            <button
-              className="btn btn--ghost btn--icon"
-              title="Disconnect account"
-              disabled={gmailBusy}
-              onClick={() => disconnectGmail(a)}
-            >
-              <i className="ti ti-trash" />
-            </button>
-          </div>
-        ))}
       </Card>
 
       {/* Sharing & Friends — invite people to sections of your CTRLpanel */}

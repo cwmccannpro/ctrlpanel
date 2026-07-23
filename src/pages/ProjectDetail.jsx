@@ -4,9 +4,11 @@ import ReactMarkdown from 'react-markdown';
 import Card from '../components/shared/Card.jsx';
 import Badge from '../components/shared/Badge.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
+import Modal from '../components/shared/Modal.jsx';
+import ServiceLinks from '../components/ServiceLinks.jsx';
+import KanbanBoard, { DEFAULT_COLUMNS } from '../components/KanbanBoard.jsx';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
-import { useRows } from '../lib/useData.js';
-import { KANBAN_COLUMNS } from '../lib/mockData.js';
+import { useRows, useCrud } from '../lib/useData.js';
 import { formatDate } from '../lib/helpers.js';
 
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
@@ -46,11 +48,13 @@ export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { projects, crmBoards, todoBoards } = useWorkspace();
-  const { rows: tasks } = useRows('tasks', []);
+  const tasksCrud = useCrud('tasks', 'created_at');
+  const tasks = tasksCrud.rows;
   const { rows: contacts } = useRows('crm_contacts', []);
   const [tab, setTab] = useState('Project Dashboard');
   const [preview, setPreview] = useState({}); // note id → markdown preview on
   const [newLink, setNewLink] = useState({ title: '', url: '', type: 'link' });
+  const [boardSettings, setBoardSettings] = useState(false);
 
   const project = projects.rows.find((p) => p.id === id);
 
@@ -151,6 +155,12 @@ export default function ProjectDetail() {
         {/* ============ 1. PROJECT DASHBOARD ============ */}
         {tab === 'Project Dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Services — quick links to this project's related services */}
+            <ServiceLinks
+              value={project.service_links || []}
+              onChange={(next) => patch({ service_links: next })}
+            />
+
             {/* Charter — editable, persisted per project */}
             <Card className="card-section" static>
               <div className="card-section-title">Charter</div>
@@ -251,44 +261,61 @@ export default function ProjectDetail() {
         {/* ============ 3. BOARD ============ */}
         {tab === 'Board' && (
           <div>
-            <div className="field" style={{ maxWidth: 340, marginBottom: 16 }}>
-              <label className="field-label">Linked To Do board</label>
-              <div className="row">
-                <select
-                  className="select"
-                  value={project.todo_board_id || ''}
-                  onChange={(e) => patch({ todo_board_id: e.target.value || null })}
-                >
-                  <option value="">— Not linked —</option>
-                  {todoBoards.rows.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-                {project.todo_board_id && (
-                  <button className="btn btn--icon" title="Open in To Do" onClick={() => navigate(`/todo/${project.todo_board_id}`)}>
-                    <i className="ti ti-external-link" />
-                  </button>
-                )}
-              </div>
-            </div>
-
+            {/* Board settings (linked To Do board) live behind the gear in the
+                top-right so the cards get the full width. */}
             {!project.todo_board_id ? (
-              <p className="body-text">Link this project to a To Do board to see its columns here. Cards stay in sync with the To Do module.</p>
-            ) : (
-              <div className="kanban">
-                {(linkedTodoBoard?.columns?.length ? linkedTodoBoard.columns : KANBAN_COLUMNS).map((col) => {
-                  const items = projectTasks.filter((t) => t.column_name === col);
-                  return (
-                    <div className="kanban-col" key={col}>
-                      <div className="kanban-col-head"><span>{col}</span><span className="kanban-col-count">{items.length}</span></div>
-                      {items.map((t) => (
-                        <div className="kanban-card" key={t.id} style={{ cursor: 'default' }}>
-                          <span className="kanban-card-title">{t.title}</span>
-                          <Badge variant={t.priority}>{t.priority}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
+              <div>
+                <div className="spread" style={{ marginBottom: 12 }}>
+                  <span className="section-label">Board</span>
+                  <button className="btn btn--ghost btn--icon" title="Board settings" onClick={() => setBoardSettings(true)}>
+                    <i className="ti ti-settings" />
+                  </button>
+                </div>
+                <p className="body-text">Link this project to a To Do board — open <strong>Board settings</strong> (gear) — to add and edit cards here. Everything stays in sync with the To Do module.</p>
               </div>
+            ) : (
+              <KanbanBoard
+                columns={linkedTodoBoard?.columns?.length ? linkedTodoBoard.columns : DEFAULT_COLUMNS}
+                tasks={projectTasks}
+                boardId={project.todo_board_id}
+                onColumns={(next) => todoBoards.patch(project.todo_board_id, { columns: next })}
+                addTask={(payload) => tasksCrud.add(payload)}
+                patchTask={(id, patch) => tasksCrud.patch(id, patch)}
+                removeTask={(id) => tasksCrud.remove(id)}
+                headerRight={
+                  <button className="btn btn--ghost btn--icon" title="Board settings" onClick={() => setBoardSettings(true)}>
+                    <i className="ti ti-settings" />
+                  </button>
+                }
+              />
+            )}
+
+            {boardSettings && (
+              <Modal
+                title="Board settings"
+                onClose={() => setBoardSettings(false)}
+                footer={<button className="btn btn--accent" onClick={() => setBoardSettings(false)}>Done</button>}
+              >
+                <div className="field">
+                  <label className="field-label">Linked To Do board</label>
+                  <div className="row">
+                    <select
+                      className="select"
+                      value={project.todo_board_id || ''}
+                      onChange={(e) => patch({ todo_board_id: e.target.value || null })}
+                    >
+                      <option value="">— Not linked —</option>
+                      {todoBoards.rows.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    {project.todo_board_id && (
+                      <button className="btn btn--icon" title="Open in To Do" onClick={() => navigate(`/todo/${project.todo_board_id}`)}>
+                        <i className="ti ti-external-link" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="list-row-meta mt-16">Cards on this board are shared with the To Do module — editing here or there stays in sync.</p>
+                </div>
+              </Modal>
             )}
           </div>
         )}

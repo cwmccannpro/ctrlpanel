@@ -46,16 +46,16 @@ export const TABLE_META = {
   holdings: { search: ['ticker', 'name', 'asset_class'], order: 'created_at' },
   portfolio_snapshots: { search: [], order: 'snapshot_date' },
   dividends: { search: [], order: 'paid_date' },
-  agents: { search: ['name', 'description'], order: 'created_at' },
   habits: { search: ['name'], order: 'created_at' },
   habit_logs: { search: [], order: 'log_date' },
-  triage_runs: { search: [], order: 'run_at' },
-  triage_items: { search: ['subject', 'from_email', 'from_name', 'summary', 'account_alias'], order: 'created_at' },
+  report_sources: { search: ['name'], order: 'created_at' },
+  reports: { search: ['title'], order: 'received_at' },
 };
 
 const isAllowed = (table) => Object.prototype.hasOwnProperty.call(TABLE_META, table);
-// Written only by the backend triage job — the model may read, never write.
-const READ_ONLY = new Set(['triage_runs', 'triage_items']);
+// Inbound PDF reports are written by the backend on ingest — the model may
+// read the metadata, never write it (and it can't read the PDF contents).
+const READ_ONLY = new Set(['report_sources', 'reports']);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 /**
@@ -78,11 +78,10 @@ export async function buildSnapshot(userName) {
     }
   };
 
-  const [tasks, contacts, accounts, agents, projects, habits] = await Promise.all([
+  const [tasks, contacts, accounts, projects, habits] = await Promise.all([
     safe(() => queryTable('tasks', { order: 'due_date', ascending: true, limit: 40 }), []),
     safe(() => queryTable('crm_contacts', { order: 'created_at', limit: 60 }), []),
     safe(() => queryTable('accounts', { order: 'updated_at', limit: 40 }), []),
-    safe(() => queryTable('agents', { order: 'created_at', limit: 30 }), []),
     safe(() => queryTable('projects', { order: 'created_at', limit: 30 }), []),
     safe(() => queryTable('habits', { order: 'created_at', limit: 40 }), []),
   ]);
@@ -119,30 +118,16 @@ export async function buildSnapshot(userName) {
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: Number(a.balance || 0) })),
   };
 
-  snap.agents = agents.map((a) => ({ id: a.id, name: a.name, status: a.status }));
   snap.projects = projects.map((p) => ({ id: p.id, name: p.name, status: p.status }));
   snap.habits = habits.map((h) => ({ id: h.id, name: h.name }));
 
-  // Latest Email Triage brief (counts only — item details via query_records).
+  // Recent inbound PDF reports (metadata only — the model can't read the PDFs).
   try {
-    const { data: runs } = await queryTable('triage_runs', { order: 'run_at', ascending: false, limit: 1 });
-    const run = runs?.[0];
-    if (run) {
-      const { data: items } = await queryTable('triage_items', { filters: { run_id: run.id }, limit: 400 });
-      const counts = {};
-      (items || []).forEach((i) => { counts[i.category] = (counts[i.category] || 0) + 1; });
-      snap.email_triage = {
-        latest_run_id: run.id,
-        run_at: run.run_at,
-        status: run.status,
-        counts,
-        needs_reply: (items || [])
-          .filter((i) => i.category === 'needs_reply')
-          .slice(0, 8)
-          .map((i) => ({ id: i.id, account: i.account_alias, from: i.from_name || i.from_email, subject: i.subject, summary: i.summary })),
-      };
+    const { data: reports } = await queryTable('reports', { order: 'received_at', ascending: false, limit: 10 });
+    if (reports?.length) {
+      snap.reports = reports.map((r) => ({ id: r.id, source_id: r.source_id, title: r.title, received_at: r.received_at }));
     }
-  } catch { /* triage awareness is optional */ }
+  } catch { /* report awareness is optional */ }
 
   return snap;
 }
@@ -158,10 +143,9 @@ export async function executeTool(name, input = {}, { navigate, confirm } = {}) 
       case 'navigate_to': {
         const routes = {
           dashboard: '/', calendar: '/calendar', todo: '/todo', habits: '/habits',
-          agents: '/agents', projects: '/projects', crm: '/crm',
+          reports: '/reports', projects: '/projects', crm: '/crm',
           nutrition: '/health/nutrition', supplements: '/health/supplements', fitness: '/health/fitness',
           networth: '/finance/networth', budget: '/finance/budget', investing: '/finance/investing',
-          reports: '/reports/mail', mail: '/reports/mail',
           settings: '/settings',
         };
         const route = routes[String(input.page || '').toLowerCase()];

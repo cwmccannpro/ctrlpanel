@@ -19,7 +19,7 @@ story — the Worker serves both the API and the built frontend).
    |---|---|---|
    | Project URL | `VITE_SUPABASE_URL` | safe for frontend |
    | `anon` `public` key | `VITE_SUPABASE_ANON_KEY` | safe for frontend (RLS-scoped) |
-   | `service_role` SECRET | `SUPABASE_SERVICE_ROLE_KEY` | **backend only — bypasses RLS.** Required for Google Calendar OAuth (`google_tokens` is service-role-only) and for headless agents writing `agent_runs`. Never expose or commit it. |
+   | `service_role` SECRET | `SUPABASE_SERVICE_ROLE_KEY` | **backend only — bypasses RLS.** Required for Google Calendar OAuth (`google_tokens` is service-role-only) and for inbound PDF report ingestion (writes `reports` + the `reports` storage bucket). Never expose or commit it. |
 
 ## 2. Anthropic (Master Controller + supplement AI)
 

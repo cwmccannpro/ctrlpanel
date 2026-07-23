@@ -19,7 +19,6 @@ import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
 import { gcal } from '../lib/api.js';
 import { queryTable } from '../lib/supabase.js';
-import { CATEGORY_META } from '../pages/reports/MailTriage.jsx';
 import { compactCurrency, currency, relativeDay, formatDate, lifeStats } from '../lib/helpers.js';
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -225,11 +224,6 @@ function CaloriesW({ cfg = {}, onCfg = () => {} }) {
   }
   const cal = calsOn(todayKey());
   return <Stat icon="ti-flame" label="Calories Today" value={Math.round(cal).toLocaleString()} meta={`of ${goal.toLocaleString()}`} tools={tools} />;
-}
-
-function ActiveAgentsW() {
-  const { agents } = useWorkspace();
-  return <Stat icon="ti-robot" label="Active Agents" value={`${agents.rows.filter((a) => a.status === 'running').length} / ${agents.rows.length}`} meta="running" />;
 }
 
 function PortfolioW({ cfg = {}, onCfg = () => {} }) {
@@ -560,22 +554,6 @@ function TasksW({ cfg = {}, onCfg = () => {} }) {
   );
 }
 
-function AgentsListW() {
-  const { agents } = useWorkspace();
-  return (
-    <Shell title="Agents" tools={<OpenLink to="/agents" />}>
-      {agents.rows.length === 0 && <Empty>No agents yet.</Empty>}
-      {agents.rows.map((a) => (
-        <div className="list-row" key={a.id}>
-          <span className={`status-dot ${a.status}`} />
-          <span className="list-row-title">{a.name}</span>
-          <span className="list-row-meta">{a.status === 'running' ? 'Running' : 'Stopped'}</span>
-        </div>
-      ))}
-    </Shell>
-  );
-}
-
 function QuickAddW() {
   return (
     <Shell title="Quick Add">
@@ -714,61 +692,34 @@ function NutritionW({ cfg = {}, onCfg = () => {} }) {
   );
 }
 
-// Latest Email Triage brief roll-up: counts per category + top items that
-// need a reply, linking into Reports → Mail Triage.
-function MailTriageW() {
+// Recent inbound PDF reports across all report sources, newest first.
+function ReportsW() {
   const navigate = useNavigate();
-  const [brief, setBrief] = useState({ run: null, items: [], loaded: false });
+  const { rows: sources } = useRows('report_sources');
+  const { rows: reports } = useRows('reports');
 
-  useEffect(() => {
-    let on = true;
-    (async () => {
-      const { data: runs } = await queryTable('triage_runs', { order: 'run_at', ascending: false, limit: 1 });
-      const run = runs?.[0] || null;
-      let items = [];
-      if (run) {
-        const res = await queryTable('triage_items', { filters: { run_id: run.id }, limit: 400 });
-        items = res.data || [];
-      }
-      if (on) setBrief({ run, items, loaded: true });
-    })();
-    return () => { on = false; };
-  }, []);
-
-  const { run, items, loaded } = brief;
-  const needsReply = items.filter((i) => i.category === 'needs_reply');
+  const nameById = Object.fromEntries(sources.map((s) => [s.id, s.name]));
+  const recent = [...reports]
+    .sort((a, b) => new Date(b.received_at) - new Date(a.received_at))
+    .slice(0, 6);
 
   return (
-    <Shell title="Mail Triage" tools={<OpenLink to="/reports/mail" title="Open Mail Triage" />}>
-      {!loaded ? (
-        <Empty>Loading…</Empty>
-      ) : !run ? (
-        <Empty>No triage runs yet. Connect Gmail in Settings and arm the Email Triage agent.</Empty>
+    <Shell title="Reports" tools={<OpenLink to="/reports" title="Open Reports" />}>
+      {!reports.length ? (
+        <Empty>No reports yet. Add a report source and send a PDF to it.</Empty>
       ) : (
-        <>
-          <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-            {Object.entries(CATEGORY_META).map(([c, meta]) => {
-              const n = items.filter((i) => i.category === c).length;
-              if (!n) return null;
-              return (
-                <span key={c} className="badge" style={{ color: meta.color, borderColor: meta.color }}>
-                  {meta.label}: {n}
-                </span>
-              );
-            })}
-            {!items.length && <span className="list-row-meta">Inbox zero — nothing to triage.</span>}
+        recent.map((r) => (
+          <div
+            className="list-row"
+            key={r.id}
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate(`/reports/${r.source_id}`)}
+          >
+            <i className="ti ti-file-type-pdf" style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            <span className="list-row-title">{r.title}</span>
+            <span className="list-row-meta">{nameById[r.source_id] || ''}</span>
           </div>
-          {needsReply.slice(0, 4).map((i) => (
-            <div className="list-row" key={i.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/reports/mail')}>
-              <span className="list-row-dot" style={{ background: CATEGORY_META.needs_reply.color }} />
-              <span className="list-row-title">{i.subject || '(no subject)'}</span>
-              <span className="list-row-meta">{i.account_alias}</span>
-            </div>
-          ))}
-          <p className="list-row-meta" style={{ marginTop: 8 }}>
-            {new Date(run.run_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {run.source}
-          </p>
-        </>
+        ))
       )}
     </Shell>
   );
@@ -803,7 +754,6 @@ export const WIDGETS = [
   { id: 'net_worth', title: 'Net Worth', icon: 'ti-wallet', Component: NetWorthW, w: 2, h: 1 },
   { id: 'open_tasks', title: 'Open Tasks', icon: 'ti-checkbox', Component: OpenTasksW, w: 2, h: 1 },
   { id: 'calories', title: 'Calories', icon: 'ti-flame', Component: CaloriesW, w: 2, h: 1 },
-  { id: 'active_agents', title: 'Active Agents', icon: 'ti-robot', Component: ActiveAgentsW, w: 2, h: 1 },
   { id: 'portfolio', title: 'Portfolio Value', icon: 'ti-chart-pie', Component: PortfolioW, w: 2, h: 1 },
   { id: 'budget', title: 'Budget', icon: 'ti-coin', Component: BudgetW, w: 2, h: 1 },
   { id: 'tasks', title: 'Tasks', icon: 'ti-checkbox', Component: TasksW, w: 4, h: 3 },
@@ -811,12 +761,11 @@ export const WIDGETS = [
   { id: 'schedule', title: "Today's Schedule", icon: 'ti-calendar', Component: ScheduleW, w: 3, h: 3 },
   { id: 'upcoming', title: 'Upcoming Events', icon: 'ti-calendar-event', Component: UpcomingW, w: 3, h: 3 },
   { id: 'priorities', title: 'Top Priorities', icon: 'ti-flag', Component: TasksW, w: 4, h: 3, hidden: true },
-  { id: 'agents_list', title: 'Agents List', icon: 'ti-robot', Component: AgentsListW, w: 3, h: 2 },
   { id: 'quick_add', title: 'Quick Add', icon: 'ti-plus', Component: QuickAddW, w: 4, h: 2 },
   { id: 'habits', title: 'Habits', icon: 'ti-repeat', Component: HabitsW, w: 3, h: 3 },
   { id: 'nutrition', title: 'Macros', icon: 'ti-salad', Component: NutritionW, w: 3, h: 3 },
   { id: 'life_view', title: 'Life View', icon: 'ti-hourglass', Component: LifeViewW, w: 3, h: 2 },
-  { id: 'mail_triage', title: 'Mail Triage', icon: 'ti-mailbox', Component: MailTriageW, w: 4, h: 3 },
+  { id: 'reports', title: 'Reports', icon: 'ti-report', Component: ReportsW, w: 4, h: 3 },
 ];
 
 export const WIDGETS_BY_ID = Object.fromEntries(WIDGETS.map((w) => [w.id, w]));
@@ -826,4 +775,4 @@ export function sizeFor(id) {
   return { w: w?.w || 3, h: w?.h || 2 };
 }
 
-export const DEFAULT_WIDGETS = ['net_worth', 'open_tasks', 'calories', 'active_agents', 'calendar_view', 'tasks', 'quick_add', 'agents_list'];
+export const DEFAULT_WIDGETS = ['net_worth', 'open_tasks', 'calories', 'portfolio', 'calendar_view', 'tasks', 'quick_add', 'reports'];

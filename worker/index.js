@@ -25,6 +25,7 @@ import {
   deleteChallenge,
 } from '../backend/social.js';
 import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../backend/nutritionApi.js';
+import { reportKeyFromHeaders, reportSourceForKey, ingestReport } from '../backend/reports.js';
 import {
   backendReady,
   authUrl,
@@ -40,18 +41,6 @@ import {
   updateEvent,
   deleteEvent,
 } from '../backend/google.js';
-import {
-  gmailReady,
-  gmailAuthUrl,
-  signGmailState,
-  verifyGmailState,
-  exchangeGmailCode,
-  listGmailAccounts,
-  disconnectGmailAccount,
-  runTriage,
-  createDraftForItem,
-  runDueTriage,
-} from '../backend/gmail.js';
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
@@ -121,6 +110,19 @@ export default {
           const userId = await userIdForApiKey(key);
           if (!userId) return json({ error: 'Invalid or revoked API key.' }, 401);
           return json(await logNutritionEntry(userId, await request.json().catch(() => ({}))));
+        } catch (e) {
+          return json({ error: e?.message || 'Request failed' }, 400);
+        }
+      }
+
+      /* ---- Inbound PDF report ingestion (per-source token, not a session) ---- */
+      if (pathname === '/api/reports/ingest' && method === 'POST') {
+        try {
+          const key = reportKeyFromHeaders((h) => request.headers.get(h) || '');
+          const source = await reportSourceForKey(key);
+          if (!source) return json({ error: 'Invalid or revoked report token.' }, 401);
+          const title = request.headers.get('x-report-title') || url.searchParams.get('title');
+          return json(await ingestReport(source, await request.arrayBuffer(), { title }));
         } catch (e) {
           return json({ error: e?.message || 'Request failed' }, 400);
         }
@@ -232,55 +234,6 @@ export default {
         }
       }
 
-      /* ---- Gmail / Email Triage ---- */
-      if (pathname.startsWith('/api/gmail')) {
-        if (pathname === '/api/gmail/status' && method === 'GET') {
-          const ready = gmailReady();
-          const user = await userFrom(request, url);
-          if (!user) return json({ ready, accounts: [] });
-          return json({ ready, accounts: await listGmailAccounts(user.id) });
-        }
-
-        if (pathname === '/api/gmail/connect' && method === 'GET') {
-          if (!gmailReady()) return new Response('Gmail triage is not configured on the server.', { status: 500 });
-          const user = await userFrom(request, url);
-          if (!user) return new Response('Not authenticated.', { status: 401 });
-          const alias = String(url.searchParams.get('alias') || '').trim().toLowerCase().slice(0, 24);
-          if (!alias) return new Response('An account alias is required.', { status: 400 });
-          return redirect(gmailAuthUrl(signGmailState(user.id, alias)));
-        }
-
-        if (pathname === '/api/gmail/callback' && method === 'GET') {
-          const base = frontendBase(url);
-          try {
-            if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
-            const { userId, alias } = verifyGmailState(url.searchParams.get('state'));
-            await exchangeGmailCode(userId, alias, url.searchParams.get('code'));
-            return redirect(`${base}/settings?gmail=connected&alias=${encodeURIComponent(alias)}`);
-          } catch (e) {
-            return redirect(`${base}/settings?gmail=error&message=${encodeURIComponent(e.message)}`);
-          }
-        }
-
-        // Everything below requires auth
-        const user = await userFrom(request, url);
-        if (!user) return json({ error: 'Not authenticated' }, 401);
-        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
-        try {
-          if (pathname === '/api/gmail/disconnect' && method === 'POST') {
-            return json(await disconnectGmailAccount(user.id, body.account_id));
-          }
-          if (pathname === '/api/gmail/run' && method === 'POST') {
-            return json(await runTriage(user.id, 'manual'));
-          }
-          if (pathname === '/api/gmail/draft' && method === 'POST') {
-            return json(await createDraftForItem(user.id, body.item_id));
-          }
-        } catch (e) {
-          return json({ error: e?.message || 'Request failed' }, 400);
-        }
-      }
-
       if (pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
       // Non-/api paths shouldn't reach the Worker (assets handle them), but
@@ -289,14 +242,5 @@ export default {
     } catch (e) {
       return json({ error: e?.message || 'Internal error' }, 500);
     }
-  },
-
-  // Cron trigger (wrangler.jsonc → triggers.crons): every 15 min, run the
-  // Email Triage job for every user whose agent is toggled ON and due.
-  async scheduled(event, env, ctx) {
-    for (const [k, v] of Object.entries(env)) {
-      if (typeof v === 'string' && process.env[k] === undefined) process.env[k] = v;
-    }
-    ctx.waitUntil(runDueTriage().catch((e) => console.error('triage cron:', e?.message)));
   },
 };

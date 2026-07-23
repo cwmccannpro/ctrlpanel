@@ -37,14 +37,6 @@ const STATIC_FOLDERS = [
       { label: 'Investing', to: '/finance/investing' },
     ],
   },
-  {
-    label: 'Reports',
-    icon: 'ti-report',
-    base: '/reports/mail',
-    items: [
-      { label: 'Mail Triage', to: '/reports/mail' },
-    ],
-  },
 ];
 
 function navClass({ isActive }) {
@@ -104,7 +96,7 @@ function Folder({ folder, collapsed }) {
 }
 
 export default function Sidebar({ collapsed = false }) {
-  const { projects, agents, crmBoards } = useWorkspace();
+  const { projects, reportSources, crmBoards } = useWorkspace();
   const [width, setWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
     return Number.isFinite(saved) ? saved : DEFAULT_WIDTH;
@@ -143,7 +135,7 @@ export default function Sidebar({ collapsed = false }) {
     };
   }, [width]);
 
-  // CRM, Agents + Projects are dynamic per-user; Health + Finance are fixed.
+  // CRM, Reports + Projects are dynamic per-user; Health + Finance are fixed.
   const folders = [
     {
       label: 'CRM',
@@ -152,11 +144,11 @@ export default function Sidebar({ collapsed = false }) {
       items: crmBoards.rows.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
     },
     {
-      label: 'Agents',
-      icon: 'ti-robot',
-      base: '/agents',
-      emptyLabel: 'No agents yet',
-      items: agents.rows.map((a) => ({ label: a.name || 'Untitled', to: `/agents/${a.id}` })),
+      label: 'Reports',
+      icon: 'ti-report',
+      base: '/reports',
+      emptyLabel: 'No report sources yet',
+      items: reportSources.rows.map((s) => ({ label: s.name || 'Untitled', to: `/reports/${s.id}` })),
     },
     {
       label: 'Projects',

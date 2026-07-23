@@ -115,21 +115,6 @@ async function gfetch(path, options = {}) {
   return res.json();
 }
 
-// Gmail Email Triage — multi-account connect + triage actions. Accounts are
-// managed server-side (tokens never reach the browser); the brief itself
-// (triage_runs / triage_items) is read via the RLS-scoped Supabase client.
-export const gmail = {
-  status: () => authApi.get('/gmail/status'),
-  connect: async (alias) => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token || '';
-    window.location.href = `${BASE}/gmail/connect?alias=${encodeURIComponent(alias)}&token=${encodeURIComponent(token)}`;
-  },
-  disconnect: (accountId) => authApi.post('/gmail/disconnect', { account_id: accountId }),
-  runNow: () => authApi.post('/gmail/run'),
-  createDraft: (itemId) => authApi.post('/gmail/draft', { item_id: itemId }),
-};
-
 export const gcal = {
   status: () => gfetch('/status'),
   connect: async () => {

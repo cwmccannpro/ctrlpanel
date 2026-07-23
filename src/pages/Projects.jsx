@@ -45,7 +45,6 @@ export default function Projects() {
                 <Badge variant={statusVariant[p.status]}>{p.status}</Badge>
               </div>
               <p className="body-text" style={{ minHeight: 34 }}>{p.description || 'No description yet.'}</p>
-              {p.goal && <div className="list-row-meta" style={{ marginTop: 8 }}><i className="ti ti-target" /> {p.goal}</div>}
             </Card>
           ))}
         </div>

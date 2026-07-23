@@ -32,8 +32,10 @@ REST OAuth · Recharts · @dnd-kit · Excalidraw.
   analysis, workouts with a 52-week heatmap, habits with streaks, net worth,
   budget, and an investing portfolio with live prices (CoinGecko + optional
   Alpha Vantage).
-- **Agents** — registry of external automation agents with per-agent pages,
-  status toggles, and run/cost history (`agent_runs`).
+- **Reports** — inbound PDF reports. Create a named "report source" to get a
+  private endpoint + token, then have any tool (e.g. a Claude routine that
+  triages your email) POST a PDF to it; reports collect in-app to view,
+  download, or delete. PDFs live in a private Supabase Storage bucket.
 
 ## Quick start
 

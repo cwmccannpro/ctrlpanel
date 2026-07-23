@@ -88,6 +88,8 @@ alter table projects add column if not exists charter jsonb default '{}'::jsonb;
 alter table projects add column if not exists notes_list jsonb default '[]'::jsonb;
 alter table projects add column if not exists excalidraw jsonb;
 alter table projects add column if not exists excalidraw_preview text;
+-- Per-project Services quick-links bar: [{ id, label, url, icon, paid }]
+alter table projects add column if not exists service_links jsonb default '[]'::jsonb;
 
 -- Link a project to a single To Do board (mirrors crm_board_id below).
 alter table projects add column if not exists todo_board_id uuid references boards(id) on delete set null;
@@ -295,48 +297,6 @@ create table if not exists dividends (
 );
 
 -- ============================================
--- AGENTS
--- ============================================
-create table if not exists agents (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  name text not null,
-  description text,
-  webhook_url text,
-  status text default 'stopped' check (status in ('running','stopped')),
-  last_run timestamptz,
-  -- Agent-type-specific settings + counters. For the Viridian Outreach agent:
-  --   { "daily_limit": 10, "sends_today": 0, "last_reset": "2026-07-01",
-  --     "niches": [ { "niche": "roofing contractor", "city": "Bridgeport", "state": "CT" } ] }
-  config jsonb default '{}'::jsonb,
-  created_at timestamptz default now()
-);
-
--- Safe to re-run on existing installs
-alter table agents add column if not exists config jsonb default '{}'::jsonb;
-
--- One row per email sent or pipeline run. A headless agent (e.g. Viridian
--- Outreach) authenticates as the owning user and inserts here; the Agents
--- detail page reads it back for run history + cost/volume stats.
-create table if not exists agent_runs (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  agent_id uuid references agents(id) on delete cascade,
-  run_at timestamptz default now(),
-  action text,                      -- 'email_sent' | 'pipeline_run'
-  lead_name text,
-  lead_email text,
-  subject text,                     -- lets you see the email that went out
-  body text,
-  niche text,
-  city text,
-  claude_cost_usd numeric(8,5) default 0,
-  emails_sent int default 0
-);
-create index if not exists agent_runs_user_agent_date
-  on agent_runs(user_id, agent_id, run_at desc);
-
--- ============================================
 -- CALENDAR EVENTS
 -- ============================================
 create table if not exists calendar_events (
@@ -418,7 +378,7 @@ declare
     'boards','tasks','projects','crm_contacts','nutrition_logs','weight_logs',
     'user_goals','supplements','supplement_logs','fitness_schedule','workout_logs',
     'accounts','net_worth_snapshots','income_sources','expense_categories',
-    'transactions','holdings','portfolio_snapshots','dividends','agents','agent_runs',
+    'transactions','holdings','portfolio_snapshots','dividends',
     'calendar_events','crm_boards','habits','habit_logs'
   ];
 begin
@@ -616,86 +576,82 @@ begin
 end $$;
 
 -- ============================================
--- EMAIL TRIAGE: Gmail accounts + triage runs/items
+-- REPORTS: inbound PDF reports (replaces the old Agents + Email Triage
+-- features, whose tables are dropped below).
+--
+-- A "report source" is a named inbound channel with its own token. External
+-- tools (e.g. a Claude routine doing email triage) POST a PDF to
+--   /api/reports/ingest   (Authorization: Bearer ctpr_… or X-API-Key)
+-- and it lands as a `reports` row + a PDF in the private `reports` storage
+-- bucket. Only the SHA-256 hash of a token is stored; the plaintext is shown
+-- once when the source is created in the app.
 -- ============================================
 
--- One row per connected Gmail account, per user, labeled with a short
--- user-chosen alias (e.g. "viridian", "personal"). Holds OAuth tokens, so
--- RLS is enabled with NO policies — only the backend service_role key may
--- read/write (same pattern as google_tokens). The browser sees accounts
--- only through /api/gmail/status, which returns alias + email, never tokens.
-create table if not exists gmail_accounts (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  alias text not null,
-  email text,
-  access_token text,
-  refresh_token text,
-  scope text,
-  token_type text,
-  expiry_date bigint,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  unique (user_id, alias)
-);
-create index if not exists gmail_accounts_user on gmail_accounts(user_id);
+-- Retire the removed features. Safe to re-run; drops data for those tables.
+drop table if exists triage_items cascade;
+drop table if exists triage_runs cascade;
+drop table if exists gmail_accounts cascade;
+drop table if exists agent_runs cascade;
+drop table if exists agents cascade;
 
--- One triage_runs row per scan (scheduled or "Run now"); one triage_items
--- row per categorized email, denormalized with account alias/email so the
--- brief renders without joining gmail_accounts (which the client can't read).
--- Written by the backend (service role, user_id set explicitly); read by the
--- user's own client under the standard "own rows" policy.
-create table if not exists triage_runs (
+create table if not exists report_sources (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_at timestamptz default now(),
-  source text default 'manual' check (source in ('manual','scheduled')),
-  status text default 'running' check (status in ('running','complete','error')),
-  accounts_scanned int default 0,
-  emails_scanned int default 0,
-  error text
-);
-create index if not exists triage_runs_user_date on triage_runs(user_id, run_at desc);
-
-create table if not exists triage_items (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_id uuid not null references triage_runs(id) on delete cascade,
-  account_id uuid references gmail_accounts(id) on delete set null,
-  account_alias text,
-  account_email text,
-  gmail_message_id text,
-  gmail_thread_id text,
-  from_name text,
-  from_email text,
-  subject text,
-  snippet text,
-  received_at timestamptz,
-  category text check (category in ('needs_reply','client_lead','payments','ignore')),
-  summary text,
-  suggested_reply text,
-  draft_id text,                     -- set when the user approves → Gmail draft
-  draft_created_at timestamptz,
+  name text not null,
+  key_prefix text,                   -- first chars of the token, for display
+  key_hash text unique not null,     -- SHA-256 of the plaintext token
+  last_received_at timestamptz,
   created_at timestamptz default now()
 );
-create index if not exists triage_items_user_run on triage_items(user_id, run_id);
+create index if not exists report_sources_user on report_sources(user_id, created_at desc);
 
--- RLS for the email-triage tables
+-- One row per received PDF. Written by the backend (service role, user_id set
+-- explicitly from the token's source); read + deleted by the owner's client
+-- under the standard "own rows" policy. The PDF bytes live in Storage; only
+-- the object path is stored here.
+create table if not exists reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  source_id uuid references report_sources(id) on delete cascade,
+  title text not null,
+  file_path text not null,           -- storage object path: {user_id}/{source_id}/{uuid}.pdf
+  file_size bigint,
+  received_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+create index if not exists reports_user_date on reports(user_id, received_at desc);
+create index if not exists reports_source on reports(source_id);
+
+-- RLS: both tables are standard "own rows".
 do $$
 declare
   t text;
 begin
-  -- Standard per-user tables (client-readable briefs)
-  foreach t in array array['triage_runs','triage_items'] loop
+  foreach t in array array['report_sources','reports'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "own rows" on %I', t);
     execute format(
       'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
     );
   end loop;
+end $$;
 
-  -- Service-role-only table (holds OAuth tokens — no client policies)
-  execute 'alter table gmail_accounts enable row level security';
+-- Private storage bucket for the PDFs. The backend (service role) writes them;
+-- the owner reads/deletes their own via signed URLs, gated by the policies
+-- below (folder 1 of the object path is the owner's user_id).
+insert into storage.buckets (id, name, public)
+values ('reports', 'reports', false)
+on conflict (id) do nothing;
+
+do $$
+begin
+  drop policy if exists "reports read own" on storage.objects;
+  create policy "reports read own" on storage.objects for select to authenticated
+    using (bucket_id = 'reports' and (storage.foldername(name))[1] = auth.uid()::text);
+
+  drop policy if exists "reports delete own" on storage.objects;
+  create policy "reports delete own" on storage.objects for delete to authenticated
+    using (bucket_id = 'reports' and (storage.foldername(name))[1] = auth.uid()::text);
 end $$;
 
 -- ============================================

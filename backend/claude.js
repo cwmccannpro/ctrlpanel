@@ -32,13 +32,13 @@ You act on the user's own data through four tools: query_records (read), create_
 - accounts: name, type (Checking|Savings|Investment|Crypto|Real Estate|Vehicle|Liability), balance
 - income_sources: name, amount, frequency, type ; expense_categories: name, type (Fixed|Variable), budgeted ; transactions: amount, category_id, note, date
 - holdings: ticker, name, asset_class (Stocks|ETFs|Crypto|Real Estate|Other), shares, avg_cost, manual_price ; dividends: holding_id, amount, paid_date
-- agents: name, description, status (running|stopped) ; habits: name, active ; habit_logs: habit_id, log_date, completed
-- Email triage (READ-ONLY — rows are written by the Email Triage agent): triage_runs: run_at, source, status, emails_scanned ; triage_items: run_id, account_alias, from_name, from_email, subject, category (needs_reply|client_lead|payments|ignore), summary, suggested_reply, draft_id. The snapshot includes the latest brief under email_triage; for questions like "what needs a reply today?" or "anything from clients?", query triage_items filtered by the latest run_id (and category). Approving drafts happens on the Mail Triage page (navigate_to "mail") — never modify triage rows.
+- habits: name, active ; habit_logs: habit_id, log_date, completed
+- Reports (READ-ONLY — inbound PDFs sent to CTRLpanel from external tools): report_sources: name, last_received_at ; reports: source_id, title, received_at, file_size. The snapshot lists recent reports under 'reports'. You can read this metadata but not the PDF contents — to actually read a report, send the user to the Reports page (navigate_to "reports"). Never write to these tables.
 Do NOT set user_id or id on create — the database fills those. Use ids returned from query_records for update/delete.
 
 ## Personality
 - Direct and efficient — the user is busy, get to the point.
-- Proactive — if you notice something worth flagging (budget over limit, agent stopped, supplements low), mention it briefly.
+- Proactive — if you notice something worth flagging (budget over limit, task overdue, supplements low), mention it briefly.
 - Confident — make reasonable decisions and take action rather than asking unnecessary clarifying questions.
 - Brief responses unless detail is requested.
 
@@ -53,7 +53,7 @@ Do NOT set user_id or id on create — the database fills those. Use ids returne
 const TOOLS = [
   {
     name: 'navigate_to',
-    description: 'Navigate the app to a page: dashboard, calendar, todo, habits, agents, projects, crm, nutrition, supplements, fitness, networth, budget, investing, mail (email triage brief), settings.',
+    description: 'Navigate the app to a page: dashboard, calendar, todo, habits, reports (inbound PDF reports), projects, crm, nutrition, supplements, fitness, networth, budget, investing, settings.',
     input_schema: { type: 'object', properties: { page: { type: 'string' } }, required: ['page'] },
   },
   {
@@ -201,82 +201,4 @@ export async function interactionCheck({ a, b, apiKey }) {
     'You are a pharmacology expert. Given two supplements or drugs, describe any known interactions, severity, and timing guidance in a short, clear analysis. Note when to consult a professional.';
   const prompt = `Check the interaction between "${a}" and "${b}".`;
   return { result: await complete(system, prompt, 1000, apiKey) };
-}
-
-/* ---- Email Triage (headless — used by backend/gmail.js) ------------------
-   Categorizes a batch of unread emails from ONE Gmail account and drafts
-   suggested replies for the ones that need one. Output is forced through a
-   tool so it always comes back as structured JSON. Nothing here sends mail —
-   suggested replies are text stored with the triage result. */
-const TRIAGE_TOOL = {
-  name: 'submit_triage',
-  description: 'Submit the triage verdict for every email in the batch.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      items: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'The Gmail message id, exactly as given' },
-            category: { type: 'string', enum: ['needs_reply', 'client_lead', 'payments', 'ignore'] },
-            summary: { type: 'string', description: 'One line: who/what/why it matters' },
-            suggested_reply: { type: 'string', description: 'Draft reply text — ONLY for needs_reply items' },
-          },
-          required: ['id', 'category', 'summary'],
-        },
-      },
-    },
-    required: ['items'],
-  },
-};
-
-const TRIAGE_SYSTEM = `You are the email-triage step of CTRLpanel's Master Controller. You receive unread emails (metadata + snippet) from one of the user's Gmail accounts and must categorize EVERY one:
-
-- needs_reply: a real person is waiting on the user (questions, requests, follow-ups, scheduling). Write a suggested reply.
-- client_lead: client or sales-lead activity worth knowing about but not necessarily replying to (new inquiry confirmations, project updates, prospect opens).
-- payments: invoices, receipts, payouts, billing, subscription charges, banking alerts.
-- ignore: newsletters, promotions, notifications, spam, anything not worth the user's time.
-
-Rules:
-- Return a verdict for every id you were given, each exactly once.
-- summary is ONE tight line (max ~15 words), specific enough to act on without opening the email.
-- suggested_reply only for needs_reply: short, friendly-professional, in the user's voice, ready to lightly edit and send. No subject line, no signature block beyond a simple sign-off with the user's first name. You only see snippets, so keep replies safe: acknowledge, answer what is clear, and ask for specifics rather than inventing details.
-- Never fabricate facts, prices, or commitments the snippet does not support.`;
-
-export async function triageCategorize({ alias, email, messages = [], userName, apiKey }) {
-  const anthropic = getClient(apiKey);
-  if (!anthropic) throw new Error(NO_KEY_MSG);
-  if (!messages.length) return {};
-
-  const payload = messages.map((m) => ({
-    id: m.gmail_message_id,
-    from: `${m.from_name || ''} <${m.from_email || ''}>`.trim(),
-    subject: m.subject || '(no subject)',
-    received_at: m.received_at,
-    snippet: m.snippet || '',
-  }));
-
-  const prompt =
-    `User: ${userName || 'the user'}\nAccount: "${alias}" (${email || 'unknown address'})\n` +
-    `Unread emails from the last 24h (${payload.length}):\n${JSON.stringify(payload, null, 2)}\n\n` +
-    'Triage every email via submit_triage.';
-
-  const msg = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 8000,
-    system: TRIAGE_SYSTEM,
-    tools: [TRIAGE_TOOL],
-    tool_choice: { type: 'tool', name: 'submit_triage' },
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const call = msg.content.find((b) => b.type === 'tool_use' && b.name === 'submit_triage');
-  const items = Array.isArray(call?.input?.items) ? call.input.items : [];
-  const byId = {};
-  for (const it of items) {
-    if (it?.id) byId[it.id] = it;
-  }
-  return byId;
 }

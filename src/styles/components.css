@@ -2115,3 +2115,144 @@ table.data-table {
 .rollup-thumb--empty i {
   font-size: 18px;
 }
+
+/* Reports — inline endpoint / token / curl snippets */
+.report-code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  overflow-x: auto;
+  word-break: break-all;
+}
+
+/* Projects → Services quick-links bar */
+.services-bar {
+  margin-bottom: 24px;
+}
+.services-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.services-chips,
+.services-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.services-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.service-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  user-select: none;
+}
+.service-chip:hover {
+  border-color: var(--border-bright);
+  background: var(--bg-elevated);
+}
+.service-chip__icon {
+  font-size: 17px;
+  color: var(--accent);
+}
+.service-chip__label {
+  white-space: nowrap;
+}
+.service-chip__paid {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-glow);
+}
+.service-chip--editing {
+  cursor: grab;
+  border-style: dashed;
+}
+.service-chip--editing:active {
+  cursor: grabbing;
+}
+.service-chip__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.service-chip__btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+.service-chip--add {
+  color: var(--text-secondary);
+  border-style: dashed;
+  background: transparent;
+}
+.service-chip--add:hover {
+  color: var(--text-primary);
+}
+.service-chip--add .service-chip__icon {
+  color: var(--text-secondary);
+}
+.service-chip__plus {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.service-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.service-icon-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.service-icon-pick:hover {
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+.service-icon-pick.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}

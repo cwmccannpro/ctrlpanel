@@ -35,7 +35,8 @@
    - Frontend: `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (safe, RLS-scoped).
    - Backend only: `SUPABASE_SERVICE_ROLE_KEY` — bypasses RLS. Used exclusively
      for `google_tokens` (which has RLS enabled with NO policy, so the browser
-     can never read OAuth tokens) and for headless writers like `agent_runs`.
+     can never read OAuth tokens) and for headless writers like the inbound PDF
+     report ingester (`reports` rows + the `reports` storage bucket).
 4. **All DB access goes through `src/lib`**: `supabase.js` (client + auth +
    CRUD + `queryTable`), `useData.js` (`useRows`, `useCrud` with optimistic
    updates). Components never import @supabase/supabase-js directly.
@@ -53,8 +54,9 @@
   `board_shares` (email invites → collaborators; boards/tasks have extra RLS
   policies via `can_access_board()` security-definer fn)
 - Projects: `projects` (+ `charter` jsonb, `notes_list` jsonb, `files` jsonb
-  [{title,url,type,added_at}], `excalidraw` scene jsonb, `excalidraw_preview`,
-  `crm_board_id` → linked CRM page)
+  [{title,url,type,added_at}], `service_links` jsonb [{id,label,url,icon,paid}]
+  = per-project Services quick-links bar, `excalidraw` scene jsonb,
+  `excalidraw_preview`, `crm_board_id` → linked CRM page)
 - CRM: `crm_boards` (multiple CRM pages, `columns` jsonb = custom columns),
   `crm_contacts` (+ `board_id`, `custom` jsonb for custom-column values)
 - Calendar: `calendar_events` (local fallback; Google is primary when connected),
@@ -69,11 +71,13 @@
 - Habits: `habits`, `habit_logs` (unique habit_id+log_date)
 - Finance: `accounts`, `net_worth_snapshots`, `income_sources`,
   `expense_categories`, `transactions`, `holdings`, `portfolio_snapshots`, `dividends`
-- Agents: `agents`, `agent_runs` (headless run log; read by AgentDetail)
-- Email Triage: `gmail_accounts` (per-user multi-account OAuth tokens +
-  alias — service-role only, same pattern as google_tokens),
-  `triage_runs` + `triage_items` (one brief per run; written by the backend
-  with explicit user_id, read by the client under "own rows" RLS)
+- Reports (inbound PDFs): `report_sources` (named inbound channels, each with
+  a hashed token `key_hash` — plaintext shown once in the UI), `reports` (one
+  row per received PDF; `file_path` points into the private `reports` storage
+  bucket). Rows are written by the backend on ingest with explicit user_id and
+  read/deleted by the owner's client under "own rows" RLS. The PDF bytes live
+  in Supabase Storage (bucket `reports`, private; storage RLS scopes objects to
+  the owner's `{user_id}/…` folder — the client reads via signed URLs)
 - **Schema changes**: append idempotent SQL (`create table if not exists`,
   `add column if not exists`) to `supabase-schema.sql` and add the table to the
   RLS loop. The whole file must always be safe to re-run.
@@ -93,13 +97,18 @@
   (Resend invite → `/invite/:token` accept → full read/write for the
   collaborator, Realtime live sync, owner can revoke).
 - **Projects**: list + per-project sub-pages (`/projects/:id`, dynamic sidebar
-  items) with 6 tabs: Project Dashboard (Charter + live roll-ups), Excalidraw
+  items) with 6 tabs: Project Dashboard (per-project Services quick-links bar
+  [add presets/custom, drag-reorder, "Paid" tags; `src/components/ServiceLinks.jsx`,
+  saved to `projects.service_links`] + Charter + live roll-ups), Excalidraw
   (persisted scene + thumbnail), Board, Notes (pinnable, markdown), Files &
   Links, People (synced with linked CRM page).
 - **CRM**: multiple pages (`/crm/:boardId`, in sidebar), custom columns per page,
   inline editing, search/sort/hide columns, CSV import, bulk delete.
-- **Agents**: cards + per-agent sub-pages (`/agents/:id`) with status toggle,
-  config (jsonb), run history/stats from `agent_runs`.
+- **Reports**: inbound PDF reports. Each "report source" (`/reports`, dynamic
+  sidebar sub-pages `/reports/:sourceId`) is a named inbound channel with its
+  own token; external tools POST a PDF to `/api/reports/ingest` and it lands as
+  a report the user views/downloads/deletes in-app. Replaces the old Agents
+  section. See the Reports feature note below.
 - **Habits**: tracker (14-day toggle grid, streaks) + Life View (birthdate,
   weeks-of-life; feeds the Life View widget).
 - **Nutrition social**: water logging (rings + goal), email friend invites
@@ -120,21 +129,25 @@
   delete requires in-app confirmation.
 - **Settings**: profile, accent (8 swatches → CSS vars, per-user), font size,
   Connectors (Anthropic key, Alpha Vantage, custom) saved to `user_settings.connectors`;
-  Gmail Accounts panel (connect N Gmail accounts for Email Triage, each with
-  a short alias, disconnect per account).
-- **Email Triage (Reports → Mail Triage)**: multi-account Gmail scan → Claude
-  categorization (needs_reply | client_lead | payments | ignore) + suggested
-  replies. OAuth in `backend/gmail.js` (same Google client as Calendar, own
-  redirect URI, scopes readonly/modify/compose — NO send scope ever).
-  Armed via an "Email Triage" agent (`config.type = 'email_triage'`,
-  `schedule_hour` UTC); scheduler = setInterval in Express dev + Worker cron
-  trigger (`wrangler.jsonc` triggers.crons → `runDueTriage`), plus "Run now".
-  One brief per run (`triage_runs`/`triage_items`), grouped by account in
-  `src/pages/reports/MailTriage.jsx`; "Approve → create draft" makes a native
-  Gmail draft — the user always sends from Gmail, CTRLpanel never sends.
-  Dashboard `mail_triage` widget rolls up the latest brief; the Master
-  Controller reads `triage_runs`/`triage_items` (read-only) and gets a
-  snapshot summary under `email_triage`.
+  Nutrition API keys panel.
+- **Reports (inbound PDFs)**: a way to accept a PDF report sent to CTRLpanel
+  from whatever tool the user runs (e.g. a Claude routine doing email triage
+  emits a PDF and POSTs it here). A "report source" is a named inbound channel
+  with its own token (SHA-256 hashed in `report_sources.key_hash`, plaintext
+  shown once on create — same pattern as the Nutrition API keys). External
+  clients call `POST /api/reports/ingest` with `Authorization: Bearer ctpr_…`
+  (or `X-API-Key`) and the raw PDF as the request body; optional
+  `X-Report-Title` header sets the title. The backend (service role) validates
+  the `%PDF` header, uploads the bytes to the private `reports` storage bucket
+  at `{user_id}/{source_id}/{uuid}.pdf`, and inserts a `reports` row. Logic in
+  `backend/reports.js` (Workers-compatible: `node:crypto` + fetch-based
+  Supabase SDK, raw-body upload). UI: `src/pages/reports/Reports.jsx` (source
+  cards + "Add report source" → shows endpoint + token + curl) and
+  `src/pages/reports/ReportSourceDetail.jsx` (received PDFs: view/download via
+  signed URL, delete, regenerate token, delete source). Dashboard `reports`
+  widget rolls up recent PDFs; the Master Controller reads `report_sources` /
+  `reports` metadata (read-only — it can't open PDF contents) and lists recent
+  ones in the snapshot under `reports`. CTRLpanel never sends anything.
 
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
@@ -168,8 +181,10 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   (all Supabase-token auth; logic in `backend/social.js`, emails in `backend/email.js`)
 - `POST /api/nutrition/log` — external clients; auth = per-user API key
   (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
-- `GET /api/gmail/status|connect|callback` · `POST /api/gmail/disconnect|run|draft`
-  (Supabase-token auth; logic in `backend/gmail.js` — Email Triage)
+- `POST /api/reports/ingest` — external clients send a PDF (raw body,
+  `Content-Type: application/pdf`); auth = per-source token
+  (`Authorization: Bearer ctpr_…` or `X-API-Key`), optional `X-Report-Title`
+  header; logic in `backend/reports.js` (uploads to the `reports` storage bucket)
 
 ## Deployment — ONE story: Cloudflare
 - `worker/index.js` is the production backend; it reuses the modules in

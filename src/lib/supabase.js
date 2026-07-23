@@ -90,6 +90,22 @@ export async function remove(table, id) {
   return supabase.from(table).delete().eq('id', id);
 }
 
+/* ---------------- Storage (report PDFs) ---------------- */
+
+// Short-lived signed URL for a private object (bucket RLS scopes it to the
+// owner's folder). Used to view/download received report PDFs in the browser.
+export async function signedUrl(bucket, path, expiresIn = 3600, options) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn, options);
+  if (error) return null;
+  return data?.signedUrl || null;
+}
+
+export async function removeStorage(bucket, paths) {
+  if (!supabase) return { error: { message: 'supabase-not-configured' } };
+  return supabase.storage.from(bucket).remove(Array.isArray(paths) ? paths : [paths]);
+}
+
 /**
  * Flexible read used by the Master Controller's query tool. RLS still scopes
  * every result to the current user. `search` runs a case-insensitive OR across
