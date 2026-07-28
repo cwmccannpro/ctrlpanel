@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   LineChart,
   Line,
@@ -18,6 +18,11 @@ import { lifeStats, ageToBirthdate, compactNumber } from '../lib/helpers.js';
 const dayKey = (d) => d.toISOString().slice(0, 10);
 const TRACK_DAYS = 14; // toggle columns shown in the tracking table
 
+// Consistency Trend ranges → days back from today ('ALL' resolves to earliest log).
+const RANGES = ['1M', '3M', '6M', '1Y', 'ALL'];
+const RANGE_DAYS = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
+const ROLL_WINDOW = 7; // rolling completion-rate window (days)
+
 // Build the last N calendar days (oldest → newest).
 function recentDays(n) {
   const today = new Date();
@@ -31,6 +36,36 @@ function recentDays(n) {
   return out;
 }
 
+// One point per day: the trailing ROLL_WINDOW-day completion rate across the
+// given habits. `possible` only counts a (habit, day) once the habit existed,
+// so newly-added habits don't drag down earlier history. Works for a single
+// habit or all of them collectively.
+function buildTrend({ habitIds, habitStart, isDone, start, end, windowDays = ROLL_WINDOW }) {
+  const points = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    let done = 0;
+    let possible = 0;
+    for (let i = 0; i < windowDays; i++) {
+      const d = new Date(cur);
+      d.setDate(cur.getDate() - i);
+      const dk = dayKey(d);
+      for (const id of habitIds) {
+        if (habitStart[id] && dk < habitStart[id]) continue;
+        possible++;
+        if (isDone(id, dk)) done++;
+      }
+    }
+    points.push({
+      date: dayKey(cur),
+      label: cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      rate: possible ? Math.round((done / possible) * 100) : 0,
+    });
+    cur.setDate(cur.getDate() + 1);
+  }
+  return points;
+}
+
 /* ============================================================
    Habit tracking tab
    ============================================================ */
@@ -38,7 +73,8 @@ function HabitTracker() {
   const habits = useCrud('habits', 'created_at');
   const logs = useCrud('habit_logs');
   const [adding, setAdding] = useState('');
-  const [chartHabit, setChartHabit] = useState(null);
+  const [chartHabit, setChartHabit] = useState('all');
+  const [range, setRange] = useState('3M');
 
   const activeHabits = habits.rows.filter((h) => h.active !== false);
   const days = recentDays(TRACK_DAYS);
@@ -75,26 +111,37 @@ function HabitTracker() {
     return streak;
   };
 
-  // 12-week completion-rate trend for the selected habit.
-  const selected = chartHabit || activeHabits[0]?.id;
-  const trend = [];
-  if (selected) {
-    for (let w = 11; w >= 0; w--) {
-      const end = new Date();
-      end.setHours(0, 0, 0, 0);
-      end.setDate(end.getDate() - w * 7);
-      let done = 0;
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(end);
-        d.setDate(end.getDate() - i);
-        if (isDone(selected, dayKey(d))) done++;
-      }
-      trend.push({
-        week: end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        rate: Math.round((done / 7) * 100),
-      });
+  // Consistency Trend: daily rolling completion rate over the selected range,
+  // for one habit or all habits collectively.
+  const trend = useMemo(() => {
+    const habitStart = {};
+    habits.rows.forEach((h) => { habitStart[h.id] = (h.created_at || '').slice(0, 10) || ''; });
+    const validIds = new Set(activeHabits.map((h) => h.id));
+    const habitIds =
+      chartHabit === 'all' || !validIds.has(chartHabit) ? activeHabits.map((h) => h.id) : [chartHabit];
+    if (!habitIds.length) return [];
+
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    let start = new Date(end);
+    if (range === 'ALL') {
+      const dates = logs.rows.map((l) => l.log_date).filter(Boolean).sort();
+      if (dates[0]) start = new Date(dates[0]);
+    } else {
+      start.setDate(end.getDate() - ((RANGE_DAYS[range] || 90) - 1));
     }
-  }
+    start.setHours(0, 0, 0, 0);
+
+    // Guard against pathologically large series (very old first log).
+    const MAX_DAYS = 1500;
+    const span = Math.round((end - start) / 86400000) + 1;
+    if (span > MAX_DAYS) start = new Date(end.getTime() - (MAX_DAYS - 1) * 86400000);
+
+    return buildTrend({ habitIds, habitStart, isDone, start, end });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs.rows, habits.rows, chartHabit, range]);
+
+  const trendAvg = trend.length ? Math.round(trend.reduce((s, p) => s + p.rate, 0) / trend.length) : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -177,28 +224,48 @@ function HabitTracker() {
       {activeHabits.length > 0 && (
         <Card className="card-section" static>
           <div className="card-section-title">
-            <span>Consistency Trend</span>
-            <select
-              className="select"
-              value={selected}
-              onChange={(e) => setChartHabit(e.target.value)}
-              style={{ width: 'auto' }}
-            >
-              {activeHabits.map((h) => (
-                <option key={h.id} value={h.id}>{h.name}</option>
-              ))}
-            </select>
+            <div className="row" style={{ gap: 12, alignItems: 'baseline' }}>
+              <span>Consistency Trend</span>
+              {trend.length > 0 && <span className="list-row-meta">avg {trendAvg}%</span>}
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <select
+                className="select"
+                value={chartHabit}
+                onChange={(e) => setChartHabit(e.target.value)}
+                style={{ width: 'auto' }}
+              >
+                <option value="all">All Habits</option>
+                {activeHabits.map((h) => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+              <div className="segmented">
+                {RANGES.map((r) => (
+                  <button key={r} className={range === r ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>
+                ))}
+              </div>
+            </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>{ROLL_WINDOW}-day rolling completion rate · one point per day</div>
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={trend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
               <CartesianGrid stroke="#1e1818" vertical={false} />
-              <XAxis dataKey="week" stroke="#8a7070" fontSize={11} />
+              <XAxis dataKey="label" stroke="#8a7070" fontSize={11} interval="preserveStartEnd" minTickGap={28} />
               <YAxis stroke="#8a7070" fontSize={11} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip
                 contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }}
                 formatter={(v) => [`${v}%`, 'Completion']}
               />
-              <Line type="monotone" dataKey="rate" stroke="var(--accent)" strokeWidth={2} dot={{ r: 3 }} />
+              <Line
+                type="monotone"
+                dataKey="rate"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                dot={trend.length <= 45 ? { r: 3 } : false}
+                activeDot={{ r: 4 }}
+                isAnimationActive={false}
+              />
             </LineChart>
           </ResponsiveContainer>
         </Card>
