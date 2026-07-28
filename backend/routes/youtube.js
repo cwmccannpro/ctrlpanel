@@ -12,6 +12,7 @@ import {
   verifyYoutubeState,
   exchangeYoutubeCode,
   listYoutubeChannels,
+  renameYoutubeChannel,
   disconnectYoutubeChannel,
   getYoutubeAnalytics,
 } from '../youtube.js';
@@ -43,9 +44,19 @@ router.get('/callback', async (req, res) => {
     if (req.query.error) throw new Error(String(req.query.error));
     const userId = verifyYoutubeState(req.query.state);
     await exchangeYoutubeCode(userId, req.query.code);
-    res.redirect(`${base}/socials/youtube?youtube=connected`);
+    res.redirect(`${base}/socials?youtube=connected`);
   } catch (e) {
-    res.redirect(`${base}/socials/youtube?youtube=error&message=${encodeURIComponent(e.message)}`);
+    res.redirect(`${base}/socials?youtube=error&message=${encodeURIComponent(e.message)}`);
+  }
+});
+
+router.post('/rename', async (req, res) => {
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    res.json(await renameYoutubeChannel(user.id, req.body?.id, req.body?.label));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
 });
 

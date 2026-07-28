@@ -33,6 +33,7 @@ import {
   verifyYoutubeState,
   exchangeYoutubeCode,
   listYoutubeChannels,
+  renameYoutubeChannel,
   disconnectYoutubeChannel,
   getYoutubeAnalytics,
 } from '../backend/youtube.js';
@@ -281,14 +282,18 @@ export default {
             if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
             const userId = verifyYoutubeState(url.searchParams.get('state'));
             await exchangeYoutubeCode(userId, url.searchParams.get('code'));
-            return redirect(`${base}/socials/youtube?youtube=connected`);
+            return redirect(`${base}/socials?youtube=connected`);
           } catch (e) {
-            return redirect(`${base}/socials/youtube?youtube=error&message=${encodeURIComponent(e.message)}`);
+            return redirect(`${base}/socials?youtube=error&message=${encodeURIComponent(e.message)}`);
           }
         }
         const user = await userFrom(request, url);
         if (!user) return json({ error: 'Not authenticated' }, 401);
         try {
+          if (pathname === '/api/youtube/rename' && method === 'POST') {
+            const body = await request.json().catch(() => ({}));
+            return json(await renameYoutubeChannel(user.id, body.id, body.label));
+          }
           if (pathname === '/api/youtube/disconnect' && method === 'POST') {
             const body = await request.json().catch(() => ({}));
             return json(await disconnectYoutubeChannel(user.id, body.id));

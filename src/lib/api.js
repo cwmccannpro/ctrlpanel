@@ -129,6 +129,7 @@ export const youtube = {
     window.location.href = `${BASE}/youtube/connect?token=${encodeURIComponent(token)}`;
   },
   analytics: (id, range) => authApi.get(`/youtube/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
+  rename: (id, label) => authApi.post('/youtube/rename', { id, label }),
   disconnect: (id) => authApi.post('/youtube/disconnect', { id }),
 };
 

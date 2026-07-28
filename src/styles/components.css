@@ -294,13 +294,84 @@
 .nav-folder-header i {
   font-size: 15px;
 }
+.nav-folder-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Opens the section's overview page (where new items are created). The folder
+   header itself only expands/collapses. */
+.nav-folder-action {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: color var(--transition), opacity var(--transition);
+}
+.nav-folder-action i {
+  font-size: 13px !important;
+}
+.nav-folder-action:hover,
+.nav-folder-action.active {
+  color: var(--accent);
+  opacity: 1;
+}
 .nav-folder-chevron {
   margin-left: auto;
   font-size: 14px !important;
   transition: transform var(--transition);
 }
+.nav-folder-label ~ .nav-folder-chevron {
+  margin-left: 0;
+}
 .nav-folder-chevron.open {
   transform: rotate(90deg);
+}
+.nav-subitem--empty {
+  color: var(--text-muted);
+  cursor: default;
+}
+/* ---- Collapsed rail: hover flyout with the folder's sub-pages ---- */
+.nav-folder--rail {
+  position: relative;
+}
+.nav-flyout {
+  position: fixed;
+  left: 56px;
+  min-width: 190px;
+  padding: 6px 0;
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--border-bright, var(--border));
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+}
+.nav-flyout-title {
+  padding: 4px 14px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.nav-flyout .nav-subitem {
+  padding-left: 14px;
+}
+.nav-flyout-manage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  margin-top: 4px;
+  border-top: 0.5px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+.nav-flyout-manage:hover {
+  color: var(--accent);
 }
 .nav-subitem {
   display: block;
@@ -2310,9 +2381,9 @@ table.data-table {
   transition: background var(--transition);
 }
 .dash2-divider:hover::before { background: var(--accent); }
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
   .dash2 { flex-direction: column; gap: 16px; }
-  .dash2-surface--left, .dash2-surface--right { flex-basis: auto; width: 100%; }
+  .dash2-col1, .dash2-col2, .dash2-col3 { flex-basis: auto; width: 100%; }
   .dash2-divider { display: none; }
 }
 .dash2-add {
@@ -2625,3 +2696,251 @@ table.data-table {
   .yt-header-thumb { width: 40px; height: 40px; flex-basis: 40px; }
   .yt-channel-name { max-width: 140px; }
 }
+
+/* Dashboard — investing + youtube panels (middle column) */
+.dash2-link {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  transition: color var(--transition);
+}
+.dash2-link:hover { color: var(--accent); }
+
+.dash2-invest-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.dash2-invest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+.dash2-invest-sep { color: var(--text-muted); }
+
+.dash2-yt-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8px;
+}
+.dash2-yt-stats { display: flex; gap: 16px; margin-bottom: 4px; }
+.dash2-yt-stats > div { display: flex; flex-direction: column; }
+.dash2-yt-num {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.dash2-yt-lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* Socials → YouTube page */
+.yt-channels { display: flex; flex-wrap: wrap; gap: 8px; }
+.yt-channel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.yt-channel-chip:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.yt-channel-chip.active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent-dim);
+}
+.yt-channel-thumb { width: 22px; height: 22px; border-radius: 50%; }
+.yt-channel-name { white-space: nowrap; }
+.yt-header-thumb { width: 44px; height: 44px; border-radius: 50%; }
+.yt-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.yt-notice i { color: #10b981; font-size: 16px; }
+.yt-notice.is-error i { color: var(--accent); }
+.yt-notice span { flex: 1; }
+
+/* Dashboard — inline chart legend (cashflow) */
+.dash2-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.dash2-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dash2-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* ============================================================
+   Dashboard v3 — dynamic layout (drag / resize / add / remove)
+   ============================================================ */
+.dash2-panel { position: relative; }
+.dash2-panel-body { min-width: 0; }
+
+/* Edit mode: dashed affordance + hover toolbar */
+.dash2.is-editing .dash2-panel {
+  outline: 1px dashed var(--border-bright);
+  outline-offset: -3px;
+  border-radius: var(--radius-sm);
+}
+.dash2-panel-tools {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition);
+  z-index: 3;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+.dash2-panel:hover .dash2-panel-tools { opacity: 1; }
+.dash2-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.dash2-tool:hover { color: var(--text-primary); background: var(--bg-elevated); }
+.dash2-tool:first-child { cursor: grab; }
+.dash2-tool:first-child:active { cursor: grabbing; }
+
+.dash2-panel-resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.dash2-panel-resize::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 34px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: var(--border-bright);
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.dash2-panel:hover .dash2-panel-resize::after { opacity: 1; }
+.dash2-panel-resize:hover::after { background: var(--accent); opacity: 1; }
+
+/* Drop targets */
+.dash2-surface.is-over { outline: 1px solid var(--accent); outline-offset: -1px; }
+.dash2-col-empty {
+  padding: 22px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-bright);
+  border-radius: var(--radius-md);
+  margin: 10px;
+}
+.dash2.is-editing .dash2-surface { min-height: 90px; }
+
+/* Drag ghost */
+.dash2-drag-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.dash2-drag-ghost i { color: var(--accent); font-size: 16px; }
+
+/* Add-panel picker */
+.dash2-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.dash2-pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.dash2-pick:hover { border-color: var(--accent); background: var(--bg-elevated); }
+.dash2-pick i:first-child { color: var(--accent); font-size: 16px; flex-shrink: 0; }
+.dash2-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash2-pick-used {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Workout mini heatmap */
+.dash2-heat { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; }
+.dash2-heat-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--bg-elevated);
+}
+.dash2-heat-cell.on { background: var(--accent); }

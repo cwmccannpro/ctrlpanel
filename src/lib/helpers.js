@@ -185,3 +185,9 @@ export function initials(name = '') {
 export function truncate(str = '', len = 60) {
   return str.length > len ? str.slice(0, len - 1) + '…' : str;
 }
+
+// Socials sections are renameable: `label` is the user's own name for a
+// connected channel, the real channel title is the fallback.
+export function channelLabel(channel) {
+  return channel?.label?.trim() || channel?.title || 'Channel';
+}

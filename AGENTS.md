@@ -74,6 +74,11 @@
 - Habits: `habits`, `habit_logs` (unique habit_id+log_date)
 - Finance: `accounts`, `net_worth_snapshots`, `income_sources`,
   `expense_categories`, `transactions`, `holdings`, `portfolio_snapshots`, `dividends`
+- Socials: `youtube_channels` (one row per connected channel: channel_id,
+  title/thumbnail, `label` = the user's own name for the section (nullable,
+  falls back to title), cached sub/video/view counts, google_email + OAuth tokens —
+  service-role only, RLS enabled with NO policy, same pattern as google_tokens;
+  unique on (user_id, channel_id) so a user can connect many channels)
 - Reports (inbound PDFs): `report_sources` (named inbound channels, each with
   a hashed token `key_hash` — plaintext shown once in the UI), `reports` (one
   row per received PDF; `file_path` points into the private `reports` storage
@@ -86,10 +91,41 @@
   RLS loop. The whole file must always be safe to re-run.
 
 ## Feature Map (what exists — do not rebuild)
-- **Dashboard**: customizable widget board — drag to reorder (@dnd-kit), corner-
-  drag to resize (col/row spans, 6-col grid), Add Widget picker; layout saved to
-  `user_settings.dashboard_widgets`. Widget registry: `src/components/dashboardWidgets.jsx`
-  (stats, Calendar w/ Today|Week|Month views, priorities, habits, macros, Life View, …).
+- **Dashboard** — card-less, fully **dynamic** 3-column layout. Panels render
+  directly onto one seamless surface per column (hairline dividers between
+  them), NOT in individual widget cards — keep it that way.
+  · `src/pages/Dashboard.jsx` is only the **layout engine**: drag panels within
+    and across columns (@dnd-kit multi-container sortable + `DragOverlay`),
+    per-panel height resize (drag the bottom edge), remove, and an Add-panel
+    picker grouped by section. A **Customize** toggle reveals that chrome; the
+    dashboard is clean and read-only until then. Column widths drag too.
+  · `src/components/dashboardPanels.jsx` is the **panel registry**. Every panel
+    is self-contained (fetches its own rows) and receives `{ cfg, onCfg }` for
+    its per-instance settings. Add an entry to `PANELS` and it shows up in the
+    picker automatically — that is the only step needed for a new widget.
+    Groups: Work (board column, due soon, quick add, schedule, projects, CRM,
+    reports), Finance (net worth, cashflow, budget categories, portfolio),
+    Health (macros, water, weight, supplements, training, workouts), Habits
+    (week grid, consistency trend, life), Socials (YouTube).
+  · Layout saved to `user_settings.dashboard_widgets` as
+    `{ v:6, cols:[l,m], columns:[[{uid,id,cfg,h}],…] }`. `normalize()` migrates
+    older v4/v5 shapes, so never assume the stored shape — run it through that.
+  The Master Controller is NOT on the page — it's a global bottom dock (see
+  below). The legacy `dashboardWidgets.jsx` registry is superseded and unused.
+- **Sidebar** (`src/components/Sidebar.jsx`): top-level links (Dashboard,
+  Calendar, To Do, Habits) + **folders**. A folder header is *only* a folder —
+  clicking it expands/collapses, it never navigates. Sections with an overview
+  page (CRM, Reports, Projects, Socials) expose it through the small `+` manage
+  button on the header instead; that page is where new items get created.
+  Open/closed state persists (localStorage + `ui_preferences.sidebar.folders`),
+  as does the drag-resized width. Collapsed rail: hovering a folder icon opens a
+  fixed-position flyout with the same sub-pages. Dynamic items come from
+  `WorkspaceProvider` (projects, report sources, CRM boards, socials channels);
+  Health + Finance are fixed lists.
+- **Master Controller dock**: `MasterControllerDock` in
+  `src/components/MasterController.jsx`, rendered once in `App.jsx`. Fixed to
+  the bottom on every page, hidden until the pointer comes within ~100px of the
+  bottom edge, then springs up (bubble effect). There is no topbar MC button.
 - **Calendar**: iCal-style time grid (Week/Day, 5 AM–midnight auto-fit, now-line,
   all-day row) + Month. Google two-way sync across ALL the user's calendars;
   calendar picker on events (colors follow calendar, hue-mapped to app palette);
@@ -123,8 +159,13 @@
   per-user API key (Settings → Nutrition API; SHA-256 hash stored in
   `api_keys`). Entries land in `nutrition_logs` like manual ones.
 - **Health / Finance**: full CRUD everywhere (inline edit + delete on every row);
-  charts compute from real user data; Investing polls live prices every 10s
-  (`/api/finance/prices`: CoinGecko free for crypto, Alpha Vantage optional for stocks).
+  charts compute from real user data. **Investing** uses real market data from
+  Yahoo Finance (`backend/finance.js`, plain fetch, no key; crypto maps to
+  `<SYM>-USD`): live quotes polled every 10s (`/api/finance/prices`), a
+  full-width portfolio performance chart with a 1W–ALL scale selector
+  (`/api/finance/portfolio-history`, reconstructed from each holding's real
+  history × shares), Holdings + Allocation side by side, and a per-holding
+  detail modal with its own price chart (`/api/finance/history`).
 - **Master Controller**: streaming chat (NDJSON over `/api/ai/chat`); frontend
   drives the agentic loop executing `query_records` / `create_record` /
   `update_record` / `delete_record` (+ `navigate_to`) via `src/lib/mcTools.js`
@@ -133,6 +174,26 @@
 - **Settings**: profile, accent (8 swatches → CSS vars, per-user), font size,
   Connectors (Anthropic key, Alpha Vantage, custom) saved to `user_settings.connectors`;
   Nutrition API keys panel.
+- **Socials** (`/socials`, `src/pages/socials/Socials.jsx`): **modular like
+  Projects** — every connected channel is its own renameable section with its
+  own sidebar entry and its own page (`/socials/youtube/:id`,
+  `src/pages/socials/YouTube.jsx`). The overview lists the sections and is where
+  channels are connected / renamed / disconnected. Renaming writes
+  `youtube_channels.label` (`POST /api/youtube/rename`); the real channel title
+  is kept underneath and shown as the fallback (`channelLabel()` in
+  `src/lib/helpers.js`), so several YouTube channels stay distinguishable.
+  Per-user, **multi-channel** analytics — nothing is hardcoded to one channel.
+  "Connect channel" runs a Google OAuth flow reusing the app's OAuth client with
+  its own redirect URI (`/api/youtube/callback`) and read-only scopes
+  (`youtube.readonly`, `yt-analytics.readonly`); whatever channel(s) the account
+  owns are upserted into `youtube_channels`. Analytics are **pulled on request**
+  (load, range change, Refresh): views / watch hours / net subs totals + daily
+  series over 7d|28d|90d|1y, charted. Logic in `backend/youtube.js`
+  (Workers-compatible, plain fetch + `node:crypto`; tokens live on the row and
+  are refreshed server-side, never sent to the browser). The channel list is
+  fetched once app-wide by `WorkspaceProvider` (`socials`) so the sidebar and
+  the pages share it; range persists via `user_settings.ui_preferences.youtube`.
+  A compact roll-up of the same data sits in the dashboard's middle column.
 - **Reports (inbound PDFs)**: a way to accept a PDF report sent to CTRLpanel
   from whatever tool the user runs (e.g. a Claude routine doing email triage
   emits a PDF and POSTs it here). A "report source" is a named inbound channel
@@ -151,11 +212,6 @@
   widget rolls up recent PDFs; the Master Controller reads `report_sources` /
   `reports` metadata (read-only — it can't open PDF contents) and lists recent
   ones in the snapshot under `reports`. CTRLpanel never sends anything.
-- **Socials / YouTube**: per-user, multi-channel OAuth integration at
-  `/socials/youtube`; live channel totals plus 7/28/90/365-day views, watch
-  time, and net-subscriber analytics. Tokens stay in the service-role-only
-  `youtube_channels` table. Uses the Google OAuth client with a dedicated
-  `YOUTUBE_REDIRECT_URI`.
 
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
@@ -177,7 +233,9 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 ## API Surface (`/api/*` — identical in Express and the Worker)
 - `GET  /api/health`
 - `POST /api/ai/chat` (NDJSON stream) · `POST /api/ai/supplement-analyze` · `POST /api/ai/interaction-check`
-- `GET  /api/finance/prices?tickers=A,B`
+- `GET  /api/finance/prices?tickers=A,B` · `GET /api/finance/history?ticker=&scale=` ·
+  `POST /api/finance/portfolio-history` `{ holdings:[{ticker,shares}], scale }`
+  (Yahoo Finance, no key; scales 1D/1W/1M/3M/6M/1Y/5Y/ALL)
 - `GET  /api/calendar/status|connect|callback|calendars|events` ·
   `POST /api/calendar/disconnect|events` · `PATCH|DELETE /api/calendar/events/:id`
   (auth = Supabase access token via `Authorization: Bearer` or `?token=`)

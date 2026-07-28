@@ -28,6 +28,7 @@ import Fitness from './pages/health/Fitness.jsx';
 import NetWorth from './pages/finance/NetWorth.jsx';
 import Budget from './pages/finance/Budget.jsx';
 import Investing from './pages/finance/Investing.jsx';
+import Socials from './pages/socials/Socials.jsx';
 import YouTube from './pages/socials/YouTube.jsx';
 
 // Apply saved theme + display preferences on start.
@@ -78,7 +79,10 @@ const router = createBrowserRouter([
       { path: 'finance/networth', element: <NetWorth /> },
       { path: 'finance/budget', element: <Budget /> },
       { path: 'finance/investing', element: <Investing /> },
-      { path: 'socials/youtube', element: <YouTube /> },
+      { path: 'socials', element: <Socials /> },
+      // Kept so older links (and the OAuth callback) still land on the overview.
+      { path: 'socials/youtube', element: <Socials /> },
+      { path: 'socials/youtube/:id', element: <YouTube /> },
       { path: 'settings', element: <Settings /> },
       { path: '*', element: <Dashboard /> },
     ],

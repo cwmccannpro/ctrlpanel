@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
+import { channelLabel } from '../lib/helpers.js';
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 148;
 const WIDTH_KEY = 'ctrlpanel-sidebar-width';
+const FOLDERS_KEY = 'ctrlpanel-sidebar-folders';
 
 // Top-level links (exact icons per AGENTS.md)
 const TOP_LINKS = [
@@ -21,7 +23,6 @@ const STATIC_FOLDERS = [
   {
     label: 'Health',
     icon: 'ti-heart',
-    base: '/health',
     items: [
       { label: 'Nutrition', to: '/health/nutrition' },
       { label: 'Supplements', to: '/health/supplements' },
@@ -31,19 +32,10 @@ const STATIC_FOLDERS = [
   {
     label: 'Finance',
     icon: 'ti-coin',
-    base: '/finance',
     items: [
       { label: 'Net Worth', to: '/finance/networth' },
       { label: 'Budget', to: '/finance/budget' },
       { label: 'Investing', to: '/finance/investing' },
-    ],
-  },
-  {
-    label: 'Socials',
-    icon: 'ti-share',
-    base: '/socials/youtube',
-    items: [
-      { label: 'YouTube', to: '/socials/youtube' },
     ],
   },
 ];
@@ -52,73 +44,139 @@ function navClass({ isActive }) {
   return `nav-item ${isActive ? 'active' : ''}`;
 }
 
-function Folder({ folder, collapsed }) {
-  const [open, setOpen] = useState(true);
-  const navigate = useNavigate();
+function subClass({ isActive }) {
+  return `nav-subitem ${isActive ? 'active' : ''}`;
+}
 
+/**
+ * A sidebar folder is only ever a folder: clicking the header expands or
+ * collapses it, it never navigates anywhere. Sections that have an overview
+ * page (where new items get created) expose it through the small manage
+ * button on the right of the header instead.
+ */
+function Folder({ folder, collapsed, open, onToggle }) {
+  const [flyTop, setFlyTop] = useState(null);
+  const rowRef = useRef(null);
+  const items = folder.items || [];
+
+  const empty = items.length === 0 && folder.emptyLabel && (
+    <div className="nav-subitem nav-subitem--empty">{folder.emptyLabel}</div>
+  );
+
+  const links = items.map((item, i) => (
+    <NavLink key={`${item.to}-${i}`} to={item.to} end className={subClass}>
+      {item.label}
+    </NavLink>
+  ));
+
+  // Collapsed rail: the icon opens a hover flyout with the same sub-pages.
+  // Positioned fixed because the sidebar itself scrolls / clips overflow.
   if (collapsed) {
     return (
-      <NavLink to={folder.base || folder.items[0]?.to || '/'} className={navClass} title={folder.label}>
-        <i className={`ti ${folder.icon}`} />
-      </NavLink>
+      <div
+        className="nav-folder nav-folder--rail"
+        ref={rowRef}
+        onMouseEnter={() => setFlyTop(rowRef.current?.getBoundingClientRect().top ?? 0)}
+        onMouseLeave={() => setFlyTop(null)}
+      >
+        <div className="nav-item" title={folder.label}>
+          <i className={`ti ${folder.icon}`} />
+        </div>
+        {flyTop !== null && (
+          <div className="nav-flyout" style={{ top: flyTop }}>
+            <div className="nav-flyout-title">{folder.label}</div>
+            {empty}
+            {links}
+            {folder.indexTo && (
+              <NavLink to={folder.indexTo} end className="nav-flyout-manage">
+                <i className="ti ti-plus" /> Manage {folder.label}
+              </NavLink>
+            )}
+          </div>
+        )}
+      </div>
     );
   }
 
-  const headerClick = () => {
-    if (folder.base) {
-      navigate(folder.base);
-      setOpen(true);
-    } else {
-      setOpen((o) => !o);
-    }
-  };
-
   return (
-    <div>
-      <div className="nav-folder-header" onClick={headerClick}>
+    <div className="nav-folder">
+      <div
+        className="nav-folder-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => onToggle(folder.label)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle(folder.label);
+          }
+        }}
+      >
         <i className={`ti ${folder.icon}`} />
-        <span>{folder.label}</span>
-        <i
-          className={`ti ti-chevron-right nav-folder-chevron ${open ? 'open' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen((o) => !o);
-          }}
-        />
-      </div>
-      {open && folder.items.length === 0 && folder.emptyLabel && (
-        <div className="nav-subitem muted" style={{ cursor: 'default' }}>{folder.emptyLabel}</div>
-      )}
-      {open &&
-        folder.items.map((item, i) => (
+        <span className="nav-folder-label">{folder.label}</span>
+        {folder.indexTo && (
           <NavLink
-            key={`${item.to}-${i}`}
-            to={item.to}
+            to={folder.indexTo}
             end
-            className={({ isActive }) => `nav-subitem ${isActive ? 'active' : ''}`}
+            className="nav-folder-action"
+            title={`Manage ${folder.label}`}
+            onClick={(e) => e.stopPropagation()}
           >
-            {item.label}
+            <i className="ti ti-plus" />
           </NavLink>
-        ))}
+        )}
+        <i className={`ti ti-chevron-right nav-folder-chevron ${open ? 'open' : ''}`} />
+      </div>
+      {open && empty}
+      {open && links}
     </div>
   );
 }
 
 export default function Sidebar({ collapsed = false }) {
-  const { projects, reportSources, crmBoards } = useWorkspace();
+  const { projects, reportSources, crmBoards, socials } = useWorkspace();
   const { settings, updateUiPreferences } = useAuth();
   const [width, setWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
     return Number.isFinite(saved) ? saved : DEFAULT_WIDTH;
   });
+  const [openFolders, setOpenFolders] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FOLDERS_KEY));
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch {
+      return {};
+    }
+  });
   const draggingRef = useRef(false);
+  const hydratedRef = useRef(false);
   const savedWidth = Number(settings?.ui_preferences?.sidebar?.width);
+  const savedFolders = settings?.ui_preferences?.sidebar?.folders;
 
   useEffect(() => {
     if (Number.isFinite(savedWidth)) {
       setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, savedWidth)));
     }
   }, [savedWidth]);
+
+  // Adopt the saved open/closed state once, so a toggle made while settings
+  // were still loading isn't stomped by the server copy.
+  useEffect(() => {
+    if (hydratedRef.current || !savedFolders || typeof savedFolders !== 'object') return;
+    hydratedRef.current = true;
+    setOpenFolders(savedFolders);
+  }, [savedFolders]);
+
+  // Folders default to open; only an explicit `false` collapses one.
+  const isOpen = (label) => openFolders[label] !== false;
+  const toggleFolder = (label) => {
+    const next = { ...openFolders, [label]: !isOpen(label) };
+    setOpenFolders(next);
+    hydratedRef.current = true;
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify(next));
+    updateUiPreferences('sidebar', { folders: next }).catch(() => {});
+  };
 
   const onMouseDown = useCallback(
     (e) => {
@@ -153,29 +211,39 @@ export default function Sidebar({ collapsed = false }) {
     };
   }, [updateUiPreferences, width]);
 
-  // CRM, Reports + Projects are dynamic per-user; Health + Finance are fixed.
+  // CRM, Reports, Projects + Socials are dynamic per-user; Health + Finance are
+  // fixed. `indexTo` is the overview page where new items are created — reached
+  // from the header's manage button, never by clicking the folder itself.
   const folders = [
     {
       label: 'CRM',
       icon: 'ti-users',
-      base: '/crm',
+      indexTo: '/crm',
+      emptyLabel: 'No CRM pages yet',
       items: crmBoards.rows.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
     },
     {
       label: 'Reports',
       icon: 'ti-report',
-      base: '/reports',
+      indexTo: '/reports',
       emptyLabel: 'No report sources yet',
       items: reportSources.rows.map((s) => ({ label: s.name || 'Untitled', to: `/reports/${s.id}` })),
     },
     {
       label: 'Projects',
       icon: 'ti-folder',
-      base: '/projects',
+      indexTo: '/projects',
       emptyLabel: 'No projects yet',
       items: projects.rows.map((p) => ({ label: p.name || 'Untitled', to: `/projects/${p.id}` })),
     },
     ...STATIC_FOLDERS,
+    {
+      label: 'Socials',
+      icon: 'ti-share',
+      indexTo: '/socials',
+      emptyLabel: 'No channels yet',
+      items: socials.channels.map((c) => ({ label: channelLabel(c), to: `/socials/youtube/${c.id}` })),
+    },
   ];
 
   return (
@@ -204,7 +272,13 @@ export default function Sidebar({ collapsed = false }) {
         {!collapsed && <div className="sidebar-divider" />}
 
         {folders.map((folder) => (
-          <Folder key={folder.label} folder={folder} collapsed={collapsed} />
+          <Folder
+            key={folder.label}
+            folder={folder}
+            collapsed={collapsed}
+            open={isOpen(folder.label)}
+            onToggle={toggleFolder}
+          />
         ))}
       </nav>
 

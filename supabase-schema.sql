@@ -713,6 +713,7 @@ create table if not exists youtube_channels (
   user_id uuid not null references auth.users(id) on delete cascade,
   channel_id text not null,
   title text,
+  label text, -- user's own name for the sidebar section (falls back to title)
   thumbnail text,
   subscriber_count bigint,
   video_count bigint,

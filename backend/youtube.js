@@ -201,11 +201,31 @@ export async function listYoutubeChannels(userId) {
   if (!admin()) return [];
   const { data, error } = await admin()
     .from('youtube_channels')
-    .select('id, channel_id, title, thumbnail, subscriber_count, video_count, view_count, google_email')
+    .select('id, channel_id, title, label, thumbnail, subscriber_count, video_count, view_count, google_email')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(`Could not load YouTube channels: ${error.message}`);
   return data || [];
+}
+
+/**
+ * Rename a connected channel. `label` is the user's own name for the section
+ * (sidebar + page title); the real channel title is kept untouched underneath.
+ * An empty label clears the override and falls back to the channel title.
+ */
+export async function renameYoutubeChannel(userId, id, label) {
+  if (!id) throw new Error('Channel id is required.');
+  const next = typeof label === 'string' && label.trim() ? label.trim().slice(0, 80) : null;
+  const { data, error } = await requireAdmin()
+    .from('youtube_channels')
+    .update({ label: next, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('id, channel_id, title, label, thumbnail, subscriber_count, video_count, view_count, google_email')
+    .maybeSingle();
+  if (error) throw new Error(`Could not rename YouTube channel: ${error.message}`);
+  if (!data) throw new Error('Channel not found.');
+  return data;
 }
 
 export async function disconnectYoutubeChannel(userId, id) {
@@ -291,7 +311,7 @@ export async function getYoutubeAnalytics(userId, id, range = '28d') {
   }
 
   return {
-    channel: { id: row.id, channel_id: row.channel_id, title: row.title, thumbnail: row.thumbnail, subscribers, totalViews, videoCount },
+    channel: { id: row.id, channel_id: row.channel_id, title: row.title, label: row.label || null, thumbnail: row.thumbnail, subscribers, totalViews, videoCount },
     range,
     totals,
     series,
