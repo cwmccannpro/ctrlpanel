@@ -79,6 +79,10 @@ export async function streamChat({ messages, context, apiKey }, onEvent, signal)
 // Convenience wrappers for backend routes used across pages.
 export const finance = {
   prices: (tickers) => api.get(`/finance/prices?tickers=${encodeURIComponent(tickers.join(','))}`),
+  // One symbol's historical chart series (for a holding's detail view).
+  history: (ticker, scale) => api.get(`/finance/history?ticker=${encodeURIComponent(ticker)}&scale=${encodeURIComponent(scale)}`),
+  // The portfolio's real value over time, reconstructed from holdings' history.
+  portfolioHistory: (holdings, scale) => api.post('/finance/portfolio-history', { holdings, scale }),
 };
 
 // Session-authenticated requests (sharing, invites, nutrition social) — the

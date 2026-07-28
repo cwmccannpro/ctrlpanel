@@ -11,7 +11,7 @@
 // process.env populated from Worker secrets/vars).
 // ============================================================
 import { streamChatCore, supplementAnalyze, interactionCheck } from '../backend/claude.js';
-import { getPrices } from '../backend/finance.js';
+import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
 import {
   createBoardShare,
   acceptInvite,
@@ -101,6 +101,23 @@ export default {
       if (pathname === '/api/finance/prices' && method === 'GET') {
         const tickers = (url.searchParams.get('tickers') || '').split(',').map((t) => t.trim()).filter(Boolean);
         return json(await getPrices(tickers));
+      }
+      if (pathname === '/api/finance/history' && method === 'GET') {
+        const ticker = (url.searchParams.get('ticker') || '').trim();
+        if (!ticker) return json({ error: 'ticker is required' }, 400);
+        try {
+          return json(await getHistory(ticker, url.searchParams.get('scale') || '1M'));
+        } catch (e) {
+          return json({ error: e?.message || 'History failed' }, 502);
+        }
+      }
+      if (pathname === '/api/finance/portfolio-history' && method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        try {
+          return json(await getPortfolioHistory(body.holdings || [], body.scale || '6M'));
+        } catch (e) {
+          return json({ error: e?.message || 'Portfolio history failed' }, 502);
+        }
       }
 
       /* ---- External nutrition logging (per-user API key, not a session) ---- */

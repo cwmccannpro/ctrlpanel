@@ -13,33 +13,135 @@ import {
 } from 'recharts';
 import Card from '../../components/shared/Card.jsx';
 import Modal from '../../components/shared/Modal.jsx';
+import Spinner from '../../components/shared/Spinner.jsx';
 import { useCrud } from '../../lib/useData.js';
 import { finance } from '../../lib/api.js';
 import { ASSET_CLASSES } from '../../lib/mockData.js';
 import { currency, compactCurrency, percent, formatDate } from '../../lib/helpers.js';
 
 const PIE_COLORS = ['#e11d48', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899'];
+const GREEN = '#10b981';
+const RED = '#ef4444';
+
+const PERF_SCALES = ['1W', '1M', '3M', '6M', '1Y', 'ALL'];
+const DETAIL_SCALES = ['1D', '1W', '1M', '6M', '1Y', 'ALL'];
+
+const chartTooltip = { background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 };
+
+const fmtTick = (t, scale) => {
+  const d = new Date(t);
+  if (scale === '1D' || scale === '1W') return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (scale === '1Y' || scale === 'ALL') return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+const fmtFull = (t) => new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+function ScaleBar({ scales, value, onChange }) {
+  return (
+    <div className="segmented">
+      {scales.map((s) => (
+        <button key={s} className={value === s ? 'active' : ''} onClick={() => onChange(s)}>{s}</button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Per-holding detail modal: live stats + historical price chart ----
+function HoldingDetail({ holding, quote, onClose }) {
+  const [scale, setScale] = useState('1M');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+    finance
+      .history(holding.ticker, scale)
+      .then((d) => { if (active) { setData(d); setLoading(false); } })
+      .catch((e) => { if (active) { setError(e.message || 'Chart unavailable'); setLoading(false); } });
+    return () => { active = false; };
+  }, [holding.ticker, scale]);
+
+  const price = quote?.price ?? data?.price ?? holding.manual_price ?? holding.avg_cost ?? 0;
+  const dayChange = quote?.change ?? 0;
+  const shares = Number(holding.shares || 0);
+  const value = shares * price;
+  const cost = shares * Number(holding.avg_cost || 0);
+  const gain = value - cost;
+  const gainPct = cost ? (gain / cost) * 100 : 0;
+  const up = (data ? data.periodEnd - data.periodStart : dayChange) >= 0;
+  const color = up ? GREEN : RED;
+  const series = data?.series || [];
+
+  return (
+    <Modal title={`${holding.ticker}${data?.name ? ` · ${data.name}` : ''}`} onClose={onClose} wide>
+      <div className="invest-detail-stats">
+        <div><span className="section-label">Price</span><div className="value-md">{currency(price, { cents: true })}</div></div>
+        <div><span className="section-label">Today</span><div className={`value-md ${dayChange >= 0 ? 'text-green' : 'text-red'}`}>{dayChange >= 0 ? '+' : ''}{percent(dayChange)}</div></div>
+        <div><span className="section-label">Shares</span><div className="value-md">{shares}</div></div>
+        <div><span className="section-label">Position</span><div className="value-md">{currency(value)}</div></div>
+        <div><span className="section-label">Total Gain</span><div className={`value-md ${gain >= 0 ? 'text-green' : 'text-red'}`}>{currency(gain)} · {percent(gainPct)}</div></div>
+      </div>
+
+      <div className="spread" style={{ margin: '4px 0 10px' }}>
+        <span className="section-label">Price history</span>
+        <ScaleBar scales={DETAIL_SCALES} value={scale} onChange={setScale} />
+      </div>
+
+      {loading ? (
+        <div className="placeholder" style={{ minHeight: 240 }}><Spinner /></div>
+      ) : error ? (
+        <p className="body-text" style={{ minHeight: 60 }}>Chart unavailable: {error}</p>
+      ) : series.length === 0 ? (
+        <p className="body-text">No price data for this range.</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={series} margin={{ top: 8, right: 8, left: -6, bottom: 0 }}>
+            <defs>
+              <linearGradient id="detailGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#1e1818" vertical={false} />
+            <XAxis dataKey="t" stroke="#8a7070" fontSize={11} tickFormatter={(t) => fmtTick(t, scale)} minTickGap={40} />
+            <YAxis stroke="#8a7070" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={54} />
+            <Tooltip contentStyle={chartTooltip} labelFormatter={fmtFull} formatter={(v) => [currency(v, { cents: true }), 'Price']} />
+            <Area type="monotone" dataKey="close" stroke={color} strokeWidth={2} fill="url(#detailGrad)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </Modal>
+  );
+}
 
 export default function Investing() {
   const holdings = useCrud('holdings');
   const dividends = useCrud('dividends');
-  const snapshots = useCrud('portfolio_snapshots', 'snapshot_date');
   const [prices, setPrices] = useState({});
   const [live, setLive] = useState(false);
   const [allocBy, setAllocBy] = useState('class');
   const [editHolding, setEditHolding] = useState(null);
   const [addDiv, setAddDiv] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  const [perfScale, setPerfScale] = useState('6M');
+  const [perf, setPerf] = useState([]);
+  const [perfLoading, setPerfLoading] = useState(false);
 
   const tickers = useMemo(() => holdings.rows.map((h) => h.ticker).filter(Boolean), [holdings.rows]);
   const tickerKey = tickers.join(',');
 
+  // ---- Live quotes (poll every 10s) ----
   useEffect(() => {
-    if (tickers.length === 0) return;
+    if (tickers.length === 0) { setLive(false); return; }
     let active = true;
     const poll = async () => {
       try {
         const data = await finance.prices(tickers);
-        if (active) { setPrices(data); setLive(true); }
+        if (active) { setPrices(data); setLive(Object.keys(data).length > 0); }
       } catch {
         if (active) setLive(false);
       }
@@ -51,8 +153,9 @@ export default function Investing() {
   }, [tickerKey]);
 
   const enriched = holdings.rows.map((h) => {
-    const price = prices[h.ticker]?.price ?? h.manual_price ?? h.avg_cost ?? 0;
-    const dayChange = prices[h.ticker]?.change ?? 0;
+    const quote = prices[h.ticker];
+    const price = quote?.price ?? h.manual_price ?? h.avg_cost ?? 0;
+    const dayChange = quote?.change ?? 0;
     const value = Number(h.shares || 0) * price;
     const cost = Number(h.shares || 0) * Number(h.avg_cost || 0);
     const gain = value - cost;
@@ -63,13 +166,43 @@ export default function Investing() {
   const totalValue = enriched.reduce((s, h) => s + h.value, 0);
   const totalGain = enriched.reduce((s, h) => s + h.gain, 0);
   const totalCost = totalValue - totalGain;
+  const prevValue = enriched.reduce((s, h) => {
+    const dc = Number(h.dayChange) || 0;
+    const prev = dc ? h.value / (1 + dc / 100) : h.value;
+    return s + (Number.isFinite(prev) ? prev : h.value);
+  }, 0);
+  const dayGain = totalValue - prevValue;
+  const dayPct = prevValue ? (dayGain / prevValue) * 100 : 0;
+
+  // ---- Portfolio performance history (reconstructed from real prices) ----
+  const posKey = enriched.filter((h) => h.ticker && Number(h.shares) > 0).map((h) => `${h.ticker}:${h.shares}`).join(',');
+  useEffect(() => {
+    const list = holdings.rows
+      .filter((h) => h.ticker && Number(h.shares) > 0)
+      .map((h) => ({ ticker: h.ticker, shares: Number(h.shares) }));
+    if (!list.length) { setPerf([]); return; }
+    let active = true;
+    setPerfLoading(true);
+    finance
+      .portfolioHistory(list, perfScale)
+      .then((d) => { if (active) setPerf(d.series || []); })
+      .catch(() => { if (active) setPerf([]); })
+      .finally(() => { if (active) setPerfLoading(false); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posKey, perfScale]);
+
+  const perfStart = perf[0]?.value ?? 0;
+  const perfEnd = perf.at(-1)?.value ?? 0;
+  const perfChange = perfEnd - perfStart;
+  const perfPct = perfStart ? (perfChange / perfStart) * 100 : 0;
+  const perfUp = perfChange >= 0;
+  const perfColor = perfUp ? GREEN : RED;
 
   const allocData =
     allocBy === 'class'
       ? Object.entries(enriched.reduce((acc, h) => { acc[h.asset_class] = (acc[h.asset_class] || 0) + h.value; return acc; }, {})).map(([name, value]) => ({ name, value }))
       : enriched.map((h) => ({ name: h.ticker, value: h.value }));
-
-  const perfData = snapshots.rows.map((s) => ({ date: formatDate(s.snapshot_date), value: Number(s.total_value) }));
 
   const saveHolding = () => {
     const h = editHolding;
@@ -102,64 +235,115 @@ export default function Investing() {
           <h1 className="page-title">Investing</h1>
           <div className="page-header-sub row" style={{ gap: 6 }}>
             <span className={`status-dot ${live ? 'running' : 'stopped'}`} />
-            {live ? 'Live prices · refreshes every 10s' : 'Live prices when holdings added'}
+            {live ? 'Live market prices · refreshes every 10s' : tickers.length ? 'Fetching live prices…' : 'Add a holding to track live value'}
           </div>
         </div>
         <div className="row">
-          <button className="btn" onClick={() => snapshots.add({ total_value: totalValue })} title="Save a performance snapshot"><i className="ti ti-camera" /> Snapshot</button>
           <button className="btn" onClick={() => setAddDiv({ holding_id: holdings.rows[0]?.id, paid_date: new Date().toISOString().slice(0, 10) })}><i className="ti ti-plus" /> Dividend</button>
           <button className="btn btn--accent" onClick={() => setEditHolding({ asset_class: 'Stocks' })}><i className="ti ti-plus" /> Add Holding</button>
         </div>
       </div>
 
+      {/* Portfolio value stat cards */}
       <div className="grid grid-3">
-        <Card className="stat-card"><div className="stat-card-head"><span className="section-label">Portfolio Value</span><i className="ti ti-chart-pie" /></div><div className="stat-card-value">{currency(totalValue)}</div></Card>
-        <Card className="stat-card"><div className="stat-card-head"><span className="section-label">Total Gain/Loss</span><i className="ti ti-trending-up" /></div><div className={`stat-card-value ${totalGain >= 0 ? 'text-green' : 'text-red'}`}>{currency(totalGain)}</div></Card>
-        <Card className="stat-card"><div className="stat-card-head"><span className="section-label">Return</span><i className="ti ti-percentage" /></div><div className={`stat-card-value ${totalGain >= 0 ? 'text-green' : 'text-red'}`}>{percent(totalCost ? (totalGain / totalCost) * 100 : 0)}</div></Card>
+        <Card className="stat-card">
+          <div className="stat-card-head"><span className="section-label">Portfolio Value</span><i className="ti ti-chart-pie" /></div>
+          <div className="stat-card-value">{currency(totalValue)}</div>
+          <div className={`list-row-meta ${dayGain >= 0 ? 'text-green' : 'text-red'}`}>{dayGain >= 0 ? '▲' : '▼'} {currency(Math.abs(dayGain))} ({percent(dayPct)}) today</div>
+        </Card>
+        <Card className="stat-card">
+          <div className="stat-card-head"><span className="section-label">Total Gain/Loss</span><i className="ti ti-trending-up" /></div>
+          <div className={`stat-card-value ${totalGain >= 0 ? 'text-green' : 'text-red'}`}>{currency(totalGain)}</div>
+          <div className="list-row-meta">on {currency(totalCost)} cost basis</div>
+        </Card>
+        <Card className="stat-card">
+          <div className="stat-card-head"><span className="section-label">Total Return</span><i className="ti ti-percentage" /></div>
+          <div className={`stat-card-value ${totalGain >= 0 ? 'text-green' : 'text-red'}`}>{percent(totalCost ? (totalGain / totalCost) * 100 : 0)}</div>
+          <div className="list-row-meta">all-time</div>
+        </Card>
       </div>
 
+      {/* Big performance graph */}
       <Card className="card-section" static>
-        <div className="card-section-title">Holdings</div>
-        {holdings.rows.length === 0 && <p className="body-text">No holdings yet. Add one to track live value and allocation.</p>}
-        {holdings.rows.length > 0 && (
-          <div className="table-wrap" style={{ border: 'none' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  {['Ticker', 'Name', 'Class', 'Shares', 'Avg Cost', 'Price', 'Value', 'Gain/Loss $', 'Gain/Loss %', 'Day', ''].map((h, i) => (
-                    <th key={i} style={{ cursor: 'default' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {enriched.map((h) => (
-                  <tr key={h.id}>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{h.ticker}</td>
-                    <td>{h.name}</td>
-                    <td><span className="badge">{h.asset_class}</span></td>
-                    <td>{h.shares}</td>
-                    <td>{currency(h.avg_cost, { cents: true })}</td>
-                    <td>{currency(h.price, { cents: true })}</td>
-                    <td>{currency(h.value)}</td>
-                    <td className={h.gain >= 0 ? 'text-green' : 'text-red'}>{currency(h.gain)}</td>
-                    <td className={h.gain >= 0 ? 'text-green' : 'text-red'}>{percent(h.gainPct)}</td>
-                    <td className={h.dayChange >= 0 ? 'text-green' : 'text-red'}>{percent(h.dayChange)}</td>
-                    <td>
-                      <div className="row">
-                        <button className="btn btn--ghost btn--icon" onClick={() => setEditHolding(h)} title="Edit"><i className="ti ti-pencil" /></button>
-                        <button className="btn btn--ghost btn--icon" onClick={() => holdings.remove(h.id)} title="Delete"><i className="ti ti-trash" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="card-section-title">
+          <div className="row" style={{ gap: 12, alignItems: 'baseline' }}>
+            <span>Performance</span>
+            {perf.length > 0 && (
+              <span className={perfUp ? 'text-green' : 'text-red'} style={{ fontSize: 13 }}>
+                {perfUp ? '+' : ''}{currency(perfChange)} ({percent(perfPct)}) · {perfScale}
+              </span>
+            )}
           </div>
+          <ScaleBar scales={PERF_SCALES} value={perfScale} onChange={setPerfScale} />
+        </div>
+        {holdings.rows.length === 0 ? (
+          <p className="body-text">Add holdings to chart your portfolio's real performance over time.</p>
+        ) : perfLoading && perf.length === 0 ? (
+          <div className="placeholder" style={{ minHeight: 280 }}><Spinner /></div>
+        ) : perf.length === 0 ? (
+          <p className="body-text">Couldn't load market history right now — live values above are still current. Try another range.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={320}>
+            <AreaChart data={perf} margin={{ top: 8, right: 8, left: -2, bottom: 0 }}>
+              <defs>
+                <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={perfColor} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={perfColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#1e1818" vertical={false} />
+              <XAxis dataKey="t" stroke="#8a7070" fontSize={11} tickFormatter={(t) => fmtTick(t, perfScale)} minTickGap={44} />
+              <YAxis stroke="#8a7070" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={56} />
+              <Tooltip contentStyle={chartTooltip} labelFormatter={fmtFull} formatter={(v) => [currency(v), 'Portfolio']} />
+              <Area type="monotone" dataKey="value" stroke={perfColor} strokeWidth={2} fill="url(#perfGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
         )}
       </Card>
 
-      <div className="grid grid-2">
-        <Card className="card-section" static>
+      {/* Holdings + Allocation side by side */}
+      <div className="invest-split">
+        <Card className="card-section" static style={{ flex: '2 1 520px', minWidth: 0 }}>
+          <div className="card-section-title"><span>Holdings</span><span className="list-row-meta">Click a row for detail</span></div>
+          {holdings.rows.length === 0 ? (
+            <p className="body-text">No holdings yet. Add one to track live value and allocation.</p>
+          ) : (
+            <div className="table-wrap" style={{ border: 'none' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {['Ticker', 'Price', 'Day', 'Shares', 'Value', 'Gain %', ''].map((h, i) => (
+                      <th key={i} style={{ cursor: 'default' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {enriched.map((h) => (
+                    <tr key={h.id} onClick={() => setDetail(h)} style={{ cursor: 'pointer' }}>
+                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                        {h.ticker}
+                        {h.name && <div className="list-row-meta" style={{ fontWeight: 400 }}>{h.name}</div>}
+                      </td>
+                      <td>{currency(h.price, { cents: true })}</td>
+                      <td className={h.dayChange >= 0 ? 'text-green' : 'text-red'}>{h.dayChange >= 0 ? '+' : ''}{percent(h.dayChange)}</td>
+                      <td>{h.shares}</td>
+                      <td>{currency(h.value)}</td>
+                      <td className={h.gain >= 0 ? 'text-green' : 'text-red'}>{h.gain >= 0 ? '+' : ''}{percent(h.gainPct)}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="row">
+                          <button className="btn btn--ghost btn--icon" onClick={() => setEditHolding(h)} title="Edit"><i className="ti ti-pencil" /></button>
+                          <button className="btn btn--ghost btn--icon" onClick={() => holdings.remove(h.id)} title="Delete"><i className="ti ti-trash" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card className="card-section" static style={{ flex: '1 1 300px', minWidth: 0 }}>
           <div className="card-section-title">
             <span>Allocation</span>
             <div className="segmented">
@@ -175,31 +359,8 @@ export default function Investing() {
                 <Pie data={allocData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={2}>
                   {allocData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="none" />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
+                <Tooltip contentStyle={chartTooltip} formatter={(v) => currency(v)} />
               </PieChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-
-        <Card className="card-section" static>
-          <div className="card-section-title">Performance</div>
-          {perfData.length === 0 ? (
-            <p className="body-text">Tap "Snapshot" over time to build a performance history.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={perfData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="perf" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#1e1818" vertical={false} />
-                <XAxis dataKey="date" stroke="#8a7070" fontSize={11} />
-                <YAxis stroke="#8a7070" fontSize={11} tickFormatter={(v) => compactCurrency(v)} />
-                <Tooltip contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
-                <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} fill="url(#perf)" />
-              </AreaChart>
             </ResponsiveContainer>
           )}
         </Card>
@@ -218,6 +379,8 @@ export default function Investing() {
         ))}
       </Card>
 
+      {detail && <HoldingDetail holding={detail} quote={prices[detail.ticker]} onClose={() => setDetail(null)} />}
+
       {editHolding && (
         <Modal
           title={editHolding.id ? 'Edit Holding' : 'Add Holding'}
@@ -225,15 +388,16 @@ export default function Investing() {
           footer={<><button className="btn btn--ghost" onClick={() => setEditHolding(null)}>Cancel</button><button className="btn btn--accent" onClick={saveHolding}>Save</button></>}
         >
           <div className="grid grid-2">
-            <div className="field"><label className="field-label">Ticker</label><input className="input" value={editHolding.ticker || ''} onChange={(e) => setEditHolding({ ...editHolding, ticker: e.target.value })} autoFocus /></div>
+            <div className="field"><label className="field-label">Ticker</label><input className="input" value={editHolding.ticker || ''} onChange={(e) => setEditHolding({ ...editHolding, ticker: e.target.value })} placeholder="AAPL, BTC…" autoFocus /></div>
             <div className="field"><label className="field-label">Asset Class</label><select className="select" value={editHolding.asset_class} onChange={(e) => setEditHolding({ ...editHolding, asset_class: e.target.value })}>{ASSET_CLASSES.map((a) => <option key={a}>{a}</option>)}</select></div>
           </div>
           <div className="field"><label className="field-label">Name</label><input className="input" value={editHolding.name || ''} onChange={(e) => setEditHolding({ ...editHolding, name: e.target.value })} /></div>
           <div className="grid grid-3">
             <div className="field"><label className="field-label">Shares</label><input className="input" type="number" value={editHolding.shares ?? ''} onChange={(e) => setEditHolding({ ...editHolding, shares: e.target.value })} /></div>
             <div className="field"><label className="field-label">Avg Cost</label><input className="input" type="number" value={editHolding.avg_cost ?? ''} onChange={(e) => setEditHolding({ ...editHolding, avg_cost: e.target.value })} /></div>
-            <div className="field"><label className="field-label">Manual Price</label><input className="input" type="number" value={editHolding.manual_price ?? ''} onChange={(e) => setEditHolding({ ...editHolding, manual_price: e.target.value })} /></div>
+            <div className="field"><label className="field-label">Manual Price</label><input className="input" type="number" value={editHolding.manual_price ?? ''} onChange={(e) => setEditHolding({ ...editHolding, manual_price: e.target.value })} placeholder="fallback only" /></div>
           </div>
+          <p className="list-row-meta">Leave Manual Price blank to always use the live market price. It's only a fallback when a ticker can't be fetched.</p>
         </Modal>
       )}
 

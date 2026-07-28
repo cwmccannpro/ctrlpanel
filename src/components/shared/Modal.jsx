@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 
-// Generic modal. Closes on overlay click and Escape.
-export default function Modal({ title, onClose, children, footer }) {
+// Generic modal. Closes on overlay click and Escape. `wide` widens it for
+// content like charts.
+export default function Modal({ title, onClose, children, footer, wide = false }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose?.();
     window.addEventListener('keydown', onKey);
@@ -10,7 +11,7 @@ export default function Modal({ title, onClose, children, footer }) {
 
   return (
     <div className="modal-overlay" onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`modal ${wide ? 'modal--wide' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="modal-title">{title}</h3>
           <button className="btn btn--ghost btn--icon" onClick={onClose} aria-label="Close">

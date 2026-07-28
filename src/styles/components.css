@@ -2256,3 +2256,29 @@ table.data-table {
   color: var(--accent);
   background: var(--accent-dim);
 }
+
+/* Investing — holdings + allocation side by side, detail modal */
+.invest-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+.invest-split > .card {
+  margin: 0;
+}
+.modal--wide {
+  max-width: 760px;
+}
+.invest-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding-bottom: 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.invest-detail-stats .section-label {
+  display: block;
+  margin-bottom: 3px;
+}
