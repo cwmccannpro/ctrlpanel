@@ -72,6 +72,9 @@ export default function Settings() {
   useEffect(() => {
     if (settings?.accent_color) setAccent(settings.accent_color);
     if (settings?.font_size) setFont(settings.font_size);
+    if (typeof settings?.sidebar_collapsed === 'boolean') {
+      setSidebar(settings.sidebar_collapsed ? 'collapsed' : 'full');
+    }
     if (typeof settings?.show_life_widget === 'boolean') setLifeWidget(settings.show_life_widget);
     // Merge saved connectors with the known built-ins for display
     const list = [...(connectors || [])];
@@ -87,9 +90,14 @@ export default function Settings() {
   };
 
   const persistSettings = async (patch) => {
-    if (user?.id) {
+    if (!user?.id) return false;
+    try {
       await saveUserSettings(user.id, patch);
-      refreshSettings();
+      await refreshSettings();
+      return true;
+    } catch (error) {
+      flash(`Couldn’t save settings: ${error.message}`);
+      return false;
     }
   };
 
@@ -118,11 +126,11 @@ export default function Settings() {
     persistSettings({ font_size: size });
   };
 
-  const setSidebarMode = (mode) => {
+  const setSidebarMode = async (mode) => {
     setSidebar(mode);
     localStorage.setItem('ctrlpanel-sidebar', mode);
-    persistSettings({ sidebar_collapsed: mode === 'collapsed' });
-    window.location.reload();
+    const savedToSupabase = await persistSettings({ sidebar_collapsed: mode === 'collapsed' });
+    if (savedToSupabase) window.location.reload();
   };
 
   const toggleLifeWidget = () => {

@@ -12,6 +12,7 @@ import financeRoutes from './routes/finance.js';
 import socialRoutes from './routes/social.js';
 import nutritionRoutes from './routes/nutrition.js';
 import reportsRoutes from './routes/reports.js';
+import youtubeRoutes from './routes/youtube.js';
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/finance', financeRoutes);
 app.use('/api', socialRoutes); // /api/shares, /api/invites, /api/social
 app.use('/api/nutrition', nutritionRoutes); // external API-key logging
 app.use('/api/reports', reportsRoutes); // inbound PDF report ingestion (per-source token)
+app.use('/api/youtube', youtubeRoutes); // YouTube channel analytics (per-user OAuth)
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

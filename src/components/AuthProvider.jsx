@@ -8,6 +8,7 @@ import {
   onAuthChange,
   getProfile,
   getUserSettings,
+  saveUiPreferences,
 } from '../lib/supabase.js';
 import { applyAccent, FONT_SIZES } from '../lib/helpers.js';
 
@@ -68,6 +69,11 @@ export function AuthProvider({ children }) {
 
   const signIn = useCallback((creds) => sbSignIn(creds), []);
   const signUp = useCallback((creds) => sbSignUp(creds), []);
+  const updateUiPreferences = useCallback(async (section, patch) => {
+    const merged = await saveUiPreferences(section, patch);
+    setSettings((current) => ({ ...(current || {}), ui_preferences: merged }));
+    return merged;
+  }, []);
   const signOut = useCallback(async () => {
     await sbSignOut();
     setSession(null);
@@ -97,6 +103,7 @@ export function AuthProvider({ children }) {
     connectors,
     connectorKey,
     refreshSettings,
+    updateUiPreferences,
     displayName,
     signIn,
     signUp,

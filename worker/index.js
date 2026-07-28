@@ -27,6 +27,16 @@ import {
 import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../backend/nutritionApi.js';
 import { reportKeyFromHeaders, reportSourceForKey, ingestReport } from '../backend/reports.js';
 import {
+  youtubeReady,
+  youtubeAuthUrl,
+  signYoutubeState,
+  verifyYoutubeState,
+  exchangeYoutubeCode,
+  listYoutubeChannels,
+  disconnectYoutubeChannel,
+  getYoutubeAnalytics,
+} from '../backend/youtube.js';
+import {
   backendReady,
   authUrl,
   signState,
@@ -248,6 +258,46 @@ export default {
         }
         if (evMatch && method === 'DELETE') {
           return json(await deleteEvent(user.id, decodeURIComponent(evMatch[1]), url.searchParams.get('calendarId') || 'primary'));
+        }
+      }
+
+      /* ---- YouTube analytics ---- */
+      if (pathname.startsWith('/api/youtube')) {
+        if (pathname === '/api/youtube/status' && method === 'GET') {
+          const ready = youtubeReady();
+          const user = await userFrom(request, url);
+          if (!user) return json({ ready, channels: [] });
+          return json({ ready, channels: await listYoutubeChannels(user.id) });
+        }
+        if (pathname === '/api/youtube/connect' && method === 'GET') {
+          if (!youtubeReady()) return new Response('YouTube is not configured on the server.', { status: 500 });
+          const user = await userFrom(request, url);
+          if (!user) return new Response('Not authenticated.', { status: 401 });
+          return redirect(youtubeAuthUrl(signYoutubeState(user.id)));
+        }
+        if (pathname === '/api/youtube/callback' && method === 'GET') {
+          const base = frontendBase(url);
+          try {
+            if (url.searchParams.get('error')) throw new Error(url.searchParams.get('error'));
+            const userId = verifyYoutubeState(url.searchParams.get('state'));
+            await exchangeYoutubeCode(userId, url.searchParams.get('code'));
+            return redirect(`${base}/socials/youtube?youtube=connected`);
+          } catch (e) {
+            return redirect(`${base}/socials/youtube?youtube=error&message=${encodeURIComponent(e.message)}`);
+          }
+        }
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+        try {
+          if (pathname === '/api/youtube/disconnect' && method === 'POST') {
+            const body = await request.json().catch(() => ({}));
+            return json(await disconnectYoutubeChannel(user.id, body.id));
+          }
+          if (pathname === '/api/youtube/analytics' && method === 'GET') {
+            return json(await getYoutubeAnalytics(user.id, url.searchParams.get('id'), url.searchParams.get('range') || '28d'));
+          }
+        } catch (e) {
+          return json({ error: e?.message || 'Request failed' }, 502);
         }
       }
 

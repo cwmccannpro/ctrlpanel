@@ -66,11 +66,26 @@ export async function saveProfile(userId, patch) {
 }
 
 export async function saveUserSettings(userId, patch) {
-  if (!supabase) return { error: { message: 'Supabase is not configured.' } };
-  return supabase
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const result = await supabase
     .from('user_settings')
     .upsert({ user_id: userId, ...patch, updated_at: new Date().toISOString() })
     .select();
+  if (result.error) throw new Error(result.error.message);
+  return result;
+}
+
+// Atomically merges a named section within user_settings.ui_preferences.
+// The database function uses auth.uid(), so one page cannot overwrite another
+// page's preference section and RLS remains the source of user isolation.
+export async function saveUiPreferences(section, patch) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const { data, error } = await supabase.rpc('merge_ui_preferences', {
+    section_key: section,
+    patch,
+  });
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 /* ---------------- Generic CRUD (RLS-scoped) ---------------- */

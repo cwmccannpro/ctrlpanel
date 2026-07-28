@@ -195,6 +195,64 @@ export function MasterControllerProvider({ children }) {
   );
 }
 
+// ---- Bottom dock: hidden until the mouse nears the bottom, then bubbles up ----
+export function MasterControllerDock() {
+  const { send, open } = useMasterController();
+  const [text, setText] = useState('');
+  const [revealed, setRevealed] = useState(false);
+  const hoverRef = useRef(false);
+  const focusRef = useRef(false);
+  const hideTimer = useRef(null);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      const nearBottom = e.clientY >= window.innerHeight - 100;
+      if (nearBottom) {
+        clearTimeout(hideTimer.current);
+        setRevealed(true);
+      } else if (!hoverRef.current && !focusRef.current) {
+        clearTimeout(hideTimer.current);
+        hideTimer.current = setTimeout(() => setRevealed(false), 350);
+      }
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => { window.removeEventListener('mousemove', onMove); clearTimeout(hideTimer.current); };
+  }, []);
+
+  const submit = () => {
+    if (!text.trim()) return;
+    send(text);
+    setText('');
+  };
+
+  // While the full panel is open it owns the input — hide the dock.
+  if (open) return null;
+
+  return (
+    <div
+      className={`mc-dock ${revealed ? 'is-open' : ''}`}
+      onMouseEnter={() => { hoverRef.current = true; setRevealed(true); }}
+      onMouseLeave={() => { hoverRef.current = false; if (!focusRef.current) setRevealed(false); }}
+    >
+      <button className="mc-dock-hint" onClick={() => setRevealed(true)} aria-label="Open Master Controller" />
+      <div className="mc-dock-bar mc-bar master-controller-input">
+        <i className="ti ti-sparkles mc-bar-icon" />
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          onFocus={() => { focusRef.current = true; }}
+          onBlur={() => { focusRef.current = false; }}
+          placeholder="Ask the Master Controller anything…"
+        />
+        <button className="mc-send" onClick={submit} disabled={!text.trim()} aria-label="Send">
+          <i className="ti ti-arrow-up" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Slide-in panel ----
 function MasterControllerPanel() {
   const { close, clear, send, messages, isStreaming } = useMasterController();

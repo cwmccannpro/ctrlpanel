@@ -1410,7 +1410,7 @@ table.data-table {
 
 /* ---- Topbar user ---- */
 .app-topbar {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 .topbar-user {
   display: flex;
@@ -2281,4 +2281,347 @@ table.data-table {
 .invest-detail-stats .section-label {
   display: block;
   margin-bottom: 3px;
+}
+
+/* ============================================================
+   Dashboard v2 — integrated, card-less panels
+   ============================================================ */
+.dash2-page { display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
+
+.dash2 { display: flex; align-items: flex-start; }
+.dash2-col1 { flex: 0 0 var(--c1, 34%); min-width: 0; }
+.dash2-col2 { flex: 0 0 var(--c2, 33%); min-width: 0; }
+.dash2-col3 { flex: 1 1 0; min-width: 0; }
+.dash2-divider {
+  flex: 0 0 16px;
+  align-self: stretch;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+}
+.dash2-divider::before {
+  content: '';
+  position: absolute;
+  top: 8px; bottom: 8px; left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: var(--border);
+  transition: background var(--transition);
+}
+.dash2-divider:hover::before { background: var(--accent); }
+@media (max-width: 1000px) {
+  .dash2 { flex-direction: column; gap: 16px; }
+  .dash2-surface--left, .dash2-surface--right { flex-basis: auto; width: 100%; }
+  .dash2-divider { display: none; }
+}
+.dash2-add {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.dash2-add:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.dash2-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted);
+  cursor: pointer; font-size: 14px;
+  transition: color var(--transition), background var(--transition);
+}
+.dash2-remove:hover { color: var(--accent); background: var(--bg-elevated); }
+
+/* One seamless surface per column; objects inside share it (no per-widget cards) */
+.dash2-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.dash2-panel { padding: 12px 14px; }
+.dash2-panel + .dash2-panel { border-top: 1px solid var(--border); }
+
+.dash2-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.dash2-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.dash2-select {
+  appearance: none;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 160px;
+}
+.dash2-select:first-child { color: var(--text-primary); }
+.dash2-select:nth-child(2) { color: var(--accent); }
+.dash2-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Task rows */
+.dash2-tasks { display: flex; flex-direction: column; gap: 1px; max-height: 210px; overflow-y: auto; }
+.dash2-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.dash2-task:hover { background: var(--bg-elevated); }
+.dash2-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dash2-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.dash2-task-meta { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+.dash2-empty { font-size: 12px; color: var(--text-muted); padding: 6px 2px; }
+
+/* Macro rings */
+.dash2-rings { display: flex; gap: 8px; }
+.dash2-ring { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.dash2-ring-wrap { position: relative; width: 60px; height: 60px; }
+.dash2-ring-wrap svg { width: 60px; height: 60px; display: block; }
+.ring-track { fill: none; stroke: var(--bg-elevated); stroke-width: 6; }
+.ring-fill { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.dash2-ring-center {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.dash2-ring-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); }
+.dash2-ring-goal { font-size: 10px; color: var(--text-muted); }
+
+/* Life progress — compact bridge between consistency and daily health. */
+.dash2-life-progress { padding-top: 9px; padding-bottom: 10px; }
+.dash2-life-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.dash2-life-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 5px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border-bright);
+  cursor: pointer;
+}
+.dash2-life-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: width .5s ease;
+}
+.dash2-life-track:hover .dash2-life-fill { filter: brightness(1.15); }
+
+/* Supplement message + quote */
+.dash2-quote { font-size: 13px; font-style: italic; line-height: 1.5; color: var(--text-primary); margin: 0 0 10px; }
+.dash2-quote-author { display: block; font-style: normal; font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.dash2-supps { display: flex; flex-direction: column; gap: 5px; }
+.dash2-supp-row { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.4; }
+.dash2-supp-timing {
+  flex-shrink: 0; width: 66px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--accent); padding-top: 1px;
+}
+.dash2-supp-names { color: var(--text-primary); }
+
+/* Fitness today */
+.dash2-fit { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dash2-fit-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #fff;
+}
+.dash2-fit-sub { font-size: 12px; color: var(--text-secondary); }
+
+/* ---- Master Controller bottom dock (hover-reveal, bubbles up) ---- */
+.mc-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: min(680px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.mc-dock-hint {
+  pointer-events: auto;
+  width: 54px;
+  height: 5px;
+  margin-bottom: 6px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border-bright);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+}
+.mc-dock-hint:hover { opacity: 1; transform: scaleX(1.15); }
+.mc-dock.is-open .mc-dock-hint { opacity: 0; }
+.mc-dock-bar {
+  pointer-events: auto;
+  width: 100%;
+  margin-bottom: 18px;
+  transform: translateY(150%) scale(0.96);
+  opacity: 0;
+  transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+}
+.mc-dock.is-open .mc-dock-bar { transform: translateY(0) scale(1); opacity: 1; }
+
+/* Dashboard habits — compact week grid */
+.dash2-habits { display: flex; flex-direction: column; gap: 3px; }
+.dash2-habit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(7, 22px);
+  align-items: center;
+  gap: 4px;
+}
+.dash2-habit-head { margin-bottom: 1px; }
+.dash2-habit-dow {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.dash2-habit-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+.dash2-habit-cell {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+.dash2-habit-cell:hover { border-color: var(--accent); }
+.dash2-habit-cell.done { background: var(--accent); border-color: var(--accent); }
+
+/* ============================================================
+   Socials — YouTube channel analytics
+   ============================================================ */
+.yt-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+}
+.yt-notice > i { color: var(--accent); font-size: 17px; }
+.yt-notice.is-error > i { color: var(--red); }
+.yt-notice .btn { margin-left: auto; }
+.yt-channels {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+}
+.yt-channel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 10px 7px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+.yt-channel-chip:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.yt-channel-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+.yt-channel-thumb {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.yt-channel-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yt-header-thumb {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--border-bright), 0 0 20px var(--accent-dim);
+}
+@media (max-width: 640px) {
+  .yt-header-thumb { width: 40px; height: 40px; flex-basis: 40px; }
+  .yt-channel-name { max-width: 140px; }
 }

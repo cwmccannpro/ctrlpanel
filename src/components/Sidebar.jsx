@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
+import { useAuth } from './AuthProvider.jsx';
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 400;
@@ -35,6 +36,14 @@ const STATIC_FOLDERS = [
       { label: 'Net Worth', to: '/finance/networth' },
       { label: 'Budget', to: '/finance/budget' },
       { label: 'Investing', to: '/finance/investing' },
+    ],
+  },
+  {
+    label: 'Socials',
+    icon: 'ti-share',
+    base: '/socials/youtube',
+    items: [
+      { label: 'YouTube', to: '/socials/youtube' },
     ],
   },
 ];
@@ -97,11 +106,19 @@ function Folder({ folder, collapsed }) {
 
 export default function Sidebar({ collapsed = false }) {
   const { projects, reportSources, crmBoards } = useWorkspace();
+  const { settings, updateUiPreferences } = useAuth();
   const [width, setWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
     return Number.isFinite(saved) ? saved : DEFAULT_WIDTH;
   });
   const draggingRef = useRef(false);
+  const savedWidth = Number(settings?.ui_preferences?.sidebar?.width);
+
+  useEffect(() => {
+    if (Number.isFinite(savedWidth)) {
+      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, savedWidth)));
+    }
+  }, [savedWidth]);
 
   const onMouseDown = useCallback(
     (e) => {
@@ -126,6 +143,7 @@ export default function Sidebar({ collapsed = false }) {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       localStorage.setItem(WIDTH_KEY, String(width));
+      updateUiPreferences('sidebar', { width }).catch(() => {});
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -133,7 +151,7 @@ export default function Sidebar({ collapsed = false }) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [width]);
+  }, [updateUiPreferences, width]);
 
   // CRM, Reports + Projects are dynamic per-user; Health + Finance are fixed.
   const folders = [

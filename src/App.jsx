@@ -2,19 +2,15 @@ import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar.jsx';
 import { PENDING_INVITE_KEY } from './pages/InviteAccept.jsx';
-import { MasterControllerProvider, useMasterController } from './components/MasterController.jsx';
+import { MasterControllerProvider, MasterControllerDock } from './components/MasterController.jsx';
 import { WorkspaceProvider } from './components/WorkspaceProvider.jsx';
 import { useAuth } from './components/AuthProvider.jsx';
 import { initials } from './lib/helpers.js';
 
 function Topbar() {
-  const { toggle } = useMasterController();
   const { displayName, user, signOut } = useAuth();
   return (
     <header className="app-topbar">
-      <button className="btn btn--accent btn--sm" onClick={toggle}>
-        <i className="ti ti-sparkles" /> Master Controller
-      </button>
       <div className="topbar-user">
         <span className="topbar-avatar">{initials(displayName)}</span>
         <span className="topbar-name" title={user?.email}>{displayName}</span>
@@ -27,7 +23,10 @@ function Topbar() {
 }
 
 export default function App() {
-  const collapsed = localStorage.getItem('ctrlpanel-sidebar') === 'collapsed';
+  const { settings } = useAuth();
+  const collapsed = typeof settings?.sidebar_collapsed === 'boolean'
+    ? settings.sidebar_collapsed
+    : localStorage.getItem('ctrlpanel-sidebar') === 'collapsed';
   const navigate = useNavigate();
 
   // Resume an invite link the user opened while signed out (the token was
@@ -48,6 +47,7 @@ export default function App() {
               <Outlet />
             </div>
           </main>
+          <MasterControllerDock />
         </div>
       </MasterControllerProvider>
     </WorkspaceProvider>

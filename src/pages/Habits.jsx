@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -14,69 +14,39 @@ import { useCrud } from '../lib/useData.js';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
 import { lifeStats, ageToBirthdate, compactNumber } from '../lib/helpers.js';
+import { RANGES, RANGE_DAYS, ROLL_WINDOW, dayKey, recentDays, buildTrend } from '../lib/habits.js';
 
-const dayKey = (d) => d.toISOString().slice(0, 10);
 const TRACK_DAYS = 14; // toggle columns shown in the tracking table
-
-// Consistency Trend ranges → days back from today ('ALL' resolves to earliest log).
-const RANGES = ['1M', '3M', '6M', '1Y', 'ALL'];
-const RANGE_DAYS = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
-const ROLL_WINDOW = 7; // rolling completion-rate window (days)
-
-// Build the last N calendar days (oldest → newest).
-function recentDays(n) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const out = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    out.push(d);
-  }
-  return out;
-}
-
-// One point per day: the trailing ROLL_WINDOW-day completion rate across the
-// given habits. `possible` only counts a (habit, day) once the habit existed,
-// so newly-added habits don't drag down earlier history. Works for a single
-// habit or all of them collectively.
-function buildTrend({ habitIds, habitStart, isDone, start, end, windowDays = ROLL_WINDOW }) {
-  const points = [];
-  const cur = new Date(start);
-  while (cur <= end) {
-    let done = 0;
-    let possible = 0;
-    for (let i = 0; i < windowDays; i++) {
-      const d = new Date(cur);
-      d.setDate(cur.getDate() - i);
-      const dk = dayKey(d);
-      for (const id of habitIds) {
-        if (habitStart[id] && dk < habitStart[id]) continue;
-        possible++;
-        if (isDone(id, dk)) done++;
-      }
-    }
-    points.push({
-      date: dayKey(cur),
-      label: cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      rate: possible ? Math.round((done / possible) * 100) : 0,
-    });
-    cur.setDate(cur.getDate() + 1);
-  }
-  return points;
-}
 
 /* ============================================================
    Habit tracking tab
    ============================================================ */
 function HabitTracker() {
+  const { settings, updateUiPreferences } = useAuth();
   const habits = useCrud('habits', 'created_at');
   const logs = useCrud('habit_logs');
   const [adding, setAdding] = useState('');
   const [chartHabit, setChartHabit] = useState('all');
   const [range, setRange] = useState('3M');
+  const preferences = settings?.ui_preferences?.habits || {};
+
+  useEffect(() => {
+    if (preferences.chart_habit) setChartHabit(preferences.chart_habit);
+    if (RANGES.includes(preferences.range)) setRange(preferences.range);
+  }, [preferences.chart_habit, preferences.range]);
+
+  const selectChartHabit = (value) => {
+    setChartHabit(value);
+    updateUiPreferences('habits', { chart_habit: value }).catch(() => {});
+  };
+  const selectRange = (value) => {
+    setRange(value);
+    updateUiPreferences('habits', { range: value }).catch(() => {});
+  };
 
   const activeHabits = habits.rows.filter((h) => h.active !== false);
+  const effectiveChartHabit =
+    chartHabit === 'all' || activeHabits.some((habit) => habit.id === chartHabit) ? chartHabit : 'all';
   const days = recentDays(TRACK_DAYS);
 
   // Fast lookup: `${habit_id}|${date}` → log row
@@ -118,7 +88,9 @@ function HabitTracker() {
     habits.rows.forEach((h) => { habitStart[h.id] = (h.created_at || '').slice(0, 10) || ''; });
     const validIds = new Set(activeHabits.map((h) => h.id));
     const habitIds =
-      chartHabit === 'all' || !validIds.has(chartHabit) ? activeHabits.map((h) => h.id) : [chartHabit];
+      effectiveChartHabit === 'all' || !validIds.has(effectiveChartHabit)
+        ? activeHabits.map((h) => h.id)
+        : [effectiveChartHabit];
     if (!habitIds.length) return [];
 
     const end = new Date();
@@ -139,7 +111,7 @@ function HabitTracker() {
 
     return buildTrend({ habitIds, habitStart, isDone, start, end });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logs.rows, habits.rows, chartHabit, range]);
+  }, [logs.rows, habits.rows, effectiveChartHabit, range]);
 
   const trendAvg = trend.length ? Math.round(trend.reduce((s, p) => s + p.rate, 0) / trend.length) : 0;
 
@@ -231,8 +203,8 @@ function HabitTracker() {
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               <select
                 className="select"
-                value={chartHabit}
-                onChange={(e) => setChartHabit(e.target.value)}
+                value={effectiveChartHabit}
+                onChange={(e) => selectChartHabit(e.target.value)}
                 style={{ width: 'auto' }}
               >
                 <option value="all">All Habits</option>
@@ -242,7 +214,7 @@ function HabitTracker() {
               </select>
               <div className="segmented">
                 {RANGES.map((r) => (
-                  <button key={r} className={range === r ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>
+                  <button key={r} className={range === r ? 'active' : ''} onClick={() => selectRange(r)}>{r}</button>
                 ))}
               </div>
             </div>
@@ -287,11 +259,13 @@ function LifeView() {
 
   const [prompting, setPrompting] = useState(false);
   const [form, setForm] = useState({ birthdate: '', age: '', expectancy });
+  const [saveError, setSaveError] = useState('');
 
   const stats = lifeStats(birthdate, expectancy);
 
   const openPrompt = () => {
     setForm({ birthdate: birthdate || '', age: '', expectancy });
+    setSaveError('');
     setPrompting(true);
   };
 
@@ -299,13 +273,18 @@ function LifeView() {
     const bd = form.birthdate || ageToBirthdate(form.age);
     if (!bd) return;
     const exp = Number(form.expectancy) || 90;
-    localStorage.setItem('ctrlpanel-birthdate', bd);
-    localStorage.setItem('ctrlpanel-life-expectancy', String(exp));
-    if (user?.id) {
-      await saveUserSettings(user.id, { birthdate: bd, life_expectancy: exp });
-      refreshSettings();
+    try {
+      if (user?.id) {
+        await saveUserSettings(user.id, { birthdate: bd, life_expectancy: exp });
+        await refreshSettings();
+      }
+      localStorage.setItem('ctrlpanel-birthdate', bd);
+      localStorage.setItem('ctrlpanel-life-expectancy', String(exp));
+      setSaveError('');
+      setPrompting(false);
+    } catch (error) {
+      setSaveError(error.message || 'Could not save Life View settings.');
     }
-    setPrompting(false);
   };
 
   if (!stats) {
@@ -323,7 +302,7 @@ function LifeView() {
           </div>
         </Card>
         {prompting && (
-          <BirthdateModal form={form} setForm={setForm} onClose={() => setPrompting(false)} onSave={save} />
+          <BirthdateModal form={form} setForm={setForm} error={saveError} onClose={() => setPrompting(false)} onSave={save} />
         )}
       </>
     );
@@ -417,13 +396,13 @@ function LifeView() {
       </Card>
 
       {prompting && (
-        <BirthdateModal form={form} setForm={setForm} onClose={() => setPrompting(false)} onSave={save} />
+        <BirthdateModal form={form} setForm={setForm} error={saveError} onClose={() => setPrompting(false)} onSave={save} />
       )}
     </div>
   );
 }
 
-function BirthdateModal({ form, setForm, onClose, onSave }) {
+function BirthdateModal({ form, setForm, error, onClose, onSave }) {
   return (
     <Modal
       title="Your Life View"
@@ -435,6 +414,7 @@ function BirthdateModal({ form, setForm, onClose, onSave }) {
         </>
       }
     >
+      {error && <p className="body-text text-red" style={{ marginBottom: 12 }}>{error}</p>}
       <div className="field">
         <label className="field-label">Birthdate (preferred)</label>
         <input
@@ -476,7 +456,18 @@ function BirthdateModal({ form, setForm, onClose, onSave }) {
    Page shell with tabs
    ============================================================ */
 export default function Habits() {
+  const { settings, updateUiPreferences } = useAuth();
   const [tab, setTab] = useState('habits');
+  const savedTab = settings?.ui_preferences?.habits?.tab;
+
+  useEffect(() => {
+    if (savedTab === 'habits' || savedTab === 'life') setTab(savedTab);
+  }, [savedTab]);
+
+  const selectTab = (value) => {
+    setTab(value);
+    updateUiPreferences('habits', { tab: value }).catch(() => {});
+  };
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -486,8 +477,8 @@ export default function Habits() {
           <div className="page-header-sub">Build consistency · see the bigger picture</div>
         </div>
         <div className="segmented">
-          <button className={tab === 'habits' ? 'active' : ''} onClick={() => setTab('habits')}>Tracking</button>
-          <button className={tab === 'life' ? 'active' : ''} onClick={() => setTab('life')}>Life View</button>
+          <button className={tab === 'habits' ? 'active' : ''} onClick={() => selectTab('habits')}>Tracking</button>
+          <button className={tab === 'life' ? 'active' : ''} onClick={() => selectTab('life')}>Life View</button>
         </div>
       </div>
 

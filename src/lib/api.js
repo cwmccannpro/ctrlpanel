@@ -119,6 +119,19 @@ async function gfetch(path, options = {}) {
   return res.json();
 }
 
+// YouTube analytics — per-user OAuth managed server-side (tokens never reach
+// the browser). Channel metadata + analytics come back through these calls.
+export const youtube = {
+  status: () => authApi.get('/youtube/status'),
+  connect: async () => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token || '';
+    window.location.href = `${BASE}/youtube/connect?token=${encodeURIComponent(token)}`;
+  },
+  analytics: (id, range) => authApi.get(`/youtube/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
+  disconnect: (id) => authApi.post('/youtube/disconnect', { id }),
+};
+
 export const gcal = {
   status: () => gfetch('/status'),
   connect: async () => {

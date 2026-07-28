@@ -49,7 +49,8 @@
 
 ## Database (summary — schema file is authoritative)
 - Identity: `profiles`, `user_settings` (accent, font, connectors jsonb,
-  dashboard_widgets jsonb, birthdate/life_expectancy for Life View)
+  dashboard_widgets jsonb, `ui_preferences` jsonb, birthdate/life_expectancy
+  for Life View)
 - Tasks: `boards` (per-user, `columns` jsonb = custom Kanban columns), `tasks`,
   `board_shares` (email invites → collaborators; boards/tasks have extra RLS
   policies via `can_access_board()` security-definer fn)
@@ -61,6 +62,8 @@
   `crm_contacts` (+ `board_id`, `custom` jsonb for custom-column values)
 - Calendar: `calendar_events` (local fallback; Google is primary when connected),
   `google_tokens` (service-role only)
+- Socials: `youtube_channels` (service-role only; per-user OAuth tokens + cached
+  channel stats, exposed to the owner only through `/api/youtube/*`)
 - Health: `nutrition_logs` (+ `notes`), `weight_logs`, `water_logs`,
   `user_goals` (+ `water`), `supplements`, `supplement_logs`,
   `fitness_schedule`, `workout_logs`
@@ -148,6 +151,11 @@
   widget rolls up recent PDFs; the Master Controller reads `report_sources` /
   `reports` metadata (read-only — it can't open PDF contents) and lists recent
   ones in the snapshot under `reports`. CTRLpanel never sends anything.
+- **Socials / YouTube**: per-user, multi-channel OAuth integration at
+  `/socials/youtube`; live channel totals plus 7/28/90/365-day views, watch
+  time, and net-subscriber analytics. Tokens stay in the service-role-only
+  `youtube_channels` table. Uses the Google OAuth client with a dedicated
+  `YOUTUBE_REDIRECT_URI`.
 
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
@@ -185,6 +193,9 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   `Content-Type: application/pdf`); auth = per-source token
   (`Authorization: Bearer ctpr_…` or `X-API-Key`), optional `X-Report-Title`
   header; logic in `backend/reports.js` (uploads to the `reports` storage bucket)
+- `GET /api/youtube/status|connect|callback|analytics` ·
+  `POST /api/youtube/disconnect` (Supabase-token auth except OAuth callback;
+  logic in `backend/youtube.js`)
 
 ## Deployment — ONE story: Cloudflare
 - `worker/index.js` is the production backend; it reuses the modules in
