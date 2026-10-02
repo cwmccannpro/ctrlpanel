@@ -93,7 +93,7 @@
   RLS loop. The whole file must always be safe to re-run.
 
 ## Feature Map (what exists — do not rebuild)
-- **Dashboard** — card-less, fully **dynamic** 3-column layout. Panels render
+- **Dashboard** — card-less, fully **dynamic** layout on a horizontally extensible canvas. Panels render
   directly onto one seamless surface per column (hairline dividers between
   them), NOT in individual widget cards — keep it that way.
   · `src/pages/Dashboard.jsx` is only the **layout engine**: drag panels within
@@ -101,6 +101,15 @@
     per-panel height resize (drag the bottom edge), remove, and an Add-panel
     picker grouped by section. A **Customize** toggle reveals that chrome; the
     dashboard is clean and read-only until then. Column widths drag too.
+  · **Canvas**: any number of columns (up to `MAX_COLS` = 12, "Add column" in Customize, or
+    "+ New" in the Add-panel picker); each has a pixel width that is a MINIMUM (260–900, default
+    280) — spare room is shared out in proportion, overflow scrolls. The canvas (`.dash2-canvas`)
+    is the 2D scroller: **hold the middle mouse button (wheel click) and drag to pan**
+    (`lib/useMiddleClickPan.js`; the press is cancelled so the browser's autoscroll never starts,
+    a drag swallows "open link in new tab"), plus Shift+wheel/trackpad and header ← → arrows that
+    appear when it overflows. Customize adds a bar per column (move ◀ ▶, remove — its panels move
+    to the neighbouring column, never lost). Below 1100px the columns stack and the page scrolls
+    (middle-drag then pans the page vertically). Pure rules live in `lib/dashboardLayout.js`.
   · `src/components/dashboardPanels.jsx` is the **panel registry**. Every panel
     is self-contained (fetches its own rows) and receives `{ cfg, onCfg }` for
     its per-instance settings. Add an entry to `PANELS` and it shows up in the
@@ -110,8 +119,9 @@
     Health (macros, water, weight, supplements, training, workouts), Habits
     (week grid, consistency trend, life), Socials (YouTube).
   · Layout saved to `user_settings.dashboard_widgets` as
-    `{ v:6, cols:[l,m], columns:[[{uid,id,cfg,h}],…] }`. `normalize()` migrates
-    older v4/v5 shapes, so never assume the stored shape — run it through that.
+    `{ v:7, widths:[px,…], columns:[[{uid,id,cfg,h}],…] }`. `normalize()` migrates
+    v6 (percentage `cols`, converted to px minus divider space) and older v4/v5
+    shapes, so never assume the stored shape — run it through that.
   The Master Controller is NOT on the page — it's a global bottom dock (see
   below). The legacy `dashboardWidgets.jsx` registry is superseded and unused.
 - **Sidebar** (`src/components/Sidebar.jsx`): top-level links (Dashboard,

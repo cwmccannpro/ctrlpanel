@@ -1,15 +1,17 @@
 // ============================================================
 // CTRLpanel — Dashboard (dynamic, card-less layout engine)
 //
-// Three columns of panels on seamless surfaces. Every panel can be dragged
-// (within a column or across columns), height-resized, and removed; new ones
-// come from the Add panel picker. Column widths drag too. The whole layout —
-// panel placement, per-panel heights + settings, and column widths — is saved
-// per user in `user_settings.dashboard_widgets`.
+// A horizontally extensible canvas: as many columns of panels as you like (up to
+// MAX_COLS), each with its own width. The canvas scrolls both ways — hold the middle
+// mouse button (wheel click) and drag to pan, or use Shift+wheel, a trackpad or the
+// arrow buttons. Every panel can be dragged (within a column or across columns),
+// height-resized and removed; new ones come from the Add panel picker; columns can be
+// added, reordered, widened and removed in Customize mode. The whole layout is saved
+// per user in `user_settings.dashboard_widgets` (shape: lib/dashboardLayout.js).
 //
 // Panels themselves live in components/dashboardPanels.jsx.
 // ============================================================
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { Fragment, useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors, useDroppable,
@@ -21,8 +23,12 @@ import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
 import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT, LAYOUTS } from '../components/dashboardPanels.jsx';
 import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
+import {
+  DEFAULT_COL_W, MAX_COLS, addColumn, moveColumn, normalizeWidths, overflowInfo, removeColumn,
+  scrollStep, serializeLayout, setColumnWidth, widthsFromPercent,
+} from '../lib/dashboardLayout.js';
+import { scrollParent, useMiddleClickPan } from '../lib/useMiddleClickPan.js';
 
-const COL_COUNT = 3;
 const MIN_PANEL_H = 90;
 const MAX_PANEL_H = 900;
 
@@ -41,34 +47,46 @@ const idsOf = (cols) => JSON.stringify(cols.map((col) => (Array.isArray(col) ? c
 const untouched = (cols) =>
   cols.every((col) => Array.isArray(col) && col.every((it) => !(Number(it.h) > 0) && !Object.keys(it.cfg || {}).length));
 
-// Accepts the current shape plus older saved shapes (v4/v5 board-panel arrays).
-function normalize(saved) {
-  if (!saved || Array.isArray(saved)) return defaultColumns();
+const cleanColumn = (col) =>
+  (Array.isArray(col) ? col : [])
+    .filter((it) => it && PANELS_BY_ID[it.id])
+    .map((it) => ({
+      uid: it.uid || newUid(it.id),
+      id: it.id,
+      cfg: it.cfg && typeof it.cfg === 'object' ? it.cfg : {},
+      h: Number(it.h) > 0 ? clamp(Number(it.h), MIN_PANEL_H, MAX_PANEL_H) : null,
+    }));
+
+/**
+ * Saved layout → `{ columns, widths }`. Accepts the current shape (v7), the previous
+ * percentage-based one (v6, converted to pixels using the canvas width) and the older
+ * board-panel arrays (v4/v5).
+ */
+function normalize(saved, containerWidth) {
+  const fresh = (layout) => {
+    const columns = defaultColumns(layout);
+    return { columns, widths: normalizeWidths(undefined, columns.length) };
+  };
+  if (!saved || Array.isArray(saved)) return fresh();
 
   if (Array.isArray(saved.columns) && saved.columns.length) {
     const oldDefault = [['board', 'board', 'board'], ['networth', 'cashflow', 'investing', 'youtube'], ['habits_grid', 'habits_trend', 'macros', 'supplements', 'fitness']];
-    if (idsOf(saved.columns) === JSON.stringify(oldDefault)) return defaultColumns();
+    if (idsOf(saved.columns) === JSON.stringify(oldDefault)) return fresh();
     // Still on the previous default (now the Work layout) and never customized -> move to Today.
-    if (idsOf(saved.columns) === JSON.stringify(LAYOUTS.work) && untouched(saved.columns)) return defaultColumns();
-    const cols = saved.columns.slice(0, COL_COUNT).map((col) =>
-      (Array.isArray(col) ? col : [])
-        .filter((it) => it && PANELS_BY_ID[it.id])
-        .map((it) => ({
-          uid: it.uid || newUid(it.id),
-          id: it.id,
-          cfg: it.cfg && typeof it.cfg === 'object' ? it.cfg : {},
-          h: Number(it.h) > 0 ? clamp(Number(it.h), MIN_PANEL_H, MAX_PANEL_H) : null,
-        }))
-    );
-    while (cols.length < COL_COUNT) cols.push([]);
-    return cols;
+    if (idsOf(saved.columns) === JSON.stringify(LAYOUTS.work) && untouched(saved.columns)) return fresh();
+
+    const columns = saved.columns.slice(0, MAX_COLS).map(cleanColumn);
+    const widths = Array.isArray(saved.widths)
+      ? normalizeWidths(saved.widths, columns.length)
+      : widthsFromPercent(saved.cols, columns.length, containerWidth); // v6 percentages
+    return { columns, widths };
   }
 
   // v4/v5: { panels: [{board_id, column}], options: {...} } → rebuild.
   if (Array.isArray(saved.panels)) {
     const o = saved.options || {};
     const left = saved.panels.map((p) => makeItem('board', { board_id: p.board_id, column: p.column }));
-    return [
+    const columns = [
       left.length ? left : [makeItem('board')],
       [
         makeItem('networth'),
@@ -85,8 +103,9 @@ function normalize(saved) {
         makeItem('fitness'),
       ],
     ];
+    return { columns, widths: normalizeWidths(undefined, columns.length) };
   }
-  return defaultColumns();
+  return fresh();
 }
 
 /* ---------- a single draggable / resizable panel ---------- */
@@ -141,10 +160,35 @@ function PanelShell({ item, editing, onRemove, onHeight, children }) {
 }
 
 /* ---------- a column surface ---------- */
-function Column({ index, items, editing, onRemove, onHeight, onCfg, onAdd }) {
+function Column({ index, count, width, items, editing, onRemove, onHeight, onCfg, onAdd, onMoveCol, onRemoveCol }) {
   const { setNodeRef, isOver } = useDroppable({ id: `col-${index}` });
+  // The width is a minimum: spare room is shared out in proportion to it (see styles).
   return (
-    <div ref={setNodeRef} className={`dash2-surface dash2-col${index + 1} ${isOver ? 'is-over' : ''}`}>
+    <div
+      ref={setNodeRef}
+      className={`dash2-surface dash2-col ${isOver ? 'is-over' : ''}`}
+      style={{ flex: `${width} 0 ${width}px`, minWidth: width }}
+    >
+      {editing && (
+        <div className="dash2-colbar">
+          <span className="dash2-colbar-name">Column {index + 1}</span>
+          <button className="dash2-tool" title="Move column left" aria-label="Move column left" disabled={index === 0} onClick={() => onMoveCol(index, -1)}>
+            <i className="ti ti-chevron-left" />
+          </button>
+          <button className="dash2-tool" title="Move column right" aria-label="Move column right" disabled={index === count - 1} onClick={() => onMoveCol(index, 1)}>
+            <i className="ti ti-chevron-right" />
+          </button>
+          <button
+            className="dash2-tool"
+            title="Remove column (its panels move to the neighbouring column)"
+            aria-label="Remove column"
+            disabled={count === 1}
+            onClick={() => onRemoveCol(index)}
+          >
+            <i className="ti ti-trash" />
+          </button>
+        </div>
+      )}
       <SortableContext items={items.map((i) => i.uid)} strategy={verticalListSortingStrategy}>
         {items.map((item) => {
           const def = PANELS_BY_ID[item.id];
@@ -178,12 +222,15 @@ export default function Dashboard() {
   const { displayName, user, settings } = useAuth();
   const [now, setNow] = useState(new Date());
   const [columns, setColumns] = useState(null);
-  const [cols, setColsW] = useState([34, 33]);
+  const [widths, setWidths] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [picker, setPicker] = useState(null); // column index when open
+  const [picker, setPicker] = useState(null); // column index when open (columns.length = a new column)
   const [activeId, setActiveId] = useState(null);
+  const [nav, setNav] = useState({ overflowing: false, canLeft: false, canRight: false });
 
-  const containerRef = useRef(null);
+  const pageRef = useRef(null);
+  const canvasRef = useRef(null);
+  const rowRef = useRef(null);
   const initRef = useRef(false);
   const saveQueue = useRef(Promise.resolve());
   // Mirrors of the layout state. A cross-column move is applied during
@@ -191,7 +238,7 @@ export default function Dashboard() {
   // persists; these always hold what was last set. State updaters stay pure —
   // saving from inside one would fire twice under StrictMode.
   const columnsRef = useRef(null);
-  const colsRef = useRef(cols);
+  const widthsRef = useRef(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
@@ -202,26 +249,17 @@ export default function Dashboard() {
   // Load saved layout once settings arrive.
   useEffect(() => {
     if (initRef.current || !settings) return;
-    const saved = settings.dashboard_widgets;
-    const normalized = normalize(saved);
-    columnsRef.current = normalized;
-    setColumns(normalized);
-    if (saved && !Array.isArray(saved) && Array.isArray(saved.cols) && saved.cols.length === 2) {
-      colsRef.current = saved.cols;
-      setColsW(saved.cols);
-    }
+    const { columns: cols, widths: w } = normalize(settings.dashboard_widgets, canvasRef.current?.clientWidth || 0);
+    columnsRef.current = cols;
+    widthsRef.current = w;
+    setColumns(cols);
+    setWidths(w);
     initRef.current = true;
   }, [settings]);
 
-  const persist = (nextColumns, nextCols) => {
+  const persist = (nextColumns, nextWidths) => {
     if (!user?.id) return;
-    const payload = {
-      v: 6,
-      cols: nextCols ?? colsRef.current,
-      columns: (nextColumns ?? columnsRef.current ?? []).map((col) =>
-        col.map(({ uid, id, cfg, h }) => ({ uid, id, cfg, h }))
-      ),
-    };
+    const payload = serializeLayout(nextColumns ?? columnsRef.current ?? [], nextWidths ?? widthsRef.current ?? []);
     saveQueue.current = saveQueue.current
       .catch(() => {})
       .then(() => saveUserSettings(user.id, { dashboard_widgets: payload }))
@@ -235,14 +273,99 @@ export default function Dashboard() {
     if (save) persist(next);
   };
 
+  // Replace columns + widths together (column add / remove / move, layout presets).
+  const commit = (nextColumns, nextWidths) => {
+    columnsRef.current = nextColumns;
+    widthsRef.current = nextWidths;
+    setColumns(nextColumns);
+    setWidths(nextWidths);
+    persist(nextColumns, nextWidths);
+  };
+
   /* ---- panel ops ---- */
   const removePanel = (uid) => apply((prev) => prev.map((c) => c.filter((i) => i.uid !== uid)));
   const setPanelCfg = (uid, patch) =>
     apply((prev) => prev.map((c) => c.map((i) => (i.uid === uid ? { ...i, cfg: { ...i.cfg, ...patch } } : i))));
   const setPanelHeight = (uid, h, save) =>
     apply((prev) => prev.map((c) => c.map((i) => (i.uid === uid ? { ...i, h } : i))), save);
+
+  /* ---- canvas scrolling ---- */
+  const scrollToEnd = () => requestAnimationFrame(() => canvasRef.current?.scrollTo({ left: canvasRef.current.scrollWidth, behavior: 'smooth' }));
+
+  const updateNav = useCallback(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const next = overflowInfo(c.scrollLeft, c.clientWidth, c.scrollWidth);
+    setNav((prev) => (prev.overflowing === next.overflowing && prev.canLeft === next.canLeft && prev.canRight === next.canRight ? prev : next));
+  }, []);
+
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return undefined;
+    updateNav();
+    c.addEventListener('scroll', updateNav, { passive: true });
+    let ro;
+    if (typeof ResizeObserver === 'function') {
+      ro = new ResizeObserver(updateNav);
+      ro.observe(c);
+      if (rowRef.current) ro.observe(rowRef.current);
+    }
+    window.addEventListener('resize', updateNav);
+    return () => {
+      c.removeEventListener('scroll', updateNav);
+      ro?.disconnect();
+      window.removeEventListener('resize', updateNav);
+    };
+  }, [updateNav, columns?.length, widths]);
+
+  const scrollByColumn = (dir) => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const step = (widthsRef.current?.[0] || DEFAULT_COL_W) + 16;
+    c.scrollTo({ left: scrollStep(c.scrollLeft, c.clientWidth, c.scrollWidth, dir, step), behavior: 'smooth' });
+  };
+
+  // Middle-click + drag pans the canvas in both directions. When the canvas isn't
+  // scrollable itself (phones stack the columns) the page's own scroller is panned.
+  useMiddleClickPan(pageRef, () => {
+    const c = canvasRef.current;
+    if (!c) return {};
+    if (c.scrollWidth > c.clientWidth + 1 || c.scrollHeight > c.clientHeight + 1) return { x: c, y: c };
+    return { y: scrollParent(c) };
+  });
+
+  /* ---- column ops ---- */
+  const addCol = () => {
+    const r = addColumn(columnsRef.current, widthsRef.current);
+    commit(r.columns, r.widths);
+    scrollToEnd();
+  };
+  const removeCol = (i) => {
+    const r = removeColumn(columnsRef.current, widthsRef.current, i);
+    commit(r.columns, r.widths);
+  };
+  const moveCol = (i, dir) => {
+    const r = moveColumn(columnsRef.current, widthsRef.current, i, dir);
+    commit(r.columns, r.widths);
+  };
+  const applyLayout = (key) => {
+    const cols = defaultColumns(LAYOUTS[key]);
+    commit(cols, normalizeWidths(undefined, cols.length));
+  };
+
   const addPanel = (colIndex, id) => {
-    apply((prev) => prev.map((c, i) => (i === colIndex ? [...c, makeItem(id)] : c)));
+    let cols = columnsRef.current || [];
+    let w = widthsRef.current || [];
+    let target = colIndex;
+    if (colIndex >= cols.length) {
+      // "New column": append one, then drop the panel into it.
+      const r = addColumn(cols, w);
+      cols = r.columns;
+      w = r.widths;
+      target = cols.length - 1;
+      scrollToEnd();
+    }
+    commit(cols.map((c, i) => (i === target ? [...c, makeItem(id)] : c)), w);
     setPicker(null);
   };
 
@@ -269,7 +392,7 @@ export default function Dashboard() {
     }, false); // saved once the drag ends
   };
 
-  const persistLatest = () => persist(columnsRef.current);
+  const persistLatest = () => persist(columnsRef.current, widthsRef.current);
 
   const onDragEnd = ({ active, over }) => {
     setActiveId(null);
@@ -290,53 +413,63 @@ export default function Dashboard() {
     persistLatest(); // cross-column move already applied in onDragOver
   };
 
-  /* ---- column width resize ---- */
+  /* ---- column width resize (drag the divider to the right of a column) ---- */
   const startResize = (idx) => (e) => {
     e.preventDefault();
-    const el = containerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
+    e.stopPropagation();
+    const colEl = rowRef.current?.querySelectorAll(':scope > .dash2-surface')[idx];
+    // Start from the width actually on screen (a column may be stretched to fill spare room).
+    const startW = colEl?.getBoundingClientRect().width ?? widthsRef.current[idx];
+    const startX = e.clientX;
     const onMove = (ev) => {
-      const pctX = ((ev.clientX - rect.left) / rect.width) * 100;
-      const [c1, c2] = colsRef.current;
-      const next = idx === 0
-        ? [clamp(pctX, 15, 100 - c2 - 15), c2]
-        : [c1, clamp(pctX - c1, 15, 100 - c1 - 15)];
-      colsRef.current = next;
-      setColsW(next);
+      const next = setColumnWidth(widthsRef.current, idx, startW + (ev.clientX - startX));
+      widthsRef.current = next;
+      setWidths(next);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      persist(undefined, colsRef.current);
+      persist(columnsRef.current, widthsRef.current);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   };
 
   const shown = columns || [[], [], []];
+  const shownWidths = widths || normalizeWidths(undefined, shown.length);
   const used = useMemo(() => new Set(shown.flat().map((i) => i.id)), [shown]);
   const activeItem = activeId ? shown.flat().find((i) => i.uid === activeId) : null;
   const groups = useMemo(() => [...new Set(PANELS.map((p) => p.group))], []);
 
   return (
-    <div className="fade-in dash2-page">
+    <div className="fade-in dash2-page" ref={pageRef}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <div className="dash-greeting">{greeting(now)}, {displayName}</div>
           <div className="dash-clock">{formatLongDate(now)} · {formatClock(now)}</div>
         </div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {nav.overflowing && (
+            <div className="dash2-pan" title="Middle-click and drag to pan · Shift+wheel scrolls sideways">
+              <button className="btn btn--sm btn--ghost btn--icon" aria-label="Scroll columns left" disabled={!nav.canLeft} onClick={() => scrollByColumn(-1)}>
+                <i className="ti ti-chevron-left" />
+              </button>
+              <button className="btn btn--sm btn--ghost btn--icon" aria-label="Scroll columns right" disabled={!nav.canRight} onClick={() => scrollByColumn(1)}>
+                <i className="ti ti-chevron-right" />
+              </button>
+            </div>
+          )}
           <Link className="btn btn--sm" to="/knowledge"><i className="ti ti-notebook" /> Capture context</Link>
           {editing && ['today', 'work'].map((key) => (
-            <button
-              key={key}
-              className="btn btn--sm"
-              onClick={() => { const next = defaultColumns(LAYOUTS[key]); columnsRef.current = next; setColumns(next); persistLatest(); }}
-            >
+            <button key={key} className="btn btn--sm" onClick={() => applyLayout(key)}>
               {key === 'today' ? 'Today layout' : 'Work layout'}
             </button>
           ))}
+          {editing && shown.length < MAX_COLS && (
+            <button className="btn btn--sm" onClick={addCol}>
+              <i className="ti ti-layout-columns" /> Add column
+            </button>
+          )}
           {editing && (
             <button className="btn btn--sm" onClick={() => setPicker(0)}>
               <i className="ti ti-plus" /> Add panel
@@ -360,21 +493,33 @@ export default function Dashboard() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setActiveId(null)}
       >
-        <div className={`dash2 ${editing ? 'is-editing' : ''}`} ref={containerRef} style={{ '--c1': `${cols[0]}%`, '--c2': `${cols[1]}%` }}>
-          <Column
-            index={0} items={shown[0]} editing={editing}
-            onRemove={removePanel} onHeight={setPanelHeight} onCfg={setPanelCfg} onAdd={setPicker}
-          />
-          <div className="dash2-divider" onPointerDown={startResize(0)} title="Drag to resize" />
-          <Column
-            index={1} items={shown[1]} editing={editing}
-            onRemove={removePanel} onHeight={setPanelHeight} onCfg={setPanelCfg} onAdd={setPicker}
-          />
-          <div className="dash2-divider" onPointerDown={startResize(1)} title="Drag to resize" />
-          <Column
-            index={2} items={shown[2]} editing={editing}
-            onRemove={removePanel} onHeight={setPanelHeight} onCfg={setPanelCfg} onAdd={setPicker}
-          />
+        <div className="dash2-canvas" ref={canvasRef}>
+          <div className={`dash2 ${editing ? 'is-editing' : ''}`} ref={rowRef}>
+            {shown.map((items, i) => (
+              <Fragment key={i}>
+                {i > 0 && <div className="dash2-divider" onPointerDown={startResize(i - 1)} title="Drag to resize" />}
+                <Column
+                  index={i}
+                  count={shown.length}
+                  width={shownWidths[i]}
+                  items={items}
+                  editing={editing}
+                  onRemove={removePanel}
+                  onHeight={setPanelHeight}
+                  onCfg={setPanelCfg}
+                  onAdd={setPicker}
+                  onMoveCol={moveCol}
+                  onRemoveCol={removeCol}
+                />
+              </Fragment>
+            ))}
+            {editing && shown.length < MAX_COLS && (
+              <button className="dash2-addcol" onClick={addCol}>
+                <i className="ti ti-plus" />
+                <span>Add column</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <DragOverlay dropAnimation={null}>
@@ -391,12 +536,17 @@ export default function Dashboard() {
         <Modal title="Add a panel" onClose={() => setPicker(null)}>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">Column</label>
-            <div className="segmented">
-              {[0, 1, 2].map((i) => (
+            <div className="segmented" style={{ flexWrap: 'wrap' }}>
+              {shown.map((_, i) => (
                 <button key={i} className={picker === i ? 'active' : ''} onClick={() => setPicker(i)}>
-                  {['Left', 'Middle', 'Right'][i]}
+                  {i + 1}
                 </button>
               ))}
+              {shown.length < MAX_COLS && (
+                <button className={picker >= shown.length ? 'active' : ''} onClick={() => setPicker(shown.length)}>
+                  + New
+                </button>
+              )}
             </div>
           </div>
           {groups.map((g) => (
