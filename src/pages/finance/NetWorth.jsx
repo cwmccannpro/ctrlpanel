@@ -51,7 +51,7 @@ export default function NetWorth() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Net Worth</h1>
+          <h1 className="sr-only">Net Worth</h1>
           <div className="page-header-sub">{accounts.length} accounts</div>
         </div>
         <div className="row">
@@ -83,10 +83,10 @@ export default function NetWorth() {
                     <stop offset="100%" stopColor="#e11d48" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="#1e1818" vertical={false} />
-                <XAxis dataKey="date" stroke="#8a7070" fontSize={11} />
-                <YAxis stroke="#8a7070" fontSize={11} tickFormatter={(v) => compactCurrency(v)} />
-                <Tooltip contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--text-secondary)" fontSize={11} />
+                <YAxis stroke="var(--text-secondary)" fontSize={11} tickFormatter={(v) => compactCurrency(v)} />
+                <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
                 <Area type="monotone" dataKey="total" stroke="#e11d48" strokeWidth={2} fill="url(#nw)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -103,7 +103,7 @@ export default function NetWorth() {
                 <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={2}>
                   {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="none" />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
+                <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 }} formatter={(v) => currency(v)} />
               </PieChart>
             </ResponsiveContainer>
           )}

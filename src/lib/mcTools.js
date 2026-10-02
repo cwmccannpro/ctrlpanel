@@ -7,6 +7,8 @@
 // ============================================================
 import { queryTable, insert, update, remove } from './supabase.js';
 import { gcal } from './api.js';
+import { saveSessionContext } from './knowledge.js';
+import { dayKey } from './helpers.js';
 
 // Cache the Google-connection check briefly so calendar tools route to the
 // same place the Calendar page reads (Google when connected, else Supabase).
@@ -25,6 +27,7 @@ async function isGoogleConnected() {
 // Tables the Master Controller may read/write, with the text columns its
 // `query_records` search scans. Anything not listed here is rejected.
 export const TABLE_META = {
+  knowledge_notes: { search: ['title','content','folder'], order: 'updated_at' },
   tasks: { search: ['title', 'description'], order: 'created_at' },
   boards: { search: ['name'], order: 'created_at' },
   projects: { search: ['name', 'description', 'goal', 'notes'], order: 'created_at' },
@@ -48,15 +51,14 @@ export const TABLE_META = {
   dividends: { search: [], order: 'paid_date' },
   habits: { search: ['name'], order: 'created_at' },
   habit_logs: { search: [], order: 'log_date' },
-  report_sources: { search: ['name'], order: 'created_at' },
-  reports: { search: ['title'], order: 'received_at' },
+  opportunities: { search: ['title', 'org', 'industry', 'location', 'kind'], order: 'score' },
 };
 
 const isAllowed = (table) => Object.prototype.hasOwnProperty.call(TABLE_META, table);
-// Inbound PDF reports are written by the backend on ingest — the model may
-// read the metadata, never write it (and it can't read the PDF contents).
-const READ_ONLY = new Set(['report_sources', 'reports']);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Opportunities are written by the Opportunities Agent run — the model may
+// read them, never write them.
+const READ_ONLY = new Set(['opportunities', 'knowledge_notes']); // Knowledge writes use version-checked save_context.
+const todayISO = () => dayKey(new Date());
 
 /**
  * Compact, always-on awareness snapshot injected into the system prompt each
@@ -121,13 +123,14 @@ export async function buildSnapshot(userName) {
   snap.projects = projects.map((p) => ({ id: p.id, name: p.name, status: p.status }));
   snap.habits = habits.map((h) => ({ id: h.id, name: h.name }));
 
-  // Recent inbound PDF reports (metadata only — the model can't read the PDFs).
+  // Top Opportunities Agent picks the user hasn't dismissed or applied to.
   try {
-    const { data: reports } = await queryTable('reports', { order: 'received_at', ascending: false, limit: 10 });
-    if (reports?.length) {
-      snap.reports = reports.map((r) => ({ id: r.id, source_id: r.source_id, title: r.title, received_at: r.received_at }));
+    const { data: opps } = await queryTable('opportunities', { order: 'score', ascending: false, limit: 25 });
+    const picks = (opps || []).filter((o) => o.status === 'new' || o.status === 'saved').slice(0, 5);
+    if (picks.length) {
+      snap.opportunities = picks.map((o) => ({ id: o.id, title: o.title, org: o.org, kind: o.kind, score: o.score, deadline: o.deadline, status: o.status }));
     }
-  } catch { /* report awareness is optional */ }
+  } catch { /* opportunity awareness is optional */ }
 
   return snap;
 }
@@ -140,13 +143,14 @@ export async function buildSnapshot(userName) {
 export async function executeTool(name, input = {}, { navigate, confirm } = {}) {
   try {
     switch (name) {
+      case 'save_context': return JSON.stringify({ok:true,note:await saveSessionContext(input)});
       case 'navigate_to': {
         const routes = {
           dashboard: '/', calendar: '/calendar', todo: '/todo', habits: '/habits',
-          reports: '/reports', projects: '/projects', crm: '/crm',
+          agents: '/agents', opportunities: '/agents/opportunities', projects: '/projects', crm: '/crm',
           nutrition: '/health/nutrition', supplements: '/health/supplements', fitness: '/health/fitness',
           networth: '/finance/networth', budget: '/finance/budget', investing: '/finance/investing',
-          settings: '/settings',
+          settings: '/settings', knowledge: '/knowledge',
         };
         const route = routes[String(input.page || '').toLowerCase()];
         if (!route) return `Unknown page: ${input.page}`;

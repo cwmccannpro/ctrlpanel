@@ -10,6 +10,7 @@
 // Panels themselves live in components/dashboardPanels.jsx.
 // ============================================================
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors, useDroppable,
 } from '@dnd-kit/core';
@@ -18,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import Modal from '../components/shared/Modal.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
-import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT } from '../components/dashboardPanels.jsx';
+import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT, LAYOUTS } from '../components/dashboardPanels.jsx';
 import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
 
 const COL_COUNT = 3;
@@ -31,15 +32,24 @@ const newUid = (id) => `${id}-${Date.now()}-${uidSeq++}`;
 /* ---------- layout normalization ---------- */
 const makeItem = (id, cfg = {}, h = null) => ({ uid: newUid(id), id, cfg, h });
 
-function defaultColumns() {
-  return DEFAULT_LAYOUT.map((ids) => ids.filter((id) => PANELS_BY_ID[id]).map((id) => makeItem(id)));
+function defaultColumns(layout = DEFAULT_LAYOUT) {
+  return layout.map((ids) => ids.filter((id) => PANELS_BY_ID[id]).map((id) => makeItem(id)));
 }
+
+const idsOf = (cols) => JSON.stringify(cols.map((col) => (Array.isArray(col) ? col.map((it) => it.id) : [])));
+// A saved layout nobody has customized: no panel has a height or settings.
+const untouched = (cols) =>
+  cols.every((col) => Array.isArray(col) && col.every((it) => !(Number(it.h) > 0) && !Object.keys(it.cfg || {}).length));
 
 // Accepts the current shape plus older saved shapes (v4/v5 board-panel arrays).
 function normalize(saved) {
   if (!saved || Array.isArray(saved)) return defaultColumns();
 
   if (Array.isArray(saved.columns) && saved.columns.length) {
+    const oldDefault = [['board', 'board', 'board'], ['networth', 'cashflow', 'investing', 'youtube'], ['habits_grid', 'habits_trend', 'macros', 'supplements', 'fitness']];
+    if (idsOf(saved.columns) === JSON.stringify(oldDefault)) return defaultColumns();
+    // Still on the previous default (now the Work layout) and never customized -> move to Today.
+    if (idsOf(saved.columns) === JSON.stringify(LAYOUTS.work) && untouched(saved.columns)) return defaultColumns();
     const cols = saved.columns.slice(0, COL_COUNT).map((col) =>
       (Array.isArray(col) ? col : [])
         .filter((it) => it && PANELS_BY_ID[it.id])
@@ -70,7 +80,7 @@ function normalize(saved) {
         makeItem('habits_grid'),
         makeItem('habits_trend', { range: o.habitRange }),
         makeItem('life'),
-        makeItem('macros'),
+        makeItem('knowledge'),
         makeItem('supplements'),
         makeItem('fitness'),
       ],
@@ -176,6 +186,12 @@ export default function Dashboard() {
   const containerRef = useRef(null);
   const initRef = useRef(false);
   const saveQueue = useRef(Promise.resolve());
+  // Mirrors of the layout state. A cross-column move is applied during
+  // onDragOver, so the render closure can lag behind by the time onDragEnd
+  // persists; these always hold what was last set. State updaters stay pure —
+  // saving from inside one would fire twice under StrictMode.
+  const columnsRef = useRef(null);
+  const colsRef = useRef(cols);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
@@ -187,8 +203,11 @@ export default function Dashboard() {
   useEffect(() => {
     if (initRef.current || !settings) return;
     const saved = settings.dashboard_widgets;
-    setColumns(normalize(saved));
+    const normalized = normalize(saved);
+    columnsRef.current = normalized;
+    setColumns(normalized);
     if (saved && !Array.isArray(saved) && Array.isArray(saved.cols) && saved.cols.length === 2) {
+      colsRef.current = saved.cols;
       setColsW(saved.cols);
     }
     initRef.current = true;
@@ -198,8 +217,8 @@ export default function Dashboard() {
     if (!user?.id) return;
     const payload = {
       v: 6,
-      cols: nextCols ?? cols,
-      columns: (nextColumns ?? columns ?? []).map((col) =>
+      cols: nextCols ?? colsRef.current,
+      columns: (nextColumns ?? columnsRef.current ?? []).map((col) =>
         col.map(({ uid, id, cfg, h }) => ({ uid, id, cfg, h }))
       ),
     };
@@ -209,12 +228,12 @@ export default function Dashboard() {
       .catch(() => {});
   };
 
-  const apply = (updater, save = true) =>
-    setColumns((prev) => {
-      const next = typeof updater === 'function' ? updater(prev || []) : updater;
-      if (save) persist(next);
-      return next;
-    });
+  const apply = (updater, save = true) => {
+    const next = typeof updater === 'function' ? updater(columnsRef.current || []) : updater;
+    columnsRef.current = next;
+    setColumns(next);
+    if (save) persist(next);
+  };
 
   /* ---- panel ops ---- */
   const removePanel = (uid) => apply((prev) => prev.map((c) => c.filter((i) => i.uid !== uid)));
@@ -228,7 +247,7 @@ export default function Dashboard() {
   };
 
   /* ---- drag between / within columns ---- */
-  const columnOf = (uid) => (columns || []).findIndex((c) => c.some((i) => i.uid === uid));
+  const columnOf = (uid) => (columnsRef.current || []).findIndex((c) => c.some((i) => i.uid === uid));
   const colIndexFromOver = (overId) => {
     if (typeof overId === 'string' && overId.startsWith('col-')) return Number(overId.slice(4));
     return columnOf(overId);
@@ -239,7 +258,7 @@ export default function Dashboard() {
     const from = columnOf(active.id);
     const to = colIndexFromOver(over.id);
     if (from === -1 || to === -1 || from === to) return;
-    setColumns((prev) => {
+    apply((prev) => {
       const item = prev[from].find((i) => i.uid === active.id);
       if (!item) return prev;
       const next = prev.map((c) => c.filter((i) => i.uid !== active.id));
@@ -247,12 +266,10 @@ export default function Dashboard() {
       const at = overIdx === -1 ? next[to].length : overIdx;
       next[to] = [...next[to].slice(0, at), item, ...next[to].slice(at)];
       return next;
-    });
+    }, false); // saved once the drag ends
   };
 
-  // Always persist from the freshest state — a cross-column move is applied
-  // during onDragOver, so the render closure can lag behind.
-  const persistLatest = () => setColumns((cur) => { persist(cur); return cur; });
+  const persistLatest = () => persist(columnsRef.current);
 
   const onDragEnd = ({ active, over }) => {
     setActiveId(null);
@@ -281,14 +298,17 @@ export default function Dashboard() {
     const rect = el.getBoundingClientRect();
     const onMove = (ev) => {
       const pctX = ((ev.clientX - rect.left) / rect.width) * 100;
-      setColsW(([c1, c2]) =>
-        idx === 0 ? [clamp(pctX, 15, 100 - c2 - 15), c2] : [c1, clamp(pctX - c1, 15, 100 - c1 - 15)]
-      );
+      const [c1, c2] = colsRef.current;
+      const next = idx === 0
+        ? [clamp(pctX, 15, 100 - c2 - 15), c2]
+        : [c1, clamp(pctX - c1, 15, 100 - c1 - 15)];
+      colsRef.current = next;
+      setColsW(next);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      setColsW((c) => { persist(undefined, c); return c; });
+      persist(undefined, colsRef.current);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -307,6 +327,16 @@ export default function Dashboard() {
           <div className="dash-clock">{formatLongDate(now)} · {formatClock(now)}</div>
         </div>
         <div className="row" style={{ gap: 8 }}>
+          <Link className="btn btn--sm" to="/knowledge"><i className="ti ti-notebook" /> Capture context</Link>
+          {editing && ['today', 'work'].map((key) => (
+            <button
+              key={key}
+              className="btn btn--sm"
+              onClick={() => { const next = defaultColumns(LAYOUTS[key]); columnsRef.current = next; setColumns(next); persistLatest(); }}
+            >
+              {key === 'today' ? 'Today layout' : 'Work layout'}
+            </button>
+          ))}
           {editing && (
             <button className="btn btn--sm" onClick={() => setPicker(0)}>
               <i className="ti ti-plus" /> Add panel

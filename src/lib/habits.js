@@ -4,10 +4,25 @@
 // stays in one place.
 // ============================================================
 export const RANGES = ['1M', '3M', '6M', '1Y', 'ALL'];
+
+// Consecutive done days ending today — or yesterday while today is still open,
+// so a streak doesn't read 0 until you tick today's box. `isDone(dayKey)`.
+export function currentStreak(isDone, today = new Date()) {
+  const cur = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (!isDone(dayKey(cur))) cur.setDate(cur.getDate() - 1);
+  let n = 0;
+  while (n < 3650 && isDone(dayKey(cur))) {
+    n++;
+    cur.setDate(cur.getDate() - 1);
+  }
+  return n;
+}
 export const RANGE_DAYS = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365 };
 export const ROLL_WINDOW = 7; // rolling completion-rate window (days)
 
-export const dayKey = (d) => d.toISOString().slice(0, 10);
+// Local-day key (re-exported so existing imports keep working).
+import { dayKey } from './helpers.js';
+export { dayKey };
 
 // Build the last N calendar days (oldest → newest).
 export function recentDays(n) {

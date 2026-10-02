@@ -9,10 +9,11 @@ import cors from 'cors';
 import aiRoutes from './routes/ai.js';
 import calendarRoutes from './routes/calendar.js';
 import financeRoutes from './routes/finance.js';
-import socialRoutes from './routes/social.js';
 import nutritionRoutes from './routes/nutrition.js';
-import reportsRoutes from './routes/reports.js';
+import agentsRoutes from './routes/agents.js';
 import youtubeRoutes from './routes/youtube.js';
+import sheetsRoutes from './routes/sheets.js';
+import knowledgeRoutes from './routes/knowledge.js';
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: '1mb' }));
+app.use('/api/knowledge', knowledgeRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -29,7 +31,6 @@ app.get('/api/health', (req, res) => {
     ok: true,
     service: 'ctrlpanel-backend',
     anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
-    email: Boolean(process.env.RESEND_API_KEY),
     ts: Date.now(),
   });
 });
@@ -37,10 +38,10 @@ app.get('/api/health', (req, res) => {
 app.use('/api/ai', aiRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/finance', financeRoutes);
-app.use('/api', socialRoutes); // /api/shares, /api/invites, /api/social
 app.use('/api/nutrition', nutritionRoutes); // external API-key logging
-app.use('/api/reports', reportsRoutes); // inbound PDF report ingestion (per-source token)
+app.use('/api/agents', agentsRoutes); // Agents folder (Opportunities Agent runs, per-user session)
 app.use('/api/youtube', youtubeRoutes); // YouTube channel analytics (per-user OAuth)
+app.use('/api/sheets', sheetsRoutes); // Google Sheets-backed CRM (service account)
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

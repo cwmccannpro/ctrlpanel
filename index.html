@@ -4,6 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CTRLpanel</title>
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0a0808" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CTRLpanel" />
+    <script>
+      // Paint the saved theme before first render (keep ids in sync with src/lib/themes.js).
+      (function () {
+        try {
+          var t = localStorage.getItem('ctrlpanel-theme');
+          if (['crimson', 'midnight', 'graphite', 'forest', 'amoled', 'light', 'system'].indexOf(t) === -1) t = 'crimson';
+          if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'crimson';
+          document.documentElement.setAttribute('data-theme', t);
+          // Browser chrome colour per theme (keep in sync with THEMES in src/lib/themes.js).
+          var colors = { crimson: '#0a0808', midnight: '#070a12', graphite: '#0b0b0d', forest: '#070b09', amoled: '#000000', light: '#f4f1ec' };
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', colors[t]);
+        } catch (e) {}
+      })();
+    </script>
     <meta name="description" content="CTRLpanel — Personal Life OS by cwmccann.pro" />
 
     <!-- Inter from Google Fonts -->

@@ -453,91 +453,6 @@ begin
 end $$;
 
 -- ============================================
--- SHARED TO-DO LISTS
--- One row per invite. Pending until the recipient opens the tokenized
--- accept link (email via Resend) and the backend marks it accepted.
--- board_name / inviter_email are denormalized so the recipient can see
--- who invited them before they gain access to the board row itself.
--- ============================================
-create table if not exists board_shares (
-  id uuid primary key default gen_random_uuid(),
-  board_id uuid not null references boards(id) on delete cascade,
-  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  board_name text,
-  inviter_email text,
-  invitee_email text not null,
-  invitee_user_id uuid references auth.users(id) on delete cascade,
-  token text unique not null,
-  status text default 'pending' check (status in ('pending','accepted')),
-  created_at timestamptz default now(),
-  accepted_at timestamptz
-);
-create index if not exists board_shares_board on board_shares(board_id);
-create index if not exists board_shares_invitee on board_shares(invitee_user_id);
-
--- Security-definer helpers so board/task policies can consult board_shares
--- (and vice versa) without RLS recursion.
-create or replace function public.can_access_board(bid uuid)
-returns boolean
-language sql stable security definer set search_path = public
-as $$
-  select exists (select 1 from boards b where b.id = bid and b.user_id = auth.uid())
-      or exists (
-        select 1 from board_shares s
-        where s.board_id = bid and s.status = 'accepted' and s.invitee_user_id = auth.uid()
-      );
-$$;
-
-create or replace function public.is_board_owner(bid uuid)
-returns boolean
-language sql stable security definer set search_path = public
-as $$
-  select exists (select 1 from boards b where b.id = bid and b.user_id = auth.uid());
-$$;
-
-alter table board_shares enable row level security;
-
--- Parties to a share (board members, the invited email) may read it.
-drop policy if exists "share parties read" on board_shares;
-create policy "share parties read" on board_shares for select using (
-  invitee_user_id = auth.uid()
-  or invitee_email = (auth.jwt() ->> 'email')
-  or can_access_board(board_id)
-);
--- Owner revokes; recipient declines / leaves. Inserts + accepts go through
--- the backend (service role), which also sends the Resend emails.
-drop policy if exists "share parties delete" on board_shares;
-create policy "share parties delete" on board_shares for delete using (
-  invitee_user_id = auth.uid()
-  or invitee_email = (auth.jwt() ->> 'email')
-  or is_board_owner(board_id)
-);
-
--- Collaborators get full read/write on shared boards + their tasks
--- (additional permissive policies OR'ed with the existing "own rows").
-drop policy if exists "shared boards read" on boards;
-create policy "shared boards read" on boards for select using (can_access_board(id));
-drop policy if exists "shared boards update" on boards;
-create policy "shared boards update" on boards for update
-  using (can_access_board(id)) with check (can_access_board(id));
-
-drop policy if exists "shared board tasks" on tasks;
-create policy "shared board tasks" on tasks for all
-  using (board_id is not null and can_access_board(board_id))
-  with check (board_id is not null and can_access_board(board_id));
-
--- Live sync for collaborators (Realtime postgres_changes, RLS-filtered).
-do $$ begin
-  alter publication supabase_realtime add table tasks;
-exception when others then null; end $$;
-do $$ begin
-  alter publication supabase_realtime add table boards;
-exception when others then null; end $$;
-do $$ begin
-  alter publication supabase_realtime add table board_shares;
-exception when others then null; end $$;
-
--- ============================================
 -- NUTRITION: external API logging + water
 -- ============================================
 alter table nutrition_logs add column if not exists notes text;
@@ -563,45 +478,6 @@ create table if not exists water_logs (
 
 alter table user_goals add column if not exists water numeric default 64;
 
--- ============================================
--- NUTRITION: friends + challenges
--- Rows are written AND read via the backend (service role) so users only
--- ever see friends' aggregate metrics — never raw logs. RLS is enabled
--- with no client policies (same pattern as google_tokens).
--- ============================================
-create table if not exists nutrition_friends (
-  id uuid primary key default gen_random_uuid(),
-  inviter_id uuid not null references auth.users(id) on delete cascade,
-  inviter_email text,
-  invitee_email text not null,
-  invitee_user_id uuid references auth.users(id) on delete cascade,
-  token text unique not null,
-  status text default 'pending' check (status in ('pending','accepted')),
-  created_at timestamptz default now(),
-  accepted_at timestamptz
-);
-create index if not exists nutrition_friends_inviter on nutrition_friends(inviter_id);
-create index if not exists nutrition_friends_invitee on nutrition_friends(invitee_user_id);
-
-create table if not exists nutrition_challenges (
-  id uuid primary key default gen_random_uuid(),
-  creator_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  metric text not null check (metric in ('calorie_goal_days','protein_goal_days','water_total','log_days')),
-  starts_on date not null,
-  ends_on date not null,
-  created_at timestamptz default now()
-);
-
-create table if not exists nutrition_challenge_members (
-  id uuid primary key default gen_random_uuid(),
-  challenge_id uuid not null references nutrition_challenges(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  status text default 'invited' check (status in ('invited','accepted','declined')),
-  created_at timestamptz default now(),
-  unique (challenge_id, user_id)
-);
-
 -- RLS for the new tables
 do $$
 declare
@@ -616,90 +492,24 @@ begin
     );
   end loop;
 
-  -- Service-role-only tables (no client policies)
-  foreach t in array array['nutrition_friends','nutrition_challenges','nutrition_challenge_members'] loop
-    execute format('alter table %I enable row level security', t);
-  end loop;
 end $$;
 
 -- ============================================
--- REPORTS: inbound PDF reports (replaces the old Agents + Email Triage
--- features, whose tables are dropped below).
+-- RETIRED FEATURES
+-- The old Agents + Email Triage tables are dropped here (safe to re-run;
+-- drops data for those tables). Never reuse these names for new tables —
+-- the current Agents folder uses agent_configs / opportunity_* below.
 --
--- A "report source" is a named inbound channel with its own token. External
--- tools (e.g. a Claude routine doing email triage) POST a PDF to
---   /api/reports/ingest   (Authorization: Bearer ctpr_… or X-API-Key)
--- and it lands as a `reports` row + a PDF in the private `reports` storage
--- bucket. Only the SHA-256 hash of a token is stored; the plaintext is shown
--- once when the source is created in the app.
+-- The Reports feature (report_sources, reports, the `reports` storage bucket
+-- and its policies) was removed from the app; its tables and files are
+-- intentionally left in place in existing databases and are no longer
+-- defined here.
 -- ============================================
-
--- Retire the removed features. Safe to re-run; drops data for those tables.
 drop table if exists triage_items cascade;
 drop table if exists triage_runs cascade;
 drop table if exists gmail_accounts cascade;
 drop table if exists agent_runs cascade;
 drop table if exists agents cascade;
-
-create table if not exists report_sources (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  name text not null,
-  key_prefix text,                   -- first chars of the token, for display
-  key_hash text unique not null,     -- SHA-256 of the plaintext token
-  last_received_at timestamptz,
-  created_at timestamptz default now()
-);
-create index if not exists report_sources_user on report_sources(user_id, created_at desc);
-
--- One row per received PDF. Written by the backend (service role, user_id set
--- explicitly from the token's source); read + deleted by the owner's client
--- under the standard "own rows" policy. The PDF bytes live in Storage; only
--- the object path is stored here.
-create table if not exists reports (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  source_id uuid references report_sources(id) on delete cascade,
-  title text not null,
-  file_path text not null,           -- storage object path: {user_id}/{source_id}/{uuid}.pdf
-  file_size bigint,
-  received_at timestamptz default now(),
-  created_at timestamptz default now()
-);
-create index if not exists reports_user_date on reports(user_id, received_at desc);
-create index if not exists reports_source on reports(source_id);
-
--- RLS: both tables are standard "own rows".
-do $$
-declare
-  t text;
-begin
-  foreach t in array array['report_sources','reports'] loop
-    execute format('alter table %I enable row level security', t);
-    execute format('drop policy if exists "own rows" on %I', t);
-    execute format(
-      'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
-    );
-  end loop;
-end $$;
-
--- Private storage bucket for the PDFs. The backend (service role) writes them;
--- the owner reads/deletes their own via signed URLs, gated by the policies
--- below (folder 1 of the object path is the owner's user_id).
-insert into storage.buckets (id, name, public)
-values ('reports', 'reports', false)
-on conflict (id) do nothing;
-
-do $$
-begin
-  drop policy if exists "reports read own" on storage.objects;
-  create policy "reports read own" on storage.objects for select to authenticated
-    using (bucket_id = 'reports' and (storage.foldername(name))[1] = auth.uid()::text);
-
-  drop policy if exists "reports delete own" on storage.objects;
-  create policy "reports delete own" on storage.objects for delete to authenticated
-    using (bucket_id = 'reports' and (storage.foldername(name))[1] = auth.uid()::text);
-end $$;
 
 -- ============================================
 -- SOCIALS: YouTube channel analytics
@@ -735,6 +545,200 @@ do $$ begin
 end $$;
 
 -- ============================================
+-- GOOGLE SHEETS-BACKED CRM
+-- A CRM board can be linked to a Google Spreadsheet, which then becomes the
+-- source of truth for that board (read live, edits written straight back).
+-- Auth is a server-side SERVICE ACCOUNT (see backend/sheets.js) — Google
+-- restricts the Sheets OAuth scope to HTTPS-only clients, which rules out
+-- localhost dev. So there are no per-user tokens to store here; the user
+-- shares each spreadsheet with the service account address instead.
+-- ============================================
+drop table if exists google_sheets_tokens;
+
+-- Link a CRM board to one spreadsheet + the tab it shows by default.
+alter table crm_boards add column if not exists spreadsheet_id text;
+alter table crm_boards add column if not exists spreadsheet_url text;
+alter table crm_boards add column if not exists spreadsheet_title text;
+alter table crm_boards add column if not exists sheet_name text;
+
+-- ============================================
 -- Done. Enable Email auth under Authentication → Providers,
 -- then register your first account in the app.
 -- ============================================
+
+-- KNOWLEDGE BASE: private Markdown context, linked into per-project graphs.
+create table if not exists knowledge_notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  project_id uuid references projects(id) on delete set null,
+  title text not null check (length(btrim(title)) > 0),
+  content text not null default '',
+  folder text not null default '',
+  tags text[] not null default '{}',
+  aliases text[] not null default '{}',
+  pinned boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists knowledge_notes_user_updated on knowledge_notes(user_id, updated_at desc);
+create index if not exists knowledge_notes_project on knowledge_notes(project_id);
+do $$
+declare t text;
+begin
+  foreach t in array array['knowledge_notes'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "own rows" on %I', t);
+    execute format('create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t);
+  end loop;
+end $$;
+-- Even a guessed project UUID cannot attach private context to another owner.
+drop policy if exists "knowledge own project" on knowledge_notes;
+create policy "knowledge own project" on knowledge_notes as restrictive for all
+  using (auth.uid() = user_id)
+  with check (project_id is null or exists (
+    select 1 from projects p where p.id = project_id and p.user_id = auth.uid()
+  ));
+
+-- CONTEXT SYNC: revocable external clients and stable note identities.
+alter table knowledge_notes add column if not exists external_key text;
+create unique index if not exists knowledge_external_key on knowledge_notes(user_id, external_key) where external_key is not null;
+create table if not exists knowledge_api_keys (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  key_prefix text not null,
+  key_hash text unique not null,
+  created_at timestamptz not null default now()
+);
+do $$ declare t text; begin
+  foreach t in array array['knowledge_api_keys'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "own rows" on %I', t);
+    execute format('create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t);
+  end loop;
+end $$;
+-- Every writer gets a database-assigned version, including browser edits.
+create or replace function public.knowledge_stamp() returns trigger language plpgsql set search_path=public as $$
+begin new.updated_at := clock_timestamp(); return new; end $$;
+drop trigger if exists knowledge_stamp on knowledge_notes;
+create trigger knowledge_stamp before update on knowledge_notes for each row execute function public.knowledge_stamp();
+
+-- One note per stable external key. A stale writer must read and merge first.
+create or replace function public.save_context_note(p_user uuid, p_key text, p_title text, p_folder text, p_content text, p_expected timestamptz default null)
+returns knowledge_notes language plpgsql security invoker set search_path=public as $$
+declare existing knowledge_notes; result knowledge_notes;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_user::text || ':' || p_key, 0));
+  select * into existing from knowledge_notes where user_id=p_user and external_key=p_key for update;
+  if found then
+    if existing.title=p_title and existing.folder=p_folder and existing.content=p_content then return existing; end if;
+    if p_expected is null or existing.updated_at <> p_expected then raise exception 'Context changed; read the latest note and merge before saving.' using errcode='40001'; end if;
+    update knowledge_notes set title=p_title,folder=p_folder,content=p_content,
+      aliases=case when title<>p_title or folder<>p_folder then array_append(array_append(aliases,title),case when folder='' then title else folder||'/'||title end) else aliases end
+      where id=existing.id returning * into result;
+  else
+    if p_expected is not null then raise exception 'Note no longer exists; read before saving.' using errcode='40001'; end if;
+    insert into knowledge_notes(user_id,external_key,title,folder,content) values(p_user,p_key,p_title,p_folder,p_content) returning * into result;
+  end if;
+  return result;
+end $$;
+revoke all on function public.save_context_note(uuid,text,text,text,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.save_context_note(uuid,text,text,text,text,timestamptz) to service_role;
+do $$ begin alter publication supabase_realtime add table knowledge_notes;
+exception when duplicate_object then null; end $$;
+
+-- ============================================
+-- PERSONAL-ONLY MODE: retire collaboration access without deleting history.
+-- Existing invite/friend/challenge rows are intentionally preserved, but no
+-- browser or API surface can use them. Boards and tasks fall back to their
+-- standard owner-only RLS policies above.
+-- ============================================
+drop policy if exists "shared boards read" on boards;
+drop policy if exists "shared boards update" on boards;
+drop policy if exists "shared board tasks" on tasks;
+do $$ begin
+  if to_regclass('public.board_shares') is not null then
+    execute 'drop policy if exists "share parties read" on public.board_shares';
+    execute 'drop policy if exists "share parties delete" on public.board_shares';
+  end if;
+end $$;
+drop function if exists public.can_access_board(uuid);
+drop function if exists public.is_board_owner(uuid);
+
+-- ============================================
+-- AGENTS folder — per-agent config + the Opportunities Agent
+-- agent_configs: one row per user per agent (agent_key), settings in config.
+-- opportunity_runs: one row per on-demand run, written by the backend with
+--   the verified session's user_id; `summary` holds the skills-to-build list.
+-- opportunities: ranked finds, unique per user on dedupe_key (normalized URL).
+--   `status` belongs to the user — later runs never overwrite it.
+-- Named agent_configs / opportunity_* on purpose: `agents` / `agent_runs` are
+-- dropped by the retired-features block above.
+-- ============================================
+create table if not exists agent_configs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  agent_key text not null,
+  config jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, agent_key)
+);
+
+create table if not exists opportunity_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_at timestamptz default now(),
+  finished_at timestamptz,
+  status text not null default 'running' check (status in ('running','complete','error')),
+  error text,
+  summary jsonb not null default '{}'::jsonb,   -- { headline, skill_gaps:[{skill,why,how_to_learn,url}], market_notes }
+  found int not null default 0,
+  added int not null default 0,
+  searches int not null default 0,
+  input_tokens int not null default 0,
+  output_tokens int not null default 0,
+  cost_usd numeric(10,4) not null default 0,
+  model text,
+  config_snapshot jsonb not null default '{}'::jsonb
+);
+create index if not exists opportunity_runs_user on opportunity_runs(user_id, run_at desc);
+
+create table if not exists opportunities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_id uuid references opportunity_runs(id) on delete set null,
+  dedupe_key text not null,                       -- normalized URL (or org::title)
+  kind text not null check (kind in ('job','internship','program','event','certification','competition')),
+  title text not null,
+  org text,
+  industry text,
+  location text,
+  mode text check (mode in ('remote','in_person','hybrid')),
+  starts_on date,
+  deadline date,
+  cost text,
+  is_free boolean not null default false,
+  url text,
+  score int not null default 0,                   -- 0-100 fit
+  reasons text[] not null default '{}',
+  source_verified boolean not null default false, -- link host appeared in the search results
+  status text not null default 'new' check (status in ('new','saved','applied','dismissed')),
+  first_seen_at timestamptz default now(),
+  last_seen_at timestamptz default now(),
+  unique (user_id, dedupe_key)
+);
+create index if not exists opportunities_user_score on opportunities(user_id, score desc);
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['agent_configs','opportunity_runs','opportunities'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "own rows" on %I', t);
+    execute format(
+      'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
+    );
+  end loop;
+end $$;

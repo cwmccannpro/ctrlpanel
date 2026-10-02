@@ -10,22 +10,11 @@
 // Requires compatibility flag "nodejs_compat" (node:crypto, Buffer, and
 // process.env populated from Worker secrets/vars).
 // ============================================================
-import { streamChatCore, supplementAnalyze, interactionCheck } from '../backend/claude.js';
+import { streamChatCore, supplementAnalyze, interactionCheck, extractResumeProfile } from '../backend/claude.js';
+import { runOpportunitiesCore } from '../backend/opportunities.js';
+import { contextRequest } from '../backend/knowledge.js';
 import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
-import {
-  createBoardShare,
-  acceptInvite,
-  createFriendInvite,
-  getFriends,
-  removeFriend,
-  getLeaderboard,
-  createChallenge,
-  listChallenges,
-  respondChallenge,
-  deleteChallenge,
-} from '../backend/social.js';
 import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../backend/nutritionApi.js';
-import { reportKeyFromHeaders, reportSourceForKey, ingestReport } from '../backend/reports.js';
 import {
   youtubeReady,
   youtubeAuthUrl,
@@ -37,6 +26,7 @@ import {
   disconnectYoutubeChannel,
   getYoutubeAnalytics,
 } from '../backend/youtube.js';
+import { getSheetsStatus, handleSheetsRequest } from '../backend/sheets.js';
 import {
   backendReady,
   authUrl,
@@ -80,9 +70,18 @@ export default {
     const method = request.method;
 
     try {
+      if (pathname === '/api/knowledge/notes') {
+        try {
+          const raw = method === 'POST' ? await request.text() : '';
+          if (new TextEncoder().encode(raw).length > 1048576) return json({error:'Request too large.'},413);
+          let body;
+          try { body = raw ? JSON.parse(raw) : undefined; } catch { return json({error:'Invalid JSON.'},400); }
+          return json(await contextRequest(method,url,request.headers,body));
+        } catch(e) { return json({error:e.message||'Context sync failed.'},e.status||500); }
+      }
       /* ---- health ---- */
       if (pathname === '/api/health') {
-        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), email: Boolean(process.env.RESEND_API_KEY), ts: Date.now() });
+        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), ts: Date.now() });
       }
 
       /* ---- AI ---- */
@@ -143,65 +142,34 @@ export default {
         }
       }
 
-      /* ---- Inbound PDF report ingestion (per-source token, not a session) ---- */
-      if (pathname === '/api/reports/ingest' && method === 'POST') {
-        try {
-          const key = reportKeyFromHeaders((h) => request.headers.get(h) || '');
-          const source = await reportSourceForKey(key);
-          if (!source) return json({ error: 'Invalid or revoked report token.' }, 401);
-          const title = request.headers.get('x-report-title') || url.searchParams.get('title');
-          return json(await ingestReport(source, await request.arrayBuffer(), { title }));
-        } catch (e) {
-          return json({ error: e?.message || 'Request failed' }, 400);
-        }
-      }
-
-      /* ---- Sharing + social (Supabase session auth) ---- */
-      if (
-        pathname.startsWith('/api/shares') ||
-        pathname.startsWith('/api/invites') ||
-        pathname.startsWith('/api/social')
-      ) {
+      /* ---- Agents folder (per-user session) ---- */
+      if (pathname.startsWith('/api/agents')) {
         const user = await userFrom(request, url);
         if (!user) return json({ error: 'Not authenticated' }, 401);
-        const appUrl = frontendBase(url);
-        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
-        try {
-          if (pathname === '/api/shares/board' && method === 'POST') {
-            return json(await createBoardShare(user, body, appUrl));
+        const body = method === 'POST' ? await request.json().catch(() => ({})) : {};
+
+        // On-demand Opportunities run: NDJSON progress stream. Streaming keeps
+        // the response alive through a multi-minute web-search run.
+        if (pathname === '/api/agents/opportunities/run' && method === 'POST') {
+          const { readable, writable } = new TransformStream();
+          const writer = writable.getWriter();
+          const enc = new TextEncoder();
+          const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {});
+          ctx.waitUntil(
+            runOpportunitiesCore({ userId: user.id, apiKey: body.apiKey, today: body.today }, write)
+              .catch((e) => write({ type: 'error', message: e?.message || 'Opportunities run failed' }))
+              .finally(() => writer.close().catch(() => {}))
+          );
+          return new Response(readable, {
+            headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
+          });
+        }
+        if (pathname === '/api/agents/opportunities/profile' && method === 'POST') {
+          try {
+            return json(await extractResumeProfile(body));
+          } catch (e) {
+            return json({ error: e?.message || 'Could not read that resume.' }, 400);
           }
-          if (pathname === '/api/invites/accept' && method === 'POST') {
-            return json(await acceptInvite(user, body.token));
-          }
-          if (pathname === '/api/social/friends' && method === 'GET') {
-            return json(await getFriends(user));
-          }
-          if (pathname === '/api/social/friends' && method === 'POST') {
-            return json(await createFriendInvite(user, body, appUrl));
-          }
-          const frMatch = pathname.match(/^\/api\/social\/friends\/([^/]+)$/);
-          if (frMatch && method === 'DELETE') {
-            return json(await removeFriend(user, decodeURIComponent(frMatch[1])));
-          }
-          if (pathname === '/api/social/leaderboard' && method === 'GET') {
-            return json(await getLeaderboard(user, Object.fromEntries(url.searchParams)));
-          }
-          if (pathname === '/api/social/challenges' && method === 'GET') {
-            return json(await listChallenges(user));
-          }
-          if (pathname === '/api/social/challenges' && method === 'POST') {
-            return json(await createChallenge(user, body));
-          }
-          const chRespond = pathname.match(/^\/api\/social\/challenges\/([^/]+)\/respond$/);
-          if (chRespond && method === 'POST') {
-            return json(await respondChallenge(user, decodeURIComponent(chRespond[1]), Boolean(body.accept)));
-          }
-          const chMatch = pathname.match(/^\/api\/social\/challenges\/([^/]+)$/);
-          if (chMatch && method === 'DELETE') {
-            return json(await deleteChallenge(user, decodeURIComponent(chMatch[1])));
-          }
-        } catch (e) {
-          return json({ error: e?.message || 'Request failed' }, 400);
         }
       }
 
@@ -260,6 +228,20 @@ export default {
         if (evMatch && method === 'DELETE') {
           return json(await deleteEvent(user.id, decodeURIComponent(evMatch[1]), url.searchParams.get('calendarId') || 'primary'));
         }
+      }
+
+      /* ---- Google Sheets (CRM backing, service-account auth) ---- */
+      if (pathname.startsWith('/api/sheets')) {
+        if (pathname === '/api/sheets/status' && method === 'GET') {
+          return json(getSheetsStatus());
+        }
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
+        // Same dispatcher as Express (backend/routes/sheets.js) so the surfaces match.
+        const action = pathname.slice('/api/sheets/'.length);
+        const result = await handleSheetsRequest(method, action, Object.fromEntries(url.searchParams), body);
+        if (result) return json(result.json, result.status);
       }
 
       /* ---- YouTube analytics ---- */

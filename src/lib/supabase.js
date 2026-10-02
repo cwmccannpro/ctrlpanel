@@ -105,10 +105,32 @@ export async function remove(table, id) {
   return supabase.from(table).delete().eq('id', id);
 }
 
-/* ---------------- Storage (report PDFs) ---------------- */
+/* ---------------- Agent configs ---------------- */
+
+// One row per (user, agent_key) in agent_configs; RLS scopes it to the owner.
+export async function getAgentConfig(agentKey) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('agent_configs').select('*').eq('agent_key', agentKey).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Upsert on (user_id, agent_key); user_id comes from the column default.
+export async function saveAgentConfig(agentKey, config) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const { data, error } = await supabase
+    .from('agent_configs')
+    .upsert({ agent_key: agentKey, config, updated_at: new Date().toISOString() }, { onConflict: 'user_id,agent_key' })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+/* ---------------- Storage ---------------- */
 
 // Short-lived signed URL for a private object (bucket RLS scopes it to the
-// owner's folder). Used to view/download received report PDFs in the browser.
+// owner's folder).
 export async function signedUrl(bucket, path, expiresIn = 3600, options) {
   if (!supabase) return null;
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn, options);
@@ -128,10 +150,10 @@ export async function removeStorage(bucket, paths) {
  */
 export async function queryTable(
   table,
-  { search, searchColumns = [], filters = {}, order, ascending = false, limit = 50 } = {}
+  { search, searchColumns = [], filters = {}, order, ascending = false, limit = 50, select = '*' } = {}
 ) {
   if (!supabase) return { data: [], error: { message: 'supabase-not-configured' } };
-  let q = supabase.from(table).select('*');
+  let q = supabase.from(table).select(select);
   for (const [k, v] of Object.entries(filters)) {
     if (v !== undefined && v !== null && v !== '') q = q.eq(k, v);
   }

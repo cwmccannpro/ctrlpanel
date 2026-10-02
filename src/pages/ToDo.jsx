@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -12,10 +12,11 @@ import Badge from '../components/shared/Badge.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import { useCrud } from '../lib/useData.js';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
+import { projectForBoard, projectForTask } from '../lib/links.js';
+import { allBoardsColumns, canDropInColumn, columnsOf } from '../lib/boards.js';
+import { useToast } from '../components/Toaster.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { relativeDay } from '../lib/helpers.js';
-import { authApi } from '../lib/api.js';
-import { supabase } from '../lib/supabase.js';
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 const DEFAULT_COLUMNS = ['Backlog', 'In Progress', 'Review', 'Done'];
@@ -27,7 +28,7 @@ const byPriority = (a, b) =>
   (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) ||
   String(a.created_at || '').localeCompare(String(b.created_at || ''));
 
-function KanbanCard({ task, boardName, onClick }) {
+function KanbanCard({ task, boardName, project, onProject, onClick }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, zIndex: 50 } : undefined;
   return (
@@ -36,6 +37,11 @@ function KanbanCard({ task, boardName, onClick }) {
       <div className="kanban-card-meta">
         <Badge variant={task.priority}>{task.priority}</Badge>
         {boardName && <span className="badge">{boardName}</span>}
+        {project && (
+          <button className="badge badge--link" title={`Open project: ${project.name}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onProject(project.id); }}>
+            <i className="ti ti-folder" /> {project.name}
+          </button>
+        )}
         {task.project_id && <span className="badge">{task.project_id}</span>}
         {task.due_date && <span className="list-row-meta">{relativeDay(task.due_date)}</span>}
       </div>
@@ -43,7 +49,7 @@ function KanbanCard({ task, boardName, onClick }) {
   );
 }
 
-function Column({ name, index, total, tasks, boardNameFor, locked, onCardClick, onAdd, onMove, onRename, onDelete }) {
+function Column({ name, index, total, tasks, boardNameFor, projectFor, onProject, locked, onCardClick, onAdd, onMove, onRename, onDelete }) {
   const { setNodeRef, isOver } = useDroppable({ id: name });
   return (
     <div ref={setNodeRef} className={`kanban-col ${isOver ? 'drag-over' : ''}`}>
@@ -62,7 +68,7 @@ function Column({ name, index, total, tasks, boardNameFor, locked, onCardClick, 
         )}
       </div>
       {tasks.map((t) => (
-        <KanbanCard key={t.id} task={t} boardName={boardNameFor?.(t)} onClick={() => onCardClick(t)} />
+        <KanbanCard key={t.id} task={t} boardName={boardNameFor?.(t)} project={projectFor?.(t)} onProject={onProject} onClick={() => onCardClick(t)} />
       ))}
       <button className="kanban-add" onClick={() => onAdd(name)}>
         <i className="ti ti-plus" /> Add card
@@ -71,190 +77,47 @@ function Column({ name, index, total, tasks, boardNameFor, locked, onCardClick, 
   );
 }
 
-// Share a list by email (Resend invite → tokenized accept link). Opens from
-// any view — pick the list inside the modal. The owner sees pending invites
-// (revocable) + collaborators; collaborators see the member list and can leave.
-function ShareModal({ boards, initialBoardId, userId, myEmail, shares, onInvite, onRemove, onLeave, onClose }) {
-  const [boardIdSel, setBoardIdSel] = useState(initialBoardId || boards[0]?.id || '');
-  const [email, setEmail] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [sent, setSent] = useState('');
-
-  const board = boards.find((b) => b.id === boardIdSel) || boards[0];
-  const owner = board?.user_id === userId;
-  const collaborators = shares.filter((s) => s.board_id === board?.id && s.status === 'accepted');
-  const pending = shares.filter((s) => s.board_id === board?.id && s.status === 'pending');
-
-  const invite = async () => {
-    const target = email.trim();
-    if (!target || !board) return;
-    setBusy(true);
-    setError('');
-    setSent('');
-    try {
-      await onInvite(board.id, target);
-      setSent(`Invite sent to ${target}.`);
-      setEmail('');
-    } catch (e) {
-      setError(e.message);
-    }
-    setBusy(false);
-  };
-
-  const mine = collaborators.find((s) => (s.invitee_email || '').toLowerCase() === myEmail);
-  if (!board) return null;
-
-  return (
-    <Modal
-      title="Share To-Do List"
-      onClose={onClose}
-      footer={
-        <>
-          {!owner && mine && (
-            <button className="btn btn--danger" style={{ marginRight: 'auto' }} onClick={() => onLeave(mine.id, board.id)}>
-              Leave list
-            </button>
-          )}
-          <button className="btn btn--ghost" onClick={onClose}>Close</button>
-        </>
-      }
-    >
-      <div className="field">
-        <label className="field-label">List</label>
-        <select className="select" value={board.id} onChange={(e) => { setBoardIdSel(e.target.value); setError(''); setSent(''); }}>
-          {boards.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}{b.user_id !== userId ? ' (shared with you)' : ''}</option>
-          ))}
-        </select>
-      </div>
-      {owner && (
-        <div className="field">
-          <label className="field-label">Invite by email</label>
-          <div className="row" style={{ gap: 8 }}>
-            <input
-              className="input"
-              type="email"
-              placeholder="teammate@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && invite()}
-              autoFocus
-            />
-            <button className="btn btn--accent" onClick={invite} disabled={busy || !email.trim()}>
-              {busy ? 'Sending…' : 'Send invite'}
-            </button>
-          </div>
-          {error && <p className="list-row-meta" style={{ color: 'var(--accent)', marginTop: 6 }}>{error}</p>}
-          {sent && <p className="list-row-meta text-green" style={{ marginTop: 6 }}>{sent}</p>}
-        </div>
-      )}
-
-      <div className="field">
-        <label className="field-label">Members</label>
-        <div className="list-row">
-          <i className="ti ti-crown" style={{ color: 'var(--accent)' }} />
-          <span className="list-row-title">{owner ? 'You' : board_owner_label(collaborators, pending)}</span>
-          <span className="list-row-meta">owner</span>
-        </div>
-        {collaborators.map((s) => (
-          <div className="list-row" key={s.id}>
-            <i className="ti ti-user" />
-            <span className="list-row-title">
-              {(s.invitee_email || '').toLowerCase() === myEmail ? 'You' : s.invitee_email}
-            </span>
-            <span className="list-row-meta">collaborator</span>
-            {owner && (
-              <button className="btn btn--ghost btn--icon" title="Remove access" onClick={() => onRemove(s.id)}>
-                <i className="ti ti-x" />
-              </button>
-            )}
-          </div>
-        ))}
-        {collaborators.length === 0 && <p className="body-text">No collaborators yet.</p>}
-      </div>
-
-      {owner && pending.length > 0 && (
-        <div className="field">
-          <label className="field-label">Pending invites</label>
-          {pending.map((s) => (
-            <div className="list-row" key={s.id}>
-              <i className="ti ti-mail" />
-              <span className="list-row-title">{s.invitee_email}</span>
-              <span className="list-row-meta">invited {relativeDay(s.created_at)}</span>
-              <button className="btn btn--ghost btn--icon" title="Revoke invite" onClick={() => onRemove(s.id)}>
-                <i className="ti ti-x" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// Collaborators only know the owner through the share rows' inviter_email.
-const board_owner_label = (collaborators, pending) =>
-  collaborators[0]?.inviter_email || pending[0]?.inviter_email || 'Owner';
-
 export default function ToDo() {
-  const { todoBoards: boards } = useWorkspace();
+  const { todoBoards: boards, projects } = useWorkspace();
   const { user } = useAuth();
+  const toast = useToast();
   const tasks = useCrud('tasks', 'created_at');
-  const shares = useCrud('board_shares', 'created_at');
   const { boardId: boardIdParam } = useParams();
   const navigate = useNavigate();
   const boardId = boardIdParam || null;
   const goToBoard = (id, opts) => navigate(id ? `/todo/${id}` : '/todo', opts);
   const [editing, setEditing] = useState(null);
-  const [sharing, setSharing] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  // No board selected → "All Boards", a virtual view combining every board's cards.
-  const board = boardId ? boards.rows.find((b) => b.id === boardId) || null : null;
-  const columns = board?.columns?.length ? board.columns : DEFAULT_COLUMNS;
+  const ownedBoards = useMemo(
+    () => boards.rows.filter((b) => b.user_id === user?.id),
+    [boards.rows, user?.id]
+  );
+  const ownedTasks = useMemo(
+    () => tasks.rows.filter((t) => t.user_id === user?.id),
+    [tasks.rows, user?.id]
+  );
+
+  // No board selected → "All Boards", a virtual view combining my boards' cards.
+  const board = boardId ? ownedBoards.find((b) => b.id === boardId) || null : null;
+  const columns = useMemo(
+    () => (board ? columnsOf(board, DEFAULT_COLUMNS) : allBoardsColumns(DEFAULT_COLUMNS, ownedBoards, ownedTasks)),
+    [board, ownedBoards, ownedTasks]
+  );
   const visibleTasks = useMemo(
-    () => (boardId ? tasks.rows.filter((t) => t.board_id === boardId) : tasks.rows),
-    [tasks.rows, boardId]
+    () => (boardId ? ownedTasks.filter((t) => t.board_id === boardId) : ownedTasks),
+    [ownedTasks, boardId]
   );
-  const boardNameFor = !board ? (t) => boards.rows.find((b) => b.id === t.board_id)?.name : undefined;
-
-  /* ---- Sharing state (board_shares is RLS-scoped to boards I'm part of) ---- */
-  const isOwner = (b) => !b || !user || b.user_id === user.id;
-  const sharesFor = (bid) => shares.rows.filter((s) => s.board_id === bid);
-  const collaborators = boardId ? sharesFor(boardId).filter((s) => s.status === 'accepted') : [];
-  const isShared = (bid) => shares.rows.some((s) => s.board_id === bid && s.status === 'accepted');
-  // Invites addressed to ME, accept/decline in-app.
-  const myEmail = (user?.email || '').toLowerCase();
-  const incoming = shares.rows.filter(
-    (s) => s.status === 'pending' && s.owner_id !== user?.id &&
-      (s.invitee_user_id === user?.id || (s.invitee_email || '').toLowerCase() === myEmail)
-  );
-
-  const acceptIncoming = async (s) => {
-    try {
-      const res = await authApi.post('/invites/accept', { token: s.token });
-      await Promise.all([boards.reload(), tasks.reload(), shares.reload()]);
-      if (res.board_id) goToBoard(res.board_id);
-    } catch (e) {
-      alert(e.message);
-    }
-  };
-
-  /* ---- Live sync: collaborators' changes appear without a refresh ---- */
-  useEffect(() => {
-    if (!supabase) return;
-    const ch = supabase
-      .channel('todo-live-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => tasks.reload())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, () => boards.reload())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'board_shares' }, () => shares.reload())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(ch);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const boardNameFor = !board ? (t) => ownedBoards.find((b) => b.id === t.board_id)?.name : undefined;
+  // Cross-links: in "All Boards" each card names its project; a project's own board links back to it.
+  const projectFor = !board ? (t) => projectForTask(t, projects.rows) : undefined;
+  const boardProject = board ? projectForBoard(projects.rows, board.id) : null;
+  const openProject = (pid) => navigate(`/projects/${pid}`);
+  // The editor can show a different board's columns once a task is moved to a project.
+  const editBoard = editing ? ownedBoards.find((b) => b.id === (editing.board_id || boardId)) : null;
+  const editColumns = editBoard?.columns?.length ? editBoard.columns : columns;
+  const editProject = editing ? projectForBoard(projects.rows, editing.board_id || boardId) : null;
+  const projectChoices = projects.rows.filter((p) => p.todo_board_id && ownedBoards.some((b) => b.id === p.todo_board_id));
 
   const setColumns = (next) => board && boards.patch(board.id, { columns: next });
 
@@ -310,6 +173,11 @@ export default function ToDo() {
   /* ---- Task actions ---- */
   const onDragEnd = ({ active, over }) => {
     if (!over) return;
+    const task = ownedTasks.find((t) => t.id === active.id);
+    if (!canDropInColumn(task, ownedBoards, DEFAULT_COLUMNS, over.id)) {
+      toast({ tone: 'error', message: `“${over.id}” isn’t a column on that task’s board.` });
+      return;
+    }
     tasks.patch(active.id, { column_name: over.id });
   };
 
@@ -321,7 +189,7 @@ export default function ToDo() {
     const t = editing;
     if (!t.title.trim()) return;
     const payload = {
-      board_id: boardId,
+      board_id: t.board_id || boardId || null,
       title: t.title,
       description: t.description || null,
       column_name: t.column_name,
@@ -341,51 +209,22 @@ export default function ToDo() {
   };
 
   return (
-    <div className="fade-in">
+    <div className="fade-in todo-page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">To Do</h1>
-          <div className="page-header-sub">
-            {board ? board.name : 'All Boards'} · drag cards between columns
-            {board && isShared(board.id) && (
-              <span className="badge" style={{ marginLeft: 8 }}>
-                <i className="ti ti-users" /> shared{isOwner(board) ? ` · ${collaborators.length + 1} members` : ' with you'}
-              </span>
-            )}
-          </div>
+          <select aria-label="Select board" className="board-title-select" value={boardId || ''} onChange={(e) => goToBoard(e.target.value)} style={{ width: 'auto' }}>
+          <option value="">All Boards</option>
+          {ownedBoards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
         </div>
       </div>
 
-      {/* Invites addressed to me (also arrive by email with an accept link) */}
-      {incoming.map((s) => (
-        <div className="card" key={s.id} style={{ padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <i className="ti ti-mail-heart" style={{ color: 'var(--accent)' }} />
-          <span className="body-text" style={{ flex: 1 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>{s.inviter_email}</strong> invited you to the list{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>"{s.board_name || 'Untitled'}"</strong>
-          </span>
-          <button className="btn btn--sm btn--accent" onClick={() => acceptIncoming(s)}>Accept</button>
-          <button className="btn btn--sm btn--ghost" onClick={() => shares.remove(s.id)}>Decline</button>
-        </div>
-      ))}
-
       <div className="toolbar">
-        <select className="select" value={boardId || ''} onChange={(e) => goToBoard(e.target.value)} style={{ width: 'auto' }}>
-          <option value="">All Boards</option>
-          {boards.rows.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}{isShared(b.id) ? (isOwner(b) ? ' · shared' : ' · shared with you') : ''}
-            </option>
-          ))}
-        </select>
+
         <button className="btn" onClick={addBoard}><i className="ti ti-plus" /> Board</button>
         {board && <button className="btn btn--ghost btn--icon" onClick={renameBoard} title="Rename board"><i className="ti ti-pencil" /></button>}
-        {board && isOwner(board) && <button className="btn btn--ghost btn--icon" onClick={deleteBoard} title="Delete board"><i className="ti ti-trash" /></button>}
-        {boards.rows.length > 0 && (
-          <button className="btn" onClick={() => setSharing(true)}>
-            <i className="ti ti-users" /> {board && !isOwner(board) ? 'Members' : 'Share'}
-          </button>
-        )}
+        {board && <button className="btn btn--ghost btn--icon" onClick={deleteBoard} title="Delete board"><i className="ti ti-trash" /></button>}
+        {boardProject && <button className="btn btn--ghost" onClick={() => openProject(boardProject.id)} title="Open this board's project"><i className="ti ti-folder" /> {boardProject.name} <i className="ti ti-arrow-up-right" /></button>}
         {board && <button className="btn" style={{ marginLeft: 'auto' }} onClick={addColumn}><i className="ti ti-columns-3" /> Add column</button>}
       </div>
 
@@ -399,6 +238,8 @@ export default function ToDo() {
               total={columns.length}
               tasks={visibleTasks.filter((t) => t.column_name === col).sort(byPriority)}
               boardNameFor={boardNameFor}
+              projectFor={projectFor}
+              onProject={openProject}
               locked={!board}
               onCardClick={setEditing}
               onAdd={openNew}
@@ -409,30 +250,6 @@ export default function ToDo() {
           ))}
         </div>
       </DndContext>
-
-      {sharing && boards.rows.length > 0 && (
-        <ShareModal
-          boards={boards.rows}
-          initialBoardId={boardId}
-          userId={user?.id}
-          myEmail={myEmail}
-          shares={shares.rows}
-          onInvite={async (bid, email) => {
-            await authApi.post('/shares/board', { board_id: bid, email });
-            shares.reload();
-          }}
-          onRemove={async (id) => {
-            await shares.remove(id);
-          }}
-          onLeave={async (id, bid) => {
-            await shares.remove(id);
-            setSharing(false);
-            await Promise.all([boards.reload(), tasks.reload()]);
-            if (boardId === bid) goToBoard(null, { replace: true });
-          }}
-          onClose={() => setSharing(false)}
-        />
-      )}
 
       {editing && (
         <Modal
@@ -464,7 +281,7 @@ export default function ToDo() {
             <div className="field">
               <label className="field-label">Column</label>
               <select className="select" value={editing.column_name} onChange={(e) => setEditing({ ...editing, column_name: e.target.value })}>
-                {columns.map((c) => <option key={c}>{c}</option>)}
+                {editColumns.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
@@ -474,10 +291,37 @@ export default function ToDo() {
               <input className="input" type="date" value={editing.due_date || ''} onChange={(e) => setEditing({ ...editing, due_date: e.target.value })} />
             </div>
             <div className="field">
-              <label className="field-label">Project</label>
-              <input className="input" value={editing.project_id || ''} onChange={(e) => setEditing({ ...editing, project_id: e.target.value })} />
+              <label className="field-label">Label</label>
+              <input className="input" value={editing.project_id || ''} onChange={(e) => setEditing({ ...editing, project_id: e.target.value })} placeholder="Optional tag" />
             </div>
           </div>
+          {projectChoices.length > 0 && (
+            <div className="field">
+              <label className="field-label">Project</label>
+              <div className="row" style={{ gap: 8 }}>
+                <select
+                  className="select"
+                  value={editProject?.id || ''}
+                  onChange={(e) => {
+                    const p = projects.rows.find((x) => x.id === e.target.value);
+                    if (!p) return;
+                    const target = ownedBoards.find((b) => b.id === p.todo_board_id);
+                    // Moving a task into a project means moving it to that project's board.
+                    setEditing({ ...editing, board_id: p.todo_board_id, column_name: target?.columns?.[0] || editing.column_name });
+                  }}
+                >
+                  {!editProject && <option value="">Not in a project</option>}
+                  {projectChoices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                {editProject && (
+                  <button type="button" className="btn btn--ghost" onClick={() => { setEditing(null); openProject(editProject.id); }}>
+                    Open <i className="ti ti-arrow-up-right" />
+                  </button>
+                )}
+              </div>
+              <div className="list-row-meta" style={{ marginTop: 4 }}>Choosing a project moves this task to that project’s board.</div>
+            </div>
+          )}
         </Modal>
       )}
     </div>

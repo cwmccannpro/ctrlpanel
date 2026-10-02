@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { useCrud } from '../lib/useData.js';
 import { youtube } from '../lib/api.js';
 
-// Shared per-user projects + report sources so the sidebar sub-pages and the
-// Projects/Reports pages read/write the same state (stay in sync live).
+// Shared per-user projects, CRM pages, boards + socials so the sidebar
+// sub-pages and their pages read/write the same state (stay in sync live).
 const WorkspaceContext = createContext(null);
 
 export function useWorkspace() {
@@ -54,12 +54,11 @@ function useSocials() {
 
 export function WorkspaceProvider({ children }) {
   const projects = useCrud('projects', 'created_at');
-  const reportSources = useCrud('report_sources', 'created_at');
   const crmBoards = useCrud('crm_boards', 'created_at');
   const todoBoards = useCrud('boards', 'created_at');
   const socials = useSocials();
   return (
-    <WorkspaceContext.Provider value={{ projects, reportSources, crmBoards, todoBoards, socials }}>
+    <WorkspaceContext.Provider value={{ projects, crmBoards, todoBoards, socials }}>
       {children}
     </WorkspaceContext.Provider>
   );

@@ -11,43 +11,19 @@ import {
 } from 'recharts';
 import Card from '../../components/shared/Card.jsx';
 import Modal from '../../components/shared/Modal.jsx';
-import NutritionSocial from './NutritionSocial.jsx';
+
 import { useCrud } from '../../lib/useData.js';
-import { formatDate } from '../../lib/helpers.js';
+import { formatDate, dayKey } from '../../lib/helpers.js';
 
-const RING_COLORS = { Calories: '#e11d48', Protein: '#3b82f6', Carbs: '#f59e0b', Fat: '#10b981', Water: '#14b8a6' };
-const DEFAULT_GOALS = { calories: 2400, protein: 180, carbs: 250, fat: 80, water: 64 };
+const DEFAULT_GOALS = { calories: 2400, protein: 180, carbs: 250, fat: 80 };
 const day = (ts) => (ts || '').slice(0, 10);
-
-function Ring({ label, current, goal, unit }) {
-  const r = 34;
-  const c = 2 * Math.PI * r;
-  const pct = goal ? Math.min(current / goal, 1) : 0;
-  return (
-    <div className="ring">
-      <div style={{ position: 'relative', width: 84, height: 84 }}>
-        <svg width="84" height="84" viewBox="0 0 84 84">
-          <circle className="ring-track" cx="42" cy="42" r={r} fill="none" strokeWidth="7" />
-          <circle className="ring-fill" cx="42" cy="42" r={r} fill="none" stroke={RING_COLORS[label]} strokeWidth="7" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
-        </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          {Math.round(pct * 100)}%
-        </div>
-      </div>
-      <span className="ring-label">{label}</span>
-      <span className="ring-value">{Math.round(current)} / {goal}{unit}</span>
-    </div>
-  );
-}
 
 export default function Nutrition() {
   const meals = useCrud('nutrition_logs', 'logged_at');
   const weights = useCrud('weight_logs', 'logged_at');
-  const water = useCrud('water_logs', 'logged_at');
   const goalsCrud = useCrud('user_goals');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(dayKey());
   const [weight, setWeight] = useState('');
-  const [waterOz, setWaterOz] = useState('');
   const [addingMeal, setAddingMeal] = useState(null);
 
   const goalsRow = goalsCrud.rows[0];
@@ -60,16 +36,6 @@ export default function Nutrition() {
   };
 
   const todaysMeals = meals.rows.filter((m) => day(m.logged_at) === date);
-  const todaysWater = water.rows
-    .filter((w) => day(w.logged_at) === date)
-    .reduce((t, w) => t + Number(w.amount || 0), 0);
-
-  const logWater = (oz) => {
-    const amount = Number(oz);
-    if (!amount) return;
-    water.add({ amount, logged_at: new Date(`${date}T12:00:00`).toISOString() });
-    setWaterOz('');
-  };
   const totals = todaysMeals.reduce(
     (t, m) => ({
       calories: t.calories + Number(m.calories || 0),
@@ -122,29 +88,21 @@ export default function Nutrition() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Nutrition</h1>
-          <div className="page-header-sub">Intake vs. goals</div>
+          <h1 className="sr-only">Nutrition</h1>
+
         </div>
         <input className="input" type="date" style={{ width: 'auto' }} value={date} onChange={(e) => setDate(e.target.value)} />
       </div>
 
-      {/* Macro rings */}
-      <Card className="card-section" static>
-        <div className="rings-grid">
-          <Ring label="Calories" current={totals.calories} goal={goals.calories} />
-          <Ring label="Protein" current={totals.protein} goal={goals.protein} unit="g" />
-          <Ring label="Carbs" current={totals.carbs} goal={goals.carbs} unit="g" />
-          <Ring label="Fat" current={totals.fat} goal={goals.fat} unit="g" />
-          <Ring label="Water" current={todaysWater} goal={goals.water} unit="oz" />
-        </div>
-      </Card>
-
+      <div className="nutrition-summary">
+        {['calories', 'protein', 'carbs', 'fat'].map(key => <div key={key}><span>{key}</span><strong>{Math.round(totals[key])}<small>{key === 'calories' ? ' kcal' : ' g'}</small></strong></div>)}
+      </div>
       <div className="grid grid-2">
         {/* Goals — editable */}
         <Card className="card-section" static>
           <div className="card-section-title">Daily Goals</div>
           <div className="grid grid-2">
-            {['calories', 'protein', 'carbs', 'fat', 'water'].map((k) => (
+            {['calories', 'protein', 'carbs', 'fat'].map((k) => (
               <div className="field" key={k} style={{ marginBottom: 8 }}>
                 <label className="field-label">{k}{k === 'calories' ? '' : k === 'water' ? ' (oz)' : ' (g)'}</label>
                 <input className="input" type="number" value={goals[k] ?? ''} onChange={(e) => setGoal(k, e.target.value)} />
@@ -170,35 +128,6 @@ export default function Nutrition() {
         </Card>
       </div>
 
-      {/* Water */}
-      <Card className="card-section" static>
-        <div className="card-section-title">
-          <span>Water</span>
-          <span className="list-row-meta">{Math.round(todaysWater)} / {goals.water} oz</span>
-        </div>
-        <div className="toolbar" style={{ marginBottom: 0 }}>
-          <button className="btn" onClick={() => logWater(8)}><i className="ti ti-droplet" /> +8 oz</button>
-          <button className="btn" onClick={() => logWater(16)}><i className="ti ti-droplet" /> +16 oz</button>
-          <input
-            className="input"
-            type="number"
-            placeholder="Custom (oz)"
-            style={{ width: 130 }}
-            value={waterOz}
-            onChange={(e) => setWaterOz(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && logWater(waterOz)}
-          />
-          <button className="btn btn--accent" onClick={() => logWater(waterOz)} disabled={!waterOz}><i className="ti ti-plus" /> Log</button>
-        </div>
-        {water.rows.filter((w) => day(w.logged_at) === date).map((w) => (
-          <div className="list-row" key={w.id}>
-            <i className="ti ti-droplet" style={{ color: '#14b8a6' }} />
-            <span className="list-row-title">{Math.round(w.amount)} oz</span>
-            <button className="btn btn--ghost btn--icon" onClick={() => water.remove(w.id)} title="Delete"><i className="ti ti-x" /></button>
-          </div>
-        ))}
-      </Card>
-
       {/* Trend chart */}
       <Card className="card-section" static>
         <div className="card-section-title">Trends</div>
@@ -207,15 +136,15 @@ export default function Nutrition() {
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={history} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-              <CartesianGrid stroke="#1e1818" vertical={false} />
-              <XAxis dataKey="date" stroke="#8a7070" fontSize={11} tickFormatter={(d) => d.slice(5)} />
-              <YAxis yAxisId="left" stroke="#8a7070" fontSize={11} />
-              <YAxis yAxisId="right" orientation="right" stroke="#8a7070" fontSize={11} domain={['dataMin - 2', 'dataMax + 2']} />
-              <Tooltip contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" stroke="var(--text-secondary)" fontSize={11} tickFormatter={(d) => d.slice(5)} />
+              <YAxis yAxisId="left" stroke="var(--text-secondary)" fontSize={11} />
+              <YAxis yAxisId="right" orientation="right" stroke="var(--text-secondary)" fontSize={11} domain={['dataMin - 2', 'dataMax + 2']} />
+              <Tooltip contentStyle={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line yAxisId="left" type="monotone" dataKey="calories" stroke="#e11d48" dot={false} strokeWidth={2} />
+              <Line yAxisId="left" type="monotone" dataKey="calories" stroke="var(--accent)" dot={false} strokeWidth={2} />
               <Line yAxisId="left" type="monotone" dataKey="protein" stroke="#3b82f6" dot={false} strokeWidth={1.5} />
-              <Line yAxisId="right" type="monotone" dataKey="weight" stroke="#f0e8e8" strokeDasharray="4 3" dot={false} strokeWidth={2} connectNulls />
+              <Line yAxisId="right" type="monotone" dataKey="weight" stroke="var(--text-primary)" strokeDasharray="4 3" dot={false} strokeWidth={2} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -238,8 +167,8 @@ export default function Nutrition() {
         ))}
       </Card>
 
-      {/* Friends, leaderboard + challenges */}
-      <NutritionSocial />
+
+
 
       {addingMeal && (
         <Modal

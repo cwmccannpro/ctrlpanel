@@ -37,7 +37,21 @@ export function useRows(table, mock = [], order) {
     reload();
   }, [reload]);
 
+  // Something outside this hook (e.g. the command palette) wrote to the table.
+  useEffect(() => {
+    const onChanged = (e) => e.detail?.table === table && reload();
+    window.addEventListener(DATA_EVENT, onChanged);
+    return () => window.removeEventListener(DATA_EVENT, onChanged);
+  }, [table, reload]);
+
   return { rows, setRows, loading, usingMock, reload };
+}
+
+const DATA_EVENT = 'ctrlpanel:data-changed';
+
+/** Tell every mounted useRows/useCrud on `table` to reload (writes made outside them). */
+export function notifyDataChanged(table) {
+  window.dispatchEvent(new CustomEvent(DATA_EVENT, { detail: { table } }));
 }
 
 /**

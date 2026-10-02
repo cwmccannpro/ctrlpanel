@@ -11,6 +11,7 @@ import {
   saveUiPreferences,
 } from '../lib/supabase.js';
 import { applyAccent, FONT_SIZES } from '../lib/helpers.js';
+import { isTheme, saveTheme } from '../lib/themes.js';
 
 const AuthContext = createContext(null);
 
@@ -51,6 +52,8 @@ export function AuthProvider({ children }) {
     setSettings(s);
     // Apply the user's saved theme/display prefs.
     if (s?.accent_color) applyAccent(s.accent_color);
+    const savedTheme = s?.ui_preferences?.appearance?.theme;
+    if (isTheme(savedTheme)) saveTheme(savedTheme);
     if (s?.font_size) {
       document.documentElement.style.setProperty('--font-scale', FONT_SIZES[s.font_size] || '16px');
     }

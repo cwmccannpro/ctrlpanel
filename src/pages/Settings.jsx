@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import Card from '../components/shared/Card.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
-import SharingCenter from '../components/SharingCenter.jsx';
 import { saveUserSettings, saveProfile } from '../lib/supabase.js';
 import { useCrud } from '../lib/useData.js';
 import { ACCENT_OPTIONS, getSavedAccent, saveAccent, FONT_SIZES, formatDate } from '../lib/helpers.js';
+import { THEMES, getSavedTheme, saveTheme } from '../lib/themes.js';
 
 function applyFontSize(size) {
   document.documentElement.style.setProperty('--font-scale', FONT_SIZES[size] || '16px');
@@ -21,10 +21,11 @@ const KNOWN_CONNECTORS = [
 let tmpId = 0;
 
 export default function Settings() {
-  const { user, profile, displayName, settings, connectors, refreshSettings } = useAuth();
+  const { user, profile, displayName, settings, connectors, refreshSettings, updateUiPreferences } = useAuth();
 
   const [name, setName] = useState('');
   const [accent, setAccent] = useState(getSavedAccent());
+  const [theme, setTheme] = useState(getSavedTheme());
   const [font, setFont] = useState('Medium');
   const [sidebar, setSidebar] = useState(localStorage.getItem('ctrlpanel-sidebar') || 'full');
   const [conns, setConns] = useState([]);
@@ -113,6 +114,12 @@ export default function Settings() {
     }
   };
 
+  const pickTheme = (id) => {
+    setTheme(id);
+    saveTheme(id);
+    updateUiPreferences('appearance', { theme: id }).catch(() => {});
+  };
+
   const pickAccent = (hex) => {
     setAccent(hex);
     saveAccent(hex);
@@ -199,8 +206,8 @@ export default function Settings() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 760 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Settings</h1>
-          <div className="page-header-sub">Personalize your CTRLpanel</div>
+          <h1 className="sr-only">Settings</h1>
+
         </div>
       </div>
 
@@ -217,9 +224,43 @@ export default function Settings() {
         </div>
       </Card>
 
-      {/* Color scheme */}
+      {/* Theme */}
       <Card className="card-section" static>
-        <div className="card-section-title">Color Scheme</div>
+        <div className="card-section-title">Theme</div>
+        <div className="theme-grid" role="radiogroup" aria-label="Theme">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={theme === t.id}
+              className={`theme-card ${theme === t.id ? 'active' : ''}`}
+              onClick={() => pickTheme(t.id)}
+            >
+              {t.preview ? (
+                <span
+                  className="theme-preview"
+                  style={{ '--p-base': t.preview.base, '--p-surface': t.preview.surface, '--p-text': t.preview.text, '--p-muted': t.preview.muted }}
+                >
+                  <span className="tp-side" />
+                  <span className="tp-main"><span className="tp-line" /><span className="tp-line short" /><span className="tp-dot" /></span>
+                </span>
+              ) : (
+                <span className="theme-preview theme-preview--auto"><i className="ti ti-device-desktop" /></span>
+              )}
+              <span className="theme-card-name">
+                {t.label}
+                {theme === t.id && <i className="ti ti-check" />}
+              </span>
+              <span className="theme-card-note">{t.note}</span>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {/* Accent */}
+      <Card className="card-section" static>
+        <div className="card-section-title">Accent Color</div>
         <div className="swatch-grid">
           {ACCENT_OPTIONS.map((c) => (
             <div key={c.value} className={`swatch ${accent === c.value ? 'active' : ''}`} style={{ background: c.value }} onClick={() => pickAccent(c.value)}>
@@ -305,9 +346,6 @@ export default function Settings() {
           );
         })}
       </Card>
-
-      {/* Sharing & Friends — invite people to sections of your CTRLpanel */}
-      <SharingCenter />
 
       {/* Nutrition API */}
       <Card className="card-section" static>

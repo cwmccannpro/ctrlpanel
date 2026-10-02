@@ -1,0 +1,168 @@
+/* ============================================================
+   Agents folder — overview cards + Opportunities Agent
+   ============================================================ */
+
+/* ---- Overview ---- */
+.agent-card-icon { font-size: 18px; color: var(--accent); }
+.agent-card-name { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+
+/* ---- Page sections ---- */
+.opp-section { margin-bottom: 16px; }
+.opp-section > .section-label { margin-bottom: 10px; }
+.opp-empty { padding: 28px 8px; text-align: center; font-size: 13px; color: var(--text-secondary); display: flex; justify-content: center; }
+
+.opp-setup { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.opp-setup-icon { font-size: 28px; color: var(--accent); }
+.opp-setup-title { font-size: 15px; font-weight: 500; color: var(--text-primary); margin-bottom: 4px; }
+
+.opp-spin { display: inline-block; animation: opp-spin 1s linear infinite; }
+@keyframes opp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .opp-spin { animation: none; } }
+
+/* ---- Live progress + result banners ---- */
+.opp-progress { margin-bottom: 16px; }
+.opp-progress-title { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.opp-progress-log {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.opp-progress-log li { display: flex; gap: 8px; align-items: baseline; }
+.opp-progress-log i { color: var(--accent); flex-shrink: 0; }
+
+.opp-banner { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 13px; color: var(--text-primary); }
+.opp-banner > span { flex: 1; }
+.opp-banner > i { font-size: 16px; color: var(--green); }
+.opp-banner--error > i { color: var(--red); }
+
+/* ---- Top picks + result rows ---- */
+.opp-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) { .opp-top { grid-template-columns: 1fr; } }
+
+.opp-list { display: flex; flex-direction: column; }
+.opp-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 2px;
+  border-bottom: 0.5px solid var(--border);
+}
+.opp-row:last-child { border-bottom: none; }
+.opp-row--dim { opacity: 0.55; }
+.opp-row--featured {
+  grid-template-columns: 40px minmax(0, 1fr);
+  padding: 16px;
+  border: 0.5px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.opp-row--featured:last-child { border-bottom: 0.5px solid var(--border-bright); }
+.opp-row--featured .opp-actions { grid-column: 1 / -1; justify-content: flex-end; margin-top: -6px; }
+
+.opp-score {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--border-bright);
+}
+.opp-score--top { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
+.opp-score--good { color: var(--green); background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.35); }
+
+.opp-main { min-width: 0; }
+.opp-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.opp-title i { font-size: 12px; color: var(--text-muted); }
+a.opp-title:hover, a.opp-title:hover i { color: var(--accent); }
+
+.opp-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.opp-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.opp-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.opp-meta i { font-size: 13px; color: var(--text-muted); }
+.opp-meta .opp-flag, .opp-meta .opp-flag i { color: var(--amber); }
+
+.opp-reasons { margin: 8px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+
+.opp-actions { display: flex; gap: 2px; }
+.opp-actions .btn.is-on, .opp-actions .btn.is-on i { color: var(--accent); }
+
+/* ---- Skills to build ---- */
+.opp-skills { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 12px; }
+.opp-skill { padding: 12px; border: 0.5px solid var(--border); border-radius: var(--radius-md); background: var(--bg-elevated); }
+.opp-skill-name { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.opp-skill-name i { color: var(--accent); }
+.opp-skill p { margin: 6px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.opp-skill a { color: var(--accent); }
+.opp-skill-how { color: var(--text-primary); }
+
+/* ---- Filters ---- */
+.opp-tabs { overflow-x: auto; }
+.opp-tabs .tab { white-space: nowrap; background: none; }
+.opp-tab-count { margin-left: 6px; font-size: 11px; color: var(--text-muted); }
+.opp-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+
+/* ---- Run history ---- */
+.opp-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.opp-chevron { transition: transform var(--transition); color: var(--text-secondary); }
+.opp-chevron.open { transform: rotate(90deg); }
+.opp-history { margin-top: 10px; }
+
+/* ---- Config modal ---- */
+.opp-config { max-height: 68vh; overflow-y: auto; padding-right: 6px; }
+.opp-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+@media (max-width: 700px) { .opp-config-grid { grid-template-columns: 1fr; } }
+.opp-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.opp-field-head .field-label { margin-bottom: 0; }
+.opp-hint { margin-top: 6px; }
+.opp-config-error { margin-right: auto; font-size: 12px; color: var(--red); }
+
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  padding: 5px 11px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0.5px solid var(--border-bright);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+.chip:hover { color: var(--text-primary); }
+.chip--on { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
+.chip-add { display: flex; gap: 6px; margin-top: 8px; }
+.chip-add .input { max-width: 240px; }
+
+.opp-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--text-primary); cursor: pointer; }
+.opp-check input { accent-color: var(--accent); }

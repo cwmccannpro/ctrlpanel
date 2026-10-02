@@ -20,7 +20,7 @@ export default function Projects() {
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Projects</h1>
+          <h1 className="sr-only">Projects</h1>
           <div className="page-header-sub">{projects.rows.length} projects</div>
         </div>
         <button className="btn btn--accent" onClick={addProject}><i className="ti ti-plus" /> Add Project</button>

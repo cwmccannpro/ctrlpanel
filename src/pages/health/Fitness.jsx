@@ -3,7 +3,7 @@ import Card from '../../components/shared/Card.jsx';
 import Modal from '../../components/shared/Modal.jsx';
 import { useCrud } from '../../lib/useData.js';
 import { DAYS, WORKOUT_TYPES, WORKOUT_COLORS } from '../../lib/mockData.js';
-import { formatDate } from '../../lib/helpers.js';
+import { formatDate, dayKey } from '../../lib/helpers.js';
 
 const blankExercise = () => ({ name: '', sets: '', reps: '', weight: '' });
 const day = (ts) => (ts || '').slice(0, 10);
@@ -33,7 +33,7 @@ export default function Fitness() {
   for (let i = 363; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
+    days.push(dayKey(d));
   }
   const countByDay = {};
   logs.rows.forEach((w) => {
@@ -44,7 +44,7 @@ export default function Fitness() {
 
   let currentStreak = 0;
   const cur = new Date(today);
-  while (workoutDays.has(cur.toISOString().slice(0, 10))) { currentStreak++; cur.setDate(cur.getDate() - 1); }
+  while (workoutDays.has(dayKey(cur))) { currentStreak++; cur.setDate(cur.getDate() - 1); }
   let longest = 0, run = 0;
   days.forEach((ds) => { if (workoutDays.has(ds)) { run++; longest = Math.max(longest, run); } else run = 0; });
   const thisMonth = [...workoutDays].filter((ds) => { const dt = new Date(ds); return dt.getMonth() === today.getMonth() && dt.getFullYear() === today.getFullYear(); }).length;
@@ -65,10 +65,10 @@ export default function Fitness() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Fitness</h1>
-          <div className="page-header-sub">Weekly split & consistency</div>
+          <h1 className="sr-only">Fitness</h1>
+
         </div>
-        <button className="btn btn--accent" onClick={() => setLogging({ date: new Date().toISOString().slice(0, 10), type: 'Push', exercises: [blankExercise()], notes: '' })}>
+        <button className="btn btn--accent" onClick={() => setLogging({ date: dayKey(), type: 'Push', exercises: [blankExercise()], notes: '' })}>
           <i className="ti ti-plus" /> Log Workout
         </button>
       </div>

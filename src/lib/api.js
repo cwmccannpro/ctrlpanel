@@ -46,7 +46,11 @@ export async function streamChat({ messages, context, apiKey }, onEvent, signal)
     onEvent({ type: 'error', message: `API ${res.status}: ${text}` });
     return;
   }
+  await readNdjson(res, onEvent);
+}
 
+// Parse a newline-delimited JSON response body, calling onEvent per line.
+async function readNdjson(res, onEvent) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -85,15 +89,21 @@ export const finance = {
   portfolioHistory: (holdings, scale) => api.post('/finance/portfolio-history', { holdings, scale }),
 };
 
-// Session-authenticated requests (sharing, invites, nutrition social) — the
-// backend verifies the Supabase access token to know who's asking.
+// Session-authenticated requests. The backend verifies the Supabase access
+// token to know which private workspace is making the request.
 async function authRequest(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || `API ${res.status}`);
+  if (!res.ok) {
+    // `code` / `status` let callers tell "sheet not shared" from "API down" without parsing text.
+    const err = new Error(body?.error || `API ${res.status}`);
+    err.code = body?.code;
+    err.status = res.status;
+    throw err;
+  }
   return body;
 }
 
@@ -131,6 +141,40 @@ export const youtube = {
   analytics: (id, range) => authApi.get(`/youtube/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
   rename: (id, label) => authApi.post('/youtube/rename', { id, label }),
   disconnect: (id) => authApi.post('/youtube/disconnect', { id }),
+};
+
+// Google Sheets-backed CRM. The server authenticates with a service account,
+// so there's no user OAuth — the user shares their spreadsheet with the
+// service account address that /status returns.
+export const sheets = {
+  status: () => authApi.get('/sheets/status'),
+  check: () => authApi.get('/sheets/check'),
+  meta: (id) => authApi.get(`/sheets/meta?id=${encodeURIComponent(id)}`),
+  values: (id, sheet) => authApi.get(`/sheets/values?id=${encodeURIComponent(id)}&sheet=${encodeURIComponent(sheet)}`),
+  setCell: (id, sheet, row, col, value) => authApi.post('/sheets/cell', { id, sheet, row, col, value }),
+  append: (id, sheet, values) => authApi.post('/sheets/append', { id, sheet, values }),
+  deleteRows: (id, sheetId, rows) => authApi.post('/sheets/delete-rows', { id, sheetId, rows }),
+};
+
+// Agents folder. The Opportunities run streams NDJSON progress events
+// (start / search / results / status / ping / done / error) — see
+// backend/opportunities.js. The server reads the user's config itself.
+export const agentsApi = {
+  async runOpportunities({ apiKey, today } = {}, onEvent, signal) {
+    const res = await fetch(`${BASE}/agents/opportunities/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ apiKey, today }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      const body = await res.json().catch(() => ({}));
+      onEvent({ type: 'error', message: body?.error || `API ${res.status}` });
+      return;
+    }
+    await readNdjson(res, onEvent);
+  },
+  extractProfile: (pdfBase64, apiKey) => authApi.post('/agents/opportunities/profile', { pdfBase64, apiKey }),
 };
 
 export const gcal = {

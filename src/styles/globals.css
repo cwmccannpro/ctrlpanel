@@ -21,6 +21,10 @@
   --text-secondary: #8a7070;
   --text-muted: #3d2e2e;
 
+  /* Faint overlay for hover rows / inset panels, and the glass card fill */
+  --tint: rgba(255, 255, 255, 0.02);
+  --glass: rgba(20, 16, 16, 0.7);
+
   /* Semantic */
   --green: #10b981;
   --amber: #f59e0b;
@@ -41,6 +45,7 @@
   /* Layout */
   --sidebar-width: 148px;
 
+  color-scheme: dark;
   font-size: var(--font-scale, 16px);
 }
 
@@ -152,7 +157,7 @@ ol {
 
 /* ---- Glass-morphism card ---- */
 .card {
-  background: rgba(20, 16, 16, 0.7);
+  background: var(--glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 0.5px solid var(--border-bright);

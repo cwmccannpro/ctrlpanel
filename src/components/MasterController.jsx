@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import LazyMarkdown from './shared/LazyMarkdown.jsx';
+import { AI_ACTIONS, planMyDayPrompt } from '../lib/prompts.js';
 import { streamChat } from '../lib/api.js';
 import { useAuth } from './AuthProvider.jsx';
 import Modal from './shared/Modal.jsx';
@@ -234,7 +235,9 @@ export function MasterControllerDock() {
       onMouseEnter={() => { hoverRef.current = true; setRevealed(true); }}
       onMouseLeave={() => { hoverRef.current = false; if (!focusRef.current) setRevealed(false); }}
     >
-      <button className="mc-dock-hint" onClick={() => setRevealed(true)} aria-label="Open Master Controller" />
+      <button className="mc-dock-hint" onClick={() => setRevealed(true)} aria-label="Open Master Controller">
+        <i className="ti ti-sparkles" />
+      </button>
       <div className="mc-dock-bar mc-bar master-controller-input">
         <i className="ti ti-sparkles mc-bar-icon" />
         <input
@@ -242,9 +245,18 @@ export function MasterControllerDock() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           onFocus={() => { focusRef.current = true; }}
-          onBlur={() => { focusRef.current = false; }}
+          onBlur={() => {
+            focusRef.current = false;
+            // Touch has no mouse-leave: tuck the bar away once it loses focus.
+            if (!hoverRef.current) { clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setRevealed(false), 250); }
+          }}
           placeholder="Ask the Master Controller anything…"
         />
+        {!text.trim() && (
+          <button className="mc-dock-quick" onClick={() => send(planMyDayPrompt())} title="Plan my day" aria-label="Plan my day">
+            <i className="ti ti-calendar-time" />
+          </button>
+        )}
         <button className="mc-send" onClick={submit} disabled={!text.trim()} aria-label="Send">
           <i className="ti ti-arrow-up" />
         </button>
@@ -326,6 +338,13 @@ function MasterControllerPanel() {
               <p style={{ marginTop: 8 }}>
                 Ask me to navigate, log expenses, create tasks, summarize your day, and more.
               </p>
+              <div className="mc-chips">
+                {AI_ACTIONS.map((a) => (
+                  <button key={a.id} className="mc-chip" onClick={() => send(a.prompt())} disabled={isStreaming}>
+                    <i className={`ti ${a.icon}`} /> {a.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -351,7 +370,7 @@ function MasterControllerPanel() {
             }
             return (
               <div key={m.id} className="mc-bubble mc-bubble--assistant">
-                {m.text ? <ReactMarkdown>{m.text}</ReactMarkdown> : <span className="spinner" />}
+                {m.text ? <LazyMarkdown>{m.text}</LazyMarkdown> : <span className="spinner" />}
               </div>
             );
           })}

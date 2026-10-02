@@ -1,0 +1,24 @@
+{
+  "name": "CTRLpanel",
+  "short_name": "CTRLpanel",
+  "description": "A private Life OS: tasks, calendar, habits, projects, CRM, knowledge and finance in one place.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0808",
+  "theme_color": "#0a0808",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Today", "short_name": "Today", "url": "/" },
+    { "name": "To Do", "short_name": "To Do", "url": "/todo" },
+    { "name": "Habits", "short_name": "Habits", "url": "/habits" },
+    { "name": "Knowledge Base", "short_name": "Notes", "url": "/knowledge" }
+  ]
+}

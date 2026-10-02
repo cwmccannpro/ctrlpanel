@@ -17,7 +17,7 @@ import Spinner from '../../components/shared/Spinner.jsx';
 import { useCrud } from '../../lib/useData.js';
 import { finance } from '../../lib/api.js';
 import { ASSET_CLASSES } from '../../lib/mockData.js';
-import { currency, compactCurrency, percent, formatDate } from '../../lib/helpers.js';
+import { currency, compactCurrency, percent, formatDate, dayKey } from '../../lib/helpers.js';
 
 const PIE_COLORS = ['#e11d48', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899'];
 const GREEN = '#10b981';
@@ -26,7 +26,7 @@ const RED = '#ef4444';
 const PERF_SCALES = ['1W', '1M', '3M', '6M', '1Y', 'ALL'];
 const DETAIL_SCALES = ['1D', '1W', '1M', '6M', '1Y', 'ALL'];
 
-const chartTooltip = { background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 };
+const chartTooltip = { background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
 
 const fmtTick = (t, scale) => {
   const d = new Date(t);
@@ -105,9 +105,9 @@ function HoldingDetail({ holding, quote, onClose }) {
                 <stop offset="100%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="#1e1818" vertical={false} />
-            <XAxis dataKey="t" stroke="#8a7070" fontSize={11} tickFormatter={(t) => fmtTick(t, scale)} minTickGap={40} />
-            <YAxis stroke="#8a7070" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={54} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="t" stroke="var(--text-secondary)" fontSize={11} tickFormatter={(t) => fmtTick(t, scale)} minTickGap={40} />
+            <YAxis stroke="var(--text-secondary)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={54} />
             <Tooltip contentStyle={chartTooltip} labelFormatter={fmtFull} formatter={(v) => [currency(v, { cents: true }), 'Price']} />
             <Area type="monotone" dataKey="close" stroke={color} strokeWidth={2} fill="url(#detailGrad)" />
           </AreaChart>
@@ -232,14 +232,14 @@ export default function Investing() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Investing</h1>
+          <h1 className="sr-only">Investing</h1>
           <div className="page-header-sub row" style={{ gap: 6 }}>
             <span className={`status-dot ${live ? 'running' : 'stopped'}`} />
             {live ? 'Live market prices · refreshes every 10s' : tickers.length ? 'Fetching live prices…' : 'Add a holding to track live value'}
           </div>
         </div>
         <div className="row">
-          <button className="btn" onClick={() => setAddDiv({ holding_id: holdings.rows[0]?.id, paid_date: new Date().toISOString().slice(0, 10) })}><i className="ti ti-plus" /> Dividend</button>
+          <button className="btn" onClick={() => setAddDiv({ holding_id: holdings.rows[0]?.id, paid_date: dayKey() })}><i className="ti ti-plus" /> Dividend</button>
           <button className="btn btn--accent" onClick={() => setEditHolding({ asset_class: 'Stocks' })}><i className="ti ti-plus" /> Add Holding</button>
         </div>
       </div>
@@ -291,9 +291,9 @@ export default function Investing() {
                   <stop offset="100%" stopColor={perfColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#1e1818" vertical={false} />
-              <XAxis dataKey="t" stroke="#8a7070" fontSize={11} tickFormatter={(t) => fmtTick(t, perfScale)} minTickGap={44} />
-              <YAxis stroke="#8a7070" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={56} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="t" stroke="var(--text-secondary)" fontSize={11} tickFormatter={(t) => fmtTick(t, perfScale)} minTickGap={44} />
+              <YAxis stroke="var(--text-secondary)" fontSize={11} domain={['auto', 'auto']} tickFormatter={(v) => compactCurrency(v)} width={56} />
               <Tooltip contentStyle={chartTooltip} labelFormatter={fmtFull} formatter={(v) => [currency(v), 'Portfolio']} />
               <Area type="monotone" dataKey="value" stroke={perfColor} strokeWidth={2} fill="url(#perfGrad)" />
             </AreaChart>

@@ -1,0 +1,67 @@
+.crm-page-toolbar .select, .crm-view-toolbar .select { width:auto; max-width:100%; }
+.crm-page-toolbar { margin-bottom:16px; }
+.crm-page-menu { display:flex; flex-direction:column; min-width:180px; }
+.crm-page-menu .btn { justify-content:flex-start; }
+.crm-page summary { list-style:none; }
+.crm-page summary::-webkit-details-marker { display:none; }
+.crm-empty { min-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:var(--text-secondary); text-align:center; padding:24px; }
+.crm-empty p { margin:0; font-size:13px; }
+.crm-empty span { font-size:12px; }
+.crm-page-list .list-row { gap:14px; color:var(--text-primary); text-decoration:none; }
+.crm-page-list .list-row-meta { margin-left:auto; }
+.crm-sheets-logo { flex-shrink:0; vertical-align:middle; }
+.crm-open-sheet { margin-left:auto; }
+.crm-filters { display:flex; flex-wrap:wrap; gap:12px; padding:16px 0; border-top:1px solid var(--border); margin-bottom:16px; align-items:end; }
+.crm-filters .field { flex:1 1 160px; max-width:240px; margin:0; }
+.crm-filters .select { width:100%; }
+.crm-sort { border:0; padding:0; background:none; color:inherit; font:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; text-align:left; width:100%; }
+.crm-sort:focus-visible, .crm-page summary:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+.crm-read-table td { white-space:pre-wrap; min-width:120px; max-width:360px; overflow-wrap:anywhere; }
+.crm-row-count { margin-top:12px; }
+.crm-error { color:var(--accent); margin-bottom:12px; }
+.crm-share-address { gap:8px; margin:12px 0 20px; }
+.crm-share-address code { overflow-wrap:anywhere; min-width:0; flex:1; color:var(--text-primary); }
+@media (max-width:600px) {
+  .crm-view-toolbar .search-input { flex:1 1 100%; }
+  .crm-view-toolbar .search-input .input { width:100%; }
+  .crm-open-sheet { margin-left:0; }
+  .crm-page-list .list-row { flex-wrap:wrap; }
+}
+
+/* ---- Sheet table: scrolling, editing, selection ---- */
+.crm-scroll { max-height:calc(100vh - 250px); overflow:auto; }
+.crm-read-table thead th { position:sticky; top:0; z-index:2; background:var(--bg-surface); }
+.crm-check-col { width:34px; min-width:34px !important; max-width:34px !important; padding-right:0 !important; }
+.crm-cell { position:relative; }
+.crm-cell.is-editable { cursor:cell; }
+.crm-cell.is-editable:hover { background:var(--tint); }
+.crm-cell.is-editable:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.crm-cell.is-editing { padding:0 !important; background:var(--bg-elevated); outline:2px solid var(--accent); outline-offset:-2px; }
+.crm-cell-input { width:100%; min-width:160px; border:0; border-radius:0; background:transparent; resize:none; padding:8px 12px; font:inherit; line-height:1.4; }
+.crm-cell-input:focus { box-shadow:none; }
+.crm-cell a { color:var(--accent); text-decoration:none; }
+.crm-cell a:hover { text-decoration:underline; }
+.crm-cell-edit { position:absolute; right:4px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:22px; height:22px; border:0; border-radius:5px; background:var(--bg-elevated); color:var(--text-secondary); cursor:pointer; opacity:0; transition:opacity var(--transition); }
+.crm-cell:hover .crm-cell-edit, .crm-cell-edit:focus-visible { opacity:1; }
+.crm-blank { color:var(--text-muted); }
+tr.is-selected td { background:var(--accent-dim); }
+.crm-selectbar { display:flex; align-items:center; gap:10px; padding:8px 12px; margin-bottom:10px; border:1px solid var(--border-bright); border-radius:var(--radius-md); background:var(--bg-elevated); font-size:12.5px; }
+.crm-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border-bright); border-radius:999px; font-size:12px; color:var(--text-secondary); }
+.crm-footer { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.crm-footer .list-row-meta { margin:0; }
+.crm-notice { margin-bottom:12px; color:var(--amber); }
+.crm-problem > i { font-size:28px; color:var(--text-secondary); }
+.crm-problem p { max-width:520px; color:var(--text-primary); }
+.crm-addrow-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px 14px; }
+.crm-addrow-grid .field { margin:0; }
+
+/* ---- Connect / setup modal ---- */
+.crm-steps { margin:14px 0 4px 18px; display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.5; color:var(--text-primary); }
+.crm-steps a { color:var(--accent); }
+.crm-steps code, .crm-share-help code { font-size:12px; padding:1px 5px; border-radius:4px; background:var(--bg-elevated); }
+.crm-steps .crm-share-address { margin:8px 0 6px; }
+.crm-ok { display:flex; align-items:center; gap:8px; margin-bottom:14px; font-size:13px; color:var(--green); }
+.crm-share-help { margin:0 0 16px 18px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--text-secondary); }
+.crm-share-help strong { color:var(--text-primary); font-weight:500; }
+
+@media (hover: none) { .crm-cell-edit { opacity: 1; } }

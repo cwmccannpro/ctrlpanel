@@ -82,16 +82,38 @@ export function formatLongDate(date = new Date()) {
   });
 }
 
+/**
+ * Date-only strings ("2026-10-02" — due dates, transaction dates) are calendar
+ * days, not instants: `new Date('2026-10-02')` is UTC midnight, which lands on
+ * the previous evening in US timezones. Read them as local midnight instead.
+ */
+export function parseLocalDate(value) {
+  if (typeof value === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  return new Date(value);
+}
+
+/**
+ * Local-time YYYY-MM-DD. `toISOString()` is UTC, so after ~8pm in the US it
+ * names tomorrow; every "today" / per-day key in the app goes through this.
+ */
+export function dayKey(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function formatDate(dateStr) {
   if (!dateStr) return '';
-  const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  const d = typeof dateStr === 'string' ? parseLocalDate(dateStr) : dateStr;
   if (isNaN(d)) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 export function relativeDay(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   const today = new Date();
   const diff = Math.round((d.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) / 86400000);
   if (diff === 0) return 'Today';
@@ -100,6 +122,16 @@ export function relativeDay(dateStr) {
   if (diff > 1 && diff < 7) return `In ${diff} days`;
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
   return formatDate(dateStr);
+}
+
+// "just now" / "5m ago" / "3h ago" / "2d ago" for a timestamp.
+export function timeAgo(ts) {
+  if (!ts) return 'never';
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 /* ---- Numbers / currency ---- */

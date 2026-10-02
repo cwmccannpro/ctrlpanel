@@ -4,7 +4,7 @@ import Modal from '../../components/shared/Modal.jsx';
 import Badge from '../../components/shared/Badge.jsx';
 import { useCrud } from '../../lib/useData.js';
 import { INCOME_FREQUENCIES, INCOME_TYPES, EXPENSE_TYPES } from '../../lib/mockData.js';
-import { currency, formatDate } from '../../lib/helpers.js';
+import { currency, formatDate, parseLocalDate, dayKey } from '../../lib/helpers.js';
 
 function progressColor(pct) {
   if (pct > 0.9) return 'var(--red)';
@@ -13,7 +13,7 @@ function progressColor(pct) {
 }
 
 function sameMonth(dateStr, ref) {
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth();
 }
 
@@ -54,8 +54,8 @@ export default function Budget() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Budget</h1>
-          <div className="page-header-sub">Income, categories & transactions</div>
+          <h1 className="sr-only">Budget</h1>
+
         </div>
         <div className="row">
           <button className="btn btn--icon" onClick={() => setMonthOffset((m) => m - 1)}><i className="ti ti-chevron-left" /></button>
@@ -98,7 +98,7 @@ export default function Budget() {
         <Card className="card-section" static>
           <div className="card-section-title">
             <span>Transactions</span>
-            <button className="btn btn--sm btn--accent" onClick={() => setAddingTx({ date: new Date().toISOString().slice(0, 10), category_id: categories.rows[0]?.id, recurring: false })}>
+            <button className="btn btn--sm btn--accent" onClick={() => setAddingTx({ date: dayKey(), category_id: categories.rows[0]?.id, recurring: false })}>
               <i className="ti ti-plus" /> Add
             </button>
           </div>

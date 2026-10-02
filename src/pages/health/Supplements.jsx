@@ -76,7 +76,7 @@ export default function Supplements() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Supplements</h1>
+          <h1 className="sr-only">Supplements</h1>
           <div className="page-header-sub">{supps.filter((s) => s.enabled).length} active in stack</div>
         </div>
         <button className="btn btn--accent" onClick={() => setEditing({ timing: 'Morning' })}><i className="ti ti-plus" /> Add Supplement</button>

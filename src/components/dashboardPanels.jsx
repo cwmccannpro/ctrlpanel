@@ -8,25 +8,32 @@
 //
 // Add a panel here and it automatically appears in the "Add panel" picker.
 // ============================================================
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import KnowledgePanel from './KnowledgePanel.jsx';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { useAuth } from './AuthProvider.jsx';
+import { useToast } from './Toaster.jsx';
+import { useMasterController } from './MasterController.jsx';
+import { projectForTask } from '../lib/links.js';
+import { planMyDayPrompt } from '../lib/prompts.js';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
-import { finance, youtube, gcal } from '../lib/api.js';
+import { useCalendarEvents } from '../lib/useCalendarEvents.js';
+import { finance, youtube } from '../lib/api.js';
 import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS, WORKOUT_COLORS } from '../lib/mockData.js';
 import {
-  relativeDay, formatDate, currency, percent, compactCurrency, compactNumber, number, lifeStats, channelLabel,
+  relativeDay, formatDate, parseLocalDate, currency, percent, compactCurrency, compactNumber, number, lifeStats, channelLabel,
 } from '../lib/helpers.js';
-import { RANGES, computeTrend, recentDays, dayKey } from '../lib/habits.js';
+import { RANGES, computeTrend, recentDays, dayKey, currentStreak } from '../lib/habits.js';
+import { parseCapture, taskRowFromCapture, doneColumn, readCaptureBoard, writeCaptureBoard } from '../lib/commandPalette.js';
 
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const todayKey = () => dayKey(new Date());
 const todayShort = () => new Date().toLocaleDateString('en-US', { weekday: 'short' });
-const TIP = { background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 };
+const TIP = { background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
 
 const PRIORITY_RANK = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
 const PRIORITY_COLOR = { Urgent: '#ef4444', High: '#f59e0b', Medium: '#3b82f6', Low: '#10b981' };
@@ -57,29 +64,16 @@ function PanelTitle({ children, to }) {
 }
 const Empty = ({ children }) => <div className="dash2-empty">{children}</div>;
 
-// Calendar events from the same source the Calendar page uses: Google when
-// connected, else the local Supabase table.
-function useCalendarEvents() {
-  const { rows: localRows } = useRows('calendar_events', []);
-  const [gEvents, setGEvents] = useState(null);
-  useEffect(() => {
-    let on = true;
-    gcal.status()
-      .then((s) => (s.connected ? gcal.list() : null))
-      .then((r) => { if (on && r) setGEvents(r.events || []); })
-      .catch(() => {});
-    return () => { on = false; };
-  }, []);
-  return gEvents ?? localRows;
-}
-
 /* ============================================================
    Tasks
    ============================================================ */
 function BoardPanel({ cfg = {}, onCfg = () => {} }) {
   const navigate = useNavigate();
-  const { rows: boards } = useRows('boards', []);
-  const { rows: tasks } = useRows('tasks', []);
+  const { user } = useAuth();
+  const { rows: boardRows } = useRows('boards', []);
+  const { rows: taskRows } = useRows('tasks', []);
+  const boards = boardRows.filter((b) => b.user_id === user?.id);
+  const tasks = taskRows.filter((t) => t.user_id === user?.id);
   const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
   const columns = board?.columns?.length ? board.columns : KANBAN_COLUMNS;
   const column = columns.includes(cfg.column) ? cfg.column : columns[0];
@@ -120,7 +114,7 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
         ) : (
           items.map((t) => (
             <div className="dash2-task" key={t.id} onClick={() => navigate(`/todo/${board.id}`)} title={t.title}>
-              <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || '#8a7070' }} />
+              <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
               <span className="dash2-task-title">{t.title}</span>
               {t.due_date && <span className="dash2-task-meta">{relativeDay(t.due_date)}</span>}
             </div>
@@ -134,7 +128,9 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
 // Everything due soon across every board, soonest first.
 function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
   const navigate = useNavigate();
-  const { rows: tasks } = useRows('tasks', []);
+  const { user } = useAuth();
+  const { rows: taskRows } = useRows('tasks', []);
+  const tasks = taskRows.filter((t) => t.user_id === user?.id);
   const days = Number(cfg.days) || 14;
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
@@ -143,13 +139,13 @@ function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
   const items = tasks
     .filter((t) => t.due_date && (t.column_name || '') !== 'Done')
     .filter((t) => {
-      const d = new Date(t.due_date);
+      const d = parseLocalDate(t.due_date);
       return d <= end;
     })
     .sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)))
     .slice(0, 12);
 
-  const overdue = items.filter((t) => new Date(t.due_date) < cutoff).length;
+  const overdue = items.filter((t) => parseLocalDate(t.due_date) < cutoff).length;
 
   return (
     <>
@@ -167,10 +163,10 @@ function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
           <Empty>Nothing due in the next {days} days.</Empty>
         ) : (
           items.map((t) => {
-            const late = new Date(t.due_date) < cutoff;
+            const late = parseLocalDate(t.due_date) < cutoff;
             return (
               <div className="dash2-task" key={t.id} onClick={() => navigate(t.board_id ? `/todo/${t.board_id}` : '/todo')} title={t.title}>
-                <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || '#8a7070' }} />
+                <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
                 <span className="dash2-task-title">{t.title}</span>
                 <span className={`dash2-task-meta ${late ? 'text-red' : ''}`}>{relativeDay(t.due_date)}</span>
               </div>
@@ -237,75 +233,6 @@ function SchedulePanel({ cfg = {}, onCfg = () => {} }) {
 /* ============================================================
    Health
    ============================================================ */
-function Ring({ label, value, goal, unit, color }) {
-  const R = 26;
-  const C = 2 * Math.PI * R;
-  const pct = goal > 0 ? Math.min(value / goal, 1) : 0;
-  return (
-    <div className="dash2-ring">
-      <div className="dash2-ring-wrap">
-        <svg viewBox="0 0 64 64">
-          <circle className="ring-track" cx="32" cy="32" r={R} />
-          <circle
-            className="ring-fill" cx="32" cy="32" r={R} stroke={color}
-            strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 32 32)"
-          />
-        </svg>
-        <div className="dash2-ring-center">{Math.round(value)}</div>
-      </div>
-      <div className="dash2-ring-label">{label}</div>
-      <div className="dash2-ring-goal">/{Math.round(goal)}{unit || ''}</div>
-    </div>
-  );
-}
-
-function MacrosPanel() {
-  const { rows: logs } = useRows('nutrition_logs', []);
-  const { rows: goalRows } = useRows('user_goals', []);
-  const goals = { calories: 2400, protein: 180, carbs: 250, fat: 80, ...(goalRows[0] || {}) };
-  const today = logs.filter((x) => (x.logged_at || '').slice(0, 10) === todayKey());
-  const sum = (k) => today.reduce((s, x) => s + Number(x[k] || 0), 0);
-  return (
-    <>
-      <PanelTitle to="/health/nutrition">Macros · Today</PanelTitle>
-      <div className="dash2-rings">
-        <Ring label="Cal" value={sum('calories')} goal={goals.calories} color="#e11d48" />
-        <Ring label="Protein" value={sum('protein')} goal={goals.protein} unit="g" color="#3b82f6" />
-        <Ring label="Carbs" value={sum('carbs')} goal={goals.carbs} unit="g" color="#f59e0b" />
-        <Ring label="Fat" value={sum('fat')} goal={goals.fat} unit="g" color="#10b981" />
-      </div>
-    </>
-  );
-}
-
-function WaterPanel() {
-  const water = useCrud('water_logs');
-  const { rows: goalRows } = useRows('user_goals', []);
-  const goal = Number(goalRows[0]?.water) || 64;
-  const today = water.rows.filter((x) => (x.logged_at || '').slice(0, 10) === todayKey());
-  const total = today.reduce((s, x) => s + Number(x.amount || 0), 0);
-  const pct = goal ? Math.min((total / goal) * 100, 100) : 0;
-
-  return (
-    <>
-      <div className="dash2-panel-head">
-        <PanelTitle to="/health/nutrition">Water · Today</PanelTitle>
-        <span className="dash2-count">{Math.round(total)} / {goal} oz</span>
-      </div>
-      <div className="progress" style={{ marginBottom: 8 }}>
-        <div className="progress-fill" style={{ width: `${pct}%`, background: '#3b82f6' }} />
-      </div>
-      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-        {[8, 16, 24].map((oz) => (
-          <button key={oz} className="btn btn--sm" onClick={() => water.add({ amount: oz })}>
-            <i className="ti ti-plus" /> {oz} oz
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function WeightPanel({ cfg = {}, onCfg = () => {} }) {
   const { rows } = useRows('weight_logs', [], 'logged_at');
   const days = Number(cfg.days) || 90;
@@ -346,7 +273,7 @@ function WeightPanel({ cfg = {}, onCfg = () => {} }) {
           {data.length > 1 && (
             <ResponsiveContainer width="100%" height={100}>
               <LineChart data={data} margin={{ top: 6, right: 4, left: -30, bottom: 0 }}>
-                <CartesianGrid stroke="#1e1818" vertical={false} />
+                <CartesianGrid stroke="var(--border)" vertical={false} />
                 <YAxis domain={['auto', 'auto']} hide />
                 <Tooltip contentStyle={TIP} labelFormatter={(t) => formatDate(new Date(t))} formatter={(v) => [`${v} lbs`, 'Weight']} />
                 <Line type="monotone" dataKey="weight" stroke="var(--accent)" strokeWidth={2} dot={false} isAnimationActive={false} />
@@ -424,7 +351,7 @@ function WorkoutsPanel() {
   let streak = 0;
   const cur = new Date();
   cur.setHours(0, 0, 0, 0);
-  while (doneDays.has(cur.toISOString().slice(0, 10))) { streak++; cur.setDate(cur.getDate() - 1); }
+  while (doneDays.has(dayKey(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
 
   const last28 = recentDays(28);
   const thisMonth = last28.filter((d) => doneDays.has(dayKey(d))).length;
@@ -536,9 +463,9 @@ function HabitsTrendPanel({ cfg = {}, onCfg = () => {} }) {
       ) : (
         <ResponsiveContainer width="100%" height={130}>
           <LineChart data={trend} margin={{ top: 6, right: 6, left: -26, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1818" vertical={false} />
-            <XAxis dataKey="label" stroke="#8a7070" fontSize={10} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} />
-            <YAxis stroke="#8a7070" fontSize={10} domain={[0, 100]} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} width={30} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={10} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} />
+            <YAxis stroke="var(--text-secondary)" fontSize={10} domain={[0, 100]} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} width={30} />
             <Tooltip contentStyle={TIP} formatter={(v) => [`${v}%`, 'Completion']} />
             <Line type="monotone" dataKey="rate" stroke="var(--accent)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} />
           </LineChart>
@@ -590,6 +517,9 @@ const monthlyIncome = (rows) =>
 function NetWorthPanel() {
   const { rows: accounts } = useRows('accounts', []);
   const { rows: snapshots } = useRows('net_worth_snapshots', [], 'snapshot_date');
+  // Per-instance: the same panel can sit on the dashboard twice, and a shared
+  // gradient id would make both charts use whichever one rendered first.
+  const gradientId = useId();
 
   const current = accounts.reduce(
     (s, a) => s + (a.type === 'Liability' ? -Number(a.balance || 0) : Number(a.balance || 0)),
@@ -634,14 +564,14 @@ function NetWorthPanel() {
             <ResponsiveContainer width="100%" height={110}>
               <AreaChart data={series} margin={{ top: 6, right: 4, left: -34, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="dashNw" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity={0.3} />
                     <stop offset="100%" stopColor={color} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <YAxis domain={['auto', 'auto']} hide />
                 <Tooltip contentStyle={TIP} labelFormatter={(d) => formatDate(d)} formatter={(v) => [currency(v), 'Net worth']} />
-                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill="url(#dashNw)" />
+                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -675,7 +605,7 @@ function CashflowPanel({ cfg = {}, onCfg = () => {} }) {
       const spent = txns
         .filter((t) => {
           if (!t.date) return false;
-          const td = new Date(t.date);
+          const td = parseLocalDate(t.date);
           return td.getFullYear() === y && td.getMonth() === m;
         })
         .reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -721,9 +651,9 @@ function CashflowPanel({ cfg = {}, onCfg = () => {} }) {
           </div>
           <ResponsiveContainer width="100%" height={110}>
             <BarChart data={data} margin={{ top: 6, right: 4, left: -20, bottom: 0 }} barGap={2}>
-              <CartesianGrid stroke="#1e1818" vertical={false} />
-              <XAxis dataKey="label" stroke="#8a7070" fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis stroke="#8a7070" fontSize={10} tickFormatter={(v) => compactCurrency(v)} tickLine={false} axisLine={false} width={44} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} />
+              <YAxis stroke="var(--text-secondary)" fontSize={10} tickFormatter={(v) => compactCurrency(v)} tickLine={false} axisLine={false} width={44} />
               <Tooltip
                 contentStyle={TIP}
                 cursor={{ fill: 'rgba(255,255,255,0.04)' }}
@@ -746,7 +676,7 @@ function BudgetPanel() {
   const now = new Date();
   const spentFor = (id) =>
     txns
-      .filter((t) => t.category_id === id && t.date && new Date(t.date).getMonth() === now.getMonth() && new Date(t.date).getFullYear() === now.getFullYear())
+      .filter((t) => t.category_id === id && t.date && parseLocalDate(t.date).getMonth() === now.getMonth() && parseLocalDate(t.date).getFullYear() === now.getFullYear())
       .reduce((s, t) => s + Number(t.amount || 0), 0);
 
   const rows = categories
@@ -786,6 +716,7 @@ function InvestingPanel({ cfg = {}, onCfg = () => {} }) {
   const { rows: holdings } = useRows('holdings', []);
   const [prices, setPrices] = useState({});
   const [perf, setPerf] = useState([]);
+  const gradientId = useId();
   const scale = PERF_SCALES.includes(cfg.scale) ? cfg.scale : '3M';
 
   const tickers = holdings.map((h) => h.ticker).filter(Boolean);
@@ -846,14 +777,14 @@ function InvestingPanel({ cfg = {}, onCfg = () => {} }) {
             <ResponsiveContainer width="100%" height={110}>
               <AreaChart data={perf} margin={{ top: 6, right: 4, left: -34, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="dashPerf" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity={0.3} />
                     <stop offset="100%" stopColor={color} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <YAxis domain={['auto', 'auto']} hide />
                 <Tooltip contentStyle={TIP} labelFormatter={() => ''} formatter={(v) => [currency(v), 'Value']} />
-                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill="url(#dashPerf)" />
+                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -924,7 +855,7 @@ function CrmPanel() {
           <div className="dash2-tasks">
             {recent.map((c) => (
               <div className="dash2-task" key={c.id} onClick={() => navigate('/crm')} title={c.business_name}>
-                <span className="dash2-dot" style={{ background: colors[c.lead_temp] || '#8a7070' }} />
+                <span className="dash2-dot" style={{ background: colors[c.lead_temp] || 'var(--text-secondary)' }} />
                 <span className="dash2-task-title">{c.business_name}</span>
                 <span className="dash2-task-meta">{c.service || ''}</span>
               </div>
@@ -936,29 +867,30 @@ function CrmPanel() {
   );
 }
 
-function ReportsPanel() {
+// Top picks from the Opportunities Agent (Agents folder), best fit first.
+function OpportunitiesPanel() {
   const navigate = useNavigate();
-  const { rows: reports } = useRows('reports', []);
-  const { rows: sources } = useRows('report_sources', []);
-  const nameById = Object.fromEntries(sources.map((s) => [s.id, s.name]));
-  const recent = [...reports]
-    .sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
-    .slice(0, 6);
+  const { rows } = useRows('opportunities', []);
+  const fresh = rows.filter((o) => o.status === 'new').length;
+  const picks = rows
+    .filter((o) => o.status === 'new' || o.status === 'saved')
+    .sort((a, b) => (b.score || 0) - (a.score || 0))
+    .slice(0, 5);
   return (
     <>
       <div className="dash2-panel-head">
-        <PanelTitle to="/reports">Reports</PanelTitle>
-        <span className="dash2-count">{reports.length}</span>
+        <PanelTitle to="/agents/opportunities">Opportunities</PanelTitle>
+        {fresh > 0 && <span className="dash2-count">{fresh} new</span>}
       </div>
       <div className="dash2-tasks">
-        {recent.length === 0 ? (
-          <Empty>No reports yet. Add a source under Reports.</Empty>
+        {picks.length === 0 ? (
+          <Empty>No picks yet. Run the Opportunities Agent.</Empty>
         ) : (
-          recent.map((r) => (
-            <div className="dash2-task" key={r.id} onClick={() => navigate(`/reports/${r.source_id}`)} title={r.title}>
-              <i className="ti ti-file-type-pdf" style={{ color: 'var(--accent)', fontSize: 13, flexShrink: 0 }} />
-              <span className="dash2-task-title">{r.title}</span>
-              <span className="dash2-task-meta">{nameById[r.source_id] || ''}</span>
+          picks.map((o) => (
+            <div className="dash2-task" key={o.id} onClick={() => navigate('/agents/opportunities')} title={o.title}>
+              <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600, minWidth: 20, flexShrink: 0 }}>{o.score}</span>
+              <span className="dash2-task-title">{o.title}</span>
+              <span className="dash2-task-meta">{o.org || ''}</span>
             </div>
           ))
         )}
@@ -967,14 +899,16 @@ function ReportsPanel() {
   );
 }
 
-function YouTubePanel({ cfg = {} }) {
-  const navigate = useNavigate();
+function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
   // Channels come from the shared Socials list (one fetch for the whole app).
   const { socials } = useWorkspace();
   const status = { ready: socials.ready, channels: socials.channels, loaded: socials.loaded };
   const [data, setData] = useState(null);
   const [err, setErr] = useState(false);
+  const gradientId = useId();
 
+  // Socials is modular, so pin this panel to one channel; add a second panel
+  // for a second channel. Falls back to the first if the pinned one is gone.
   const first = status.channels.find((c) => c.id === cfg.channel_id) || status.channels[0];
   const firstId = first?.id;
 
@@ -991,6 +925,11 @@ function YouTubePanel({ cfg = {} }) {
     <>
       <div className="dash2-panel-head" style={{ marginBottom: 8 }}>
         <PanelTitle to={first ? `/socials/youtube/${first.id}` : '/socials'}>YouTube</PanelTitle>
+        {status.channels.length > 1 && (
+          <select className="dash2-select" value={firstId || ''} onChange={(e) => onCfg({ channel_id: e.target.value })}>
+            {status.channels.map((c) => <option key={c.id} value={c.id}>{channelLabel(c)}</option>)}
+          </select>
+        )}
         {first && <span className="dash2-count"><i className="ti ti-users" /> {compactNumber(data?.channel?.subscribers ?? first.subscriber_count ?? 0)}</span>}
       </div>
       {!status.loaded ? (
@@ -1012,10 +951,10 @@ function YouTubePanel({ cfg = {} }) {
               {data.series?.length > 0 && (
                 <ResponsiveContainer width="100%" height={90}>
                   <AreaChart data={data.series} margin={{ top: 4, right: 4, left: -34, bottom: 0 }}>
-                    <defs><linearGradient id="dashYt" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#e11d48" stopOpacity={0.3} /><stop offset="100%" stopColor="#e11d48" stopOpacity={0} /></linearGradient></defs>
+                    <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--accent)" stopOpacity={0.3} /><stop offset="100%" stopColor="var(--accent)" stopOpacity={0} /></linearGradient></defs>
                     <YAxis hide domain={['auto', 'auto']} />
                     <Tooltip contentStyle={TIP} labelFormatter={() => ''} formatter={(v) => [number(v), 'Views']} />
-                    <Area type="monotone" dataKey="views" stroke="#e11d48" strokeWidth={2} fill="url(#dashYt)" />
+                    <Area type="monotone" dataKey="views" stroke="var(--accent)" strokeWidth={2} fill={`url(#${gradientId})`} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -1035,7 +974,9 @@ function YouTubePanel({ cfg = {} }) {
    Capture
    ============================================================ */
 function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
-  const { rows: boards } = useRows('boards', []);
+  const { user } = useAuth();
+  const { rows: boardRows } = useRows('boards', []);
+  const boards = boardRows.filter((b) => b.user_id === user?.id);
   const tasks = useCrud('tasks');
   const [text, setText] = useState('');
   const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
@@ -1079,9 +1020,182 @@ function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
 }
 
 /* ============================================================
+   Today — what needs doing right now, actionable in place
+   ============================================================ */
+// Overdue + due-today tasks with one-click complete (Undo in the toast) and a
+// capture box that understands "@fri" / "!high" and defaults to due today.
+function TodayTasksPanel() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { send } = useMasterController();
+  const { projects } = useWorkspace();
+  const { rows: boardRows } = useRows('boards', []);
+  const tasks = useCrud('tasks');
+  const [text, setText] = useState('');
+  const today = dayKey(new Date());
+  const boards = boardRows.filter((b) => !String(b.id).startsWith('tmp-'));
+  const boardById = Object.fromEntries(boards.map((b) => [b.id, b]));
+  const isDone = (t) => {
+    const col = t.column_name || '';
+    return col === 'Done' || col === doneColumn(boardById[t.board_id]);
+  };
+
+  const focus = tasks.rows
+    .filter((t) => t.due_date && t.due_date <= today && !isDone(t))
+    .sort(
+      (a, b) =>
+        (a.due_date < today ? 0 : 1) - (b.due_date < today ? 0 : 1) ||
+        String(a.due_date).localeCompare(String(b.due_date)) ||
+        byPriority(a, b)
+    );
+  const overdue = focus.filter((t) => t.due_date < today).length;
+
+  const complete = (t) => {
+    const from = t.column_name;
+    tasks.patch(t.id, { column_name: doneColumn(boardById[t.board_id]) });
+    toast({
+      message: `Done: ${t.title}`,
+      action: { label: 'Undo', onClick: () => tasks.patch(t.id, { column_name: from }) },
+    });
+  };
+
+  const submit = () => {
+    const capture = parseCapture(text);
+    if (!capture.title) return;
+    const board = boards.find((b) => b.id === readCaptureBoard()) || boards[0] || null;
+    tasks.add(taskRowFromCapture(capture, board, today));
+    if (board) writeCaptureBoard(board.id);
+    setText('');
+  };
+
+  return (
+    <>
+      <div className="dash2-panel-head">
+        <PanelTitle to="/todo">Today</PanelTitle>
+        <span className="dash2-count">
+          {focus.length ? `${focus.length} left${overdue ? ` · ${overdue} overdue` : ''}` : 'all clear'}
+        </span>
+        <button className="dash2-ai" onClick={() => send(planMyDayPrompt())} title="Plan my day with the Master Controller" aria-label="Plan my day">
+          <i className="ti ti-sparkles" />
+        </button>
+      </div>
+      <div className="dash2-capture">
+        <input
+          className="input"
+          placeholder="Add a task for today…   @fri  !high"
+          aria-label="Add a task for today"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+        />
+      </div>
+      <div className="dash2-tasks dash2-tasks--tall">
+        {focus.length === 0 ? (
+          <Empty>Nothing due today. Add something above, or check Due Soon.</Empty>
+        ) : (
+          focus.map((t) => {
+            const project = projectForTask(t, projects.rows);
+            return (
+            <div className="dash2-task" key={t.id}>
+              <button className="dash2-check" onClick={() => complete(t)} aria-label={`Mark done: ${t.title}`} title="Mark done">
+                <i className="ti ti-check" />
+              </button>
+              <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
+              <span
+                className="dash2-task-title"
+                onClick={() => navigate(t.board_id ? `/todo/${t.board_id}` : '/todo')}
+                title={t.title}
+              >
+                {t.title}
+              </span>
+              {project && (
+                <button className="dash2-chip" title={`Open project: ${project.name}`} onClick={() => navigate(`/projects/${project.id}`)}>
+                  {project.name}
+                </button>
+              )}
+              <span className={`dash2-task-meta ${t.due_date < today ? 'text-red' : ''}`}>{relativeDay(t.due_date)}</span>
+            </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+// Today's habits as a checklist with a progress bar and live streaks.
+function TodayHabitsPanel() {
+  const { rows: habits } = useRows('habits', []);
+  const logs = useCrud('habit_logs');
+  const today = dayKey(new Date());
+  const active = habits.filter((h) => h.active !== false);
+  const logMap = {};
+  logs.rows.forEach((l) => { logMap[`${l.habit_id}|${l.log_date}`] = l; });
+  const doneOn = (id, dk) => Boolean(logMap[`${id}|${dk}`]?.completed);
+  const toggle = (id) => {
+    const ex = logMap[`${id}|${today}`];
+    if (ex) logs.remove(ex.id);
+    else logs.add({ habit_id: id, log_date: today, completed: true });
+  };
+
+  // Not-yet-done first; the sort is stable so the user's habit order holds.
+  const rows = active
+    .map((h) => ({ h, done: doneOn(h.id, today), streak: currentStreak((dk) => doneOn(h.id, dk)) }))
+    .sort((a, b) => Number(a.done) - Number(b.done));
+  const doneCount = rows.filter((r) => r.done).length;
+
+  return (
+    <>
+      <div className="dash2-panel-head">
+        <PanelTitle to="/habits">Habits Today</PanelTitle>
+        <span className="dash2-count">{doneCount}/{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <Empty>No habits yet. Add them under Habits.</Empty>
+      ) : (
+        <>
+          <div className="dash2-progress" aria-hidden="true">
+            <span style={{ width: `${Math.round((doneCount / rows.length) * 100)}%` }} />
+          </div>
+          <div className="dash2-tasks dash2-tasks--tall">
+            {rows.map(({ h, done, streak }) => (
+              <div
+                className="dash2-task"
+                key={h.id}
+                role="checkbox"
+                aria-checked={done}
+                tabIndex={0}
+                onClick={() => toggle(h.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle(h.id);
+                  }
+                }}
+              >
+                <span className={`dash2-check ${done ? 'done' : ''}`}><i className="ti ti-check" /></span>
+                <span className={`dash2-task-title ${done ? 'is-done' : ''}`} title={h.name}>{h.name}</span>
+                {streak >= 2 && (
+                  <span className="dash2-streak" title={`${streak}-day streak`}><i className="ti ti-flame" />{streak}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          {doneCount === rows.length && <Empty>All done for today.</Empty>}
+        </>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
    Registry
    ============================================================ */
 export const PANELS = [
+  // Today
+  { id: 'today_tasks', title: 'Today', icon: 'ti-sun', group: 'Today', Component: TodayTasksPanel },
+  { id: 'today_habits', title: 'Habits Today', icon: 'ti-circle-check', group: 'Today', Component: TodayHabitsPanel },
+  { id: 'knowledge', title: 'Knowledge Base', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
   // Tasks & work
   { id: 'board', title: 'Task Board Column', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
   { id: 'upcoming_tasks', title: 'Due Soon', icon: 'ti-alarm', group: 'Work', Component: UpcomingTasksPanel },
@@ -1089,15 +1203,13 @@ export const PANELS = [
   { id: 'schedule', title: 'Schedule', icon: 'ti-calendar', group: 'Work', Component: SchedulePanel },
   { id: 'projects', title: 'Projects', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
   { id: 'crm', title: 'CRM Pipeline', icon: 'ti-users', group: 'Work', Component: CrmPanel },
-  { id: 'reports', title: 'Reports', icon: 'ti-report', group: 'Work', Component: ReportsPanel },
+  { id: 'opportunities', title: 'Opportunities', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },
   // Finance
   { id: 'networth', title: 'Net Worth', icon: 'ti-wallet', group: 'Finance', Component: NetWorthPanel },
   { id: 'cashflow', title: 'Cashflow', icon: 'ti-arrows-exchange', group: 'Finance', Component: CashflowPanel },
   { id: 'budget', title: 'Budget Categories', icon: 'ti-receipt', group: 'Finance', Component: BudgetPanel },
   { id: 'investing', title: 'Portfolio', icon: 'ti-chart-line', group: 'Finance', Component: InvestingPanel },
   // Health
-  { id: 'macros', title: 'Macros', icon: 'ti-salad', group: 'Health', Component: MacrosPanel },
-  { id: 'water', title: 'Water', icon: 'ti-droplet', group: 'Health', Component: WaterPanel },
   { id: 'weight', title: 'Weight', icon: 'ti-scale', group: 'Health', Component: WeightPanel },
   { id: 'supplements', title: 'Supplement Stack', icon: 'ti-pill', group: 'Health', Component: SupplementsPanel },
   { id: 'fitness', title: 'Today’s Training', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },
@@ -1112,9 +1224,18 @@ export const PANELS = [
 
 export const PANELS_BY_ID = Object.fromEntries(PANELS.map((p) => [p.id, p]));
 
-// A sensible starting dashboard for a fresh account.
-export const DEFAULT_LAYOUT = [
-  ['board', 'board', 'board'],
-  ['networth', 'cashflow', 'investing', 'youtube'],
-  ['habits_grid', 'habits_trend', 'macros', 'supplements', 'fitness'],
-];
+// Layout presets (Customize -> Today layout / Work layout). The Today layout is
+// the default for fresh accounts and for dashboards still on the old default.
+export const LAYOUTS = {
+  today: [
+    ['today_tasks', 'upcoming_tasks'],
+    ['schedule', 'today_habits'],
+    ['projects', 'knowledge', 'opportunities'],
+  ],
+  work: [
+    ['quick_add', 'upcoming_tasks', 'board'],
+    ['schedule', 'projects'],
+    ['knowledge', 'opportunities', 'crm'],
+  ],
+};
+export const DEFAULT_LAYOUT = LAYOUTS.today;

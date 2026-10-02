@@ -3,10 +3,11 @@ import { NavLink } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
 import { channelLabel } from '../lib/helpers.js';
+import { AGENTS } from '../lib/agentRegistry.js';
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 400;
-const DEFAULT_WIDTH = 148;
+const DEFAULT_WIDTH = 204;
 const WIDTH_KEY = 'ctrlpanel-sidebar-width';
 const FOLDERS_KEY = 'ctrlpanel-sidebar-folders';
 
@@ -15,7 +16,9 @@ const TOP_LINKS = [
   { to: '/', label: 'Dashboard', icon: 'ti-layout-dashboard', end: true },
   { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
   { to: '/todo', label: 'To Do', icon: 'ti-checkbox' },
+  { to: '/knowledge', label: 'Knowledge Base', icon: 'ti-notebook' },
   { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
+  { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
 ];
 
 // Static grouping folders (fixed sub-pages)
@@ -134,8 +137,8 @@ function Folder({ folder, collapsed, open, onToggle }) {
   );
 }
 
-export default function Sidebar({ collapsed = false }) {
-  const { projects, reportSources, crmBoards, socials } = useWorkspace();
+export default function Sidebar({ collapsed = false, drawer = false, open = false, onClose }) {
+  const { projects, crmBoards, socials } = useWorkspace();
   const { settings, updateUiPreferences } = useAuth();
   const [width, setWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
@@ -169,7 +172,7 @@ export default function Sidebar({ collapsed = false }) {
   }, [savedFolders]);
 
   // Folders default to open; only an explicit `false` collapses one.
-  const isOpen = (label) => openFolders[label] !== false;
+  const isOpen = (label) => openFolders[label] ?? !['Health', 'Socials'].includes(label);
   const toggleFolder = (label) => {
     const next = { ...openFolders, [label]: !isOpen(label) };
     setOpenFolders(next);
@@ -211,9 +214,10 @@ export default function Sidebar({ collapsed = false }) {
     };
   }, [updateUiPreferences, width]);
 
-  // CRM, Reports, Projects + Socials are dynamic per-user; Health + Finance are
-  // fixed. `indexTo` is the overview page where new items are created — reached
-  // from the header's manage button, never by clicking the folder itself.
+  // CRM, Projects + Socials are dynamic per-user; Agents come from the agent
+  // registry (src/lib/agentRegistry.js); Health + Finance are fixed. `indexTo`
+  // is the section's overview page — reached from the header's manage button,
+  // never by clicking the folder itself.
   const folders = [
     {
       label: 'CRM',
@@ -223,11 +227,11 @@ export default function Sidebar({ collapsed = false }) {
       items: crmBoards.rows.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
     },
     {
-      label: 'Reports',
-      icon: 'ti-report',
-      indexTo: '/reports',
-      emptyLabel: 'No report sources yet',
-      items: reportSources.rows.map((s) => ({ label: s.name || 'Untitled', to: `/reports/${s.id}` })),
+      label: 'Agents',
+      icon: 'ti-robot',
+      indexTo: '/agents',
+      emptyLabel: 'No agents yet',
+      items: AGENTS.map((a) => ({ label: a.name, to: a.to })),
     },
     {
       label: 'Projects',
@@ -247,8 +251,16 @@ export default function Sidebar({ collapsed = false }) {
   ];
 
   return (
-    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`} style={collapsed ? undefined : { width }}>
+    <aside
+      id="app-sidebar"
+      className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${drawer ? 'sidebar--drawer' : ''} ${drawer && open ? 'is-open' : ''}`}
+      style={collapsed || drawer ? undefined : { width }}
+      aria-hidden={drawer && !open ? 'true' : undefined}
+    >
       <div className="sidebar-brand">
+        {drawer && (
+          <button className="nav-close" onClick={onClose} aria-label="Close menu"><i className="ti ti-x" /></button>
+        )}
         {collapsed ? (
           <div className="sidebar-brand-name" style={{ textAlign: 'center' }}>C</div>
         ) : (
@@ -289,7 +301,7 @@ export default function Sidebar({ collapsed = false }) {
         </NavLink>
       </div>
 
-      {!collapsed && (
+      {!collapsed && !drawer && (
         <div
           className="sidebar-resizer"
           onMouseDown={onMouseDown}

@@ -1,0 +1,204 @@
+/* ============================================================
+   CTRLpanel — Phone / touch layout
+   Loaded after components.css + themes.css. Tokens only (no hardcoded colours).
+   760px must match MOBILE_QUERY in src/lib/useMediaQuery.js.
+   ============================================================ */
+
+/* Always defined; only shown on phones. */
+.topbar-menu,
+.nav-close {
+  display: none;
+}
+.nav-backdrop {
+  display: none;
+}
+.mc-dock-hint > i {
+  display: none;
+}
+
+/* ---- Phones: sidebar becomes an off-canvas drawer ---- */
+@media (max-width: 760px) {
+  .app-shell {
+    width: 100%;
+    height: 100dvh;
+  }
+
+  .topbar-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 0 -8px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .topbar-menu:hover {
+    background: var(--bg-elevated);
+  }
+  .app-topbar {
+    padding: 0 12px;
+  }
+  .app-content {
+    padding: 14px 14px 88px; /* room for the floating Master Controller button */
+  }
+
+  .sidebar--drawer {
+    position: fixed;
+    z-index: 130;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(300px, 86vw) !important;
+    height: 100dvh;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 0s linear 220ms;
+  }
+  .sidebar--drawer.is-open {
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.5);
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 125;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fade-in var(--transition);
+  }
+  .sidebar-brand {
+    position: relative;
+  }
+  .nav-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  /* Modals: use the screen, scroll inside. */
+  .modal-overlay {
+    padding: 10px;
+  }
+  .modal {
+    max-height: 92dvh;
+  }
+  .modal--wide {
+    max-width: 100%;
+  }
+}
+
+/* ---- Phones + touch devices: comfortable targets ---- */
+@media (max-width: 760px), (pointer: coarse) {
+  .btn,
+  .input,
+  .select,
+  .textarea {
+    min-height: 40px;
+  }
+  .btn--sm {
+    min-height: 36px;
+  }
+  .btn--icon {
+    min-width: 40px;
+  }
+  .nav-item,
+  .nav-subitem,
+  .nav-folder-header {
+    min-height: 44px;
+  }
+  .nav-folder-action {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .segmented {
+    max-width: 100%;
+  }
+  .segmented button {
+    min-height: 38px;
+    padding-inline: 10px;
+  }
+  .kanban-add,
+  .service-chip,
+  .tab,
+  .board-title-select {
+    min-height: 40px;
+  }
+  /* Dense dashboard controls keep their look but get an invisible 40px+ hit area. */
+  .dash2-check,
+  .dash2-panel-title.dash2-link {
+    position: relative;
+  }
+  .dash2-check::after,
+  .dash2-panel-title.dash2-link::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+  }
+  .topbar-search {
+    height: 40px;
+  }
+  /* 16px stops iOS from zooming the page when a field is focused. */
+  .input,
+  .select,
+  .textarea,
+  .cmdk-input,
+  .crm-cell-input {
+    font-size: 16px;
+  }
+
+  /* The hover-reveal Master Controller dock becomes a floating button. */
+  .mc-dock:not(.is-open) {
+    left: auto;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    width: auto;
+    align-items: flex-end;
+  }
+  .mc-dock:not(.is-open) .mc-dock-bar {
+    display: none;
+  }
+  .mc-dock:not(.is-open) .mc-dock-hint {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 22px;
+    opacity: 1;
+    box-shadow: 0 6px 20px var(--accent-glow);
+  }
+  .mc-dock:not(.is-open) .mc-dock-hint > i {
+    display: block;
+  }
+  .mc-dock.is-open {
+    bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar--drawer {
+    transition: none;
+  }
+}

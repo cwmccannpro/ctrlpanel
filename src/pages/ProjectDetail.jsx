@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useCallback } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import Card from '../components/shared/Card.jsx';
@@ -6,15 +6,20 @@ import Badge from '../components/shared/Badge.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import ServiceLinks from '../components/ServiceLinks.jsx';
+import KnowledgeBase from './KnowledgeBase.jsx';
 import KanbanBoard, { DEFAULT_COLUMNS } from '../components/KanbanBoard.jsx';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
+import { useCalendarEvents } from '../lib/useCalendarEvents.js';
+import { queryTable } from '../lib/supabase.js';
+import { projectDigest } from '../lib/links.js';
+import { relativeDay } from '../lib/helpers.js';
 import { formatDate } from '../lib/helpers.js';
 
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
 
 const STATUSES = ['Active', 'Paused', 'Complete'];
-const TABS = ['Project Dashboard', 'Excalidraw', 'Board', 'Notes', 'Files & Links', 'People'];
+const TABS = ['Project Dashboard', 'Board', 'Knowledge', 'Notes', 'Excalidraw', 'Files & Links', 'People'];
 const statusVariant = { Active: 'green', Paused: 'warm', Complete: 'accent' };
 
 let seq = 0;
@@ -52,6 +57,7 @@ export default function ProjectDetail() {
   const tasks = tasksCrud.rows;
   const { rows: contacts } = useRows('crm_contacts', []);
   const [tab, setTab] = useState('Project Dashboard');
+  const [knowledgeDirty, setKnowledgeDirty] = useState(false);
   const [preview, setPreview] = useState({}); // note id → markdown preview on
   const [newLink, setNewLink] = useState({ title: '', url: '', type: 'link' });
   const [boardSettings, setBoardSettings] = useState(false);
@@ -65,6 +71,21 @@ export default function ProjectDetail() {
   const persistScene = useCallback(
     (scene, thumb) => patch(thumb ? { excalidraw: scene, excalidraw_preview: thumb } : { excalidraw: scene }),
     [patch]
+  );
+
+  // Cross-links: notes written for this project, and calendar events that mention it.
+  const calendarEvents = useCalendarEvents();
+  const [projectNotes, setProjectNotes] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    queryTable('knowledge_notes', { select: 'id,title,folder,pinned,updated_at,project_id', filters: { project_id: id }, order: 'updated_at', limit: 30 })
+      .then(({ data }) => { if (alive) setProjectNotes(data || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [id]);
+  const digest = useMemo(
+    () => (project ? projectDigest({ project, tasks, boards: todoBoards.rows, notes: projectNotes, events: calendarEvents }) : null),
+    [project, tasks, todoBoards.rows, projectNotes, calendarEvents]
   );
 
   if (!project) {
@@ -148,10 +169,11 @@ export default function ProjectDetail() {
       <Card className="card-section" static style={{ flex: 1, overflowY: 'auto' }}>
         <div className="tabs">
           {TABS.map((t) => (
-            <div key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</div>
+            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => { if (t === tab || !knowledgeDirty || window.confirm('Discard unsaved knowledge edits?')) setTab(t); }}>{t}</button>
           ))}
         </div>
 
+        {tab === 'Knowledge' && <KnowledgeBase key={id} projectId={id} onDirtyChange={setKnowledgeDirty} />}
         {/* ============ 1. PROJECT DASHBOARD ============ */}
         {tab === 'Project Dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -202,6 +224,50 @@ export default function ProjectDetail() {
                     ))}
                     {blockedCount > 0 && <Badge variant="urgent" className="mt-16">{blockedCount} blocked</Badge>}
                   </>
+                )}
+              </Rollup>
+
+              <Rollup icon="ti-alarm" title="Coming up" onClick={() => setTab('Board')}>
+                {!project.todo_board_id ? (
+                  <p className="body-text">Link a To Do board to see deadlines here.</p>
+                ) : digest.overdue.length + digest.dueSoon.length + digest.events.length === 0 ? (
+                  <p className="body-text">Nothing due in the next 14 days.</p>
+                ) : (
+                  <>
+                    {digest.overdue.slice(0, 3).map((t) => (
+                      <div className="list-row" key={t.id}>
+                        <span className="list-row-title">{t.title}</span>
+                        <span className="list-row-meta text-red">{relativeDay(t.due_date)}</span>
+                      </div>
+                    ))}
+                    {digest.dueSoon.slice(0, 4).map((t) => (
+                      <div className="list-row" key={t.id}>
+                        <span className="list-row-title">{t.title}</span>
+                        <span className="list-row-meta">{relativeDay(t.due_date)}</span>
+                      </div>
+                    ))}
+                    {digest.events.slice(0, 2).map((e, i) => (
+                      <div className="list-row" key={e.id || i}>
+                        <i className="ti ti-calendar" style={{ color: 'var(--accent)' }} />
+                        <span className="list-row-title">{e.title}</span>
+                        <span className="list-row-meta">{formatDate(e.starts_at)}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </Rollup>
+
+              <Rollup icon="ti-notebook" title="Knowledge" onClick={() => setTab('Knowledge')}>
+                <div className="value-md" style={{ marginBottom: 6 }}>{digest.notes.length}</div>
+                {digest.notes.length === 0 ? (
+                  <p className="body-text">No notes yet. Write one in the Knowledge tab.</p>
+                ) : (
+                  digest.notes.slice(0, 3).map((n) => (
+                    <div className="list-row" key={n.id}>
+                      {n.pinned && <i className="ti ti-pin-filled" style={{ color: 'var(--accent)', fontSize: 12 }} />}
+                      <span className="list-row-title">{n.title || 'Untitled'}</span>
+                    </div>
+                  ))
                 )}
               </Rollup>
 

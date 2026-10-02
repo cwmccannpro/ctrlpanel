@@ -33,9 +33,9 @@ const lastNDays = (n) =>
    multi-series charts always pair color with a direct label. */
 const CHART_COLORS = ['#3b82f6', '#d97706', '#ec4899', '#059669', '#8b5cf6', '#e11d48', '#0d9488'];
 const PRIORITY_COLORS = { High: '#ef4444', Medium: '#f59e0b', Low: '#10b981' };
-const TIP_STYLE = { background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 };
+const TIP_STYLE = { background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
 const BAR_CURSOR = { fill: 'rgba(255, 255, 255, 0.04)' };
-const axisProps = { stroke: '#8a7070', fontSize: 10, tickLine: false, axisLine: false };
+const axisProps = { stroke: 'var(--text-secondary)', fontSize: 10, tickLine: false, axisLine: false };
 const accentColor = () =>
   (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#e11d48').trim() || '#e11d48';
 
@@ -175,7 +175,7 @@ function NetWorthW({ cfg = {}, onCfg = () => {} }) {
                   <stop offset="100%" stopColor={ac} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#1e1818" vertical={false} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="date" {...axisProps} />
               <YAxis {...axisProps} tickFormatter={(v) => compactCurrency(v)} width={54} />
               <Tooltip contentStyle={TIP_STYLE} formatter={(v) => currency(v)} />
@@ -211,7 +211,7 @@ function CaloriesW({ cfg = {}, onCfg = () => {} }) {
       <Shell flex title="Calories" meta={`goal ${goal.toLocaleString()}`} tools={tools}>
         <ChartBox>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1818" vertical={false} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" {...axisProps} />
             <YAxis {...axisProps} />
             <Tooltip contentStyle={TIP_STYLE} cursor={BAR_CURSOR} />
@@ -494,7 +494,7 @@ function TasksW({ cfg = {}, onCfg = () => {} }) {
     ) : (
       <ChartBox>
         <BarChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-          <CartesianGrid stroke="#1e1818" vertical={false} />
+          <CartesianGrid stroke="var(--border)" vertical={false} />
           <XAxis dataKey="name" {...axisProps} interval={0} />
           <YAxis {...axisProps} allowDecimals={false} />
           <Tooltip contentStyle={TIP_STYLE} cursor={BAR_CURSOR} />
@@ -600,7 +600,7 @@ function HabitsW({ cfg = {}, onCfg = () => {} }) {
       <Shell flex title="Habits" meta={`${active.length} active`} tools={tools}>
         <ChartBox>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1818" vertical={false} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" {...axisProps} />
             <YAxis {...axisProps} allowDecimals={false} domain={[0, Math.max(active.length, 1)]} />
             <Tooltip contentStyle={TIP_STYLE} cursor={BAR_CURSOR} />
@@ -659,7 +659,7 @@ function NutritionW({ cfg = {}, onCfg = () => {} }) {
       <Shell flex title="Nutrition" meta={`goal ${goals.calories.toLocaleString()} cal`} tools={tools}>
         <ChartBox>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
-            <CartesianGrid stroke="#1e1818" vertical={false} />
+            <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="day" {...axisProps} />
             <YAxis {...axisProps} />
             <Tooltip contentStyle={TIP_STYLE} cursor={BAR_CURSOR} />
@@ -688,39 +688,6 @@ function NutritionW({ cfg = {}, onCfg = () => {} }) {
       {bar('Protein', tot.protein, goals.protein, '#3b82f6')}
       {bar('Carbs', tot.carbs, goals.carbs, '#f59e0b')}
       {bar('Fat', tot.fat, goals.fat, '#10b981')}
-    </Shell>
-  );
-}
-
-// Recent inbound PDF reports across all report sources, newest first.
-function ReportsW() {
-  const navigate = useNavigate();
-  const { rows: sources } = useRows('report_sources');
-  const { rows: reports } = useRows('reports');
-
-  const nameById = Object.fromEntries(sources.map((s) => [s.id, s.name]));
-  const recent = [...reports]
-    .sort((a, b) => new Date(b.received_at) - new Date(a.received_at))
-    .slice(0, 6);
-
-  return (
-    <Shell title="Reports" tools={<OpenLink to="/reports" title="Open Reports" />}>
-      {!reports.length ? (
-        <Empty>No reports yet. Add a report source and send a PDF to it.</Empty>
-      ) : (
-        recent.map((r) => (
-          <div
-            className="list-row"
-            key={r.id}
-            style={{ cursor: 'pointer' }}
-            onClick={() => navigate(`/reports/${r.source_id}`)}
-          >
-            <i className="ti ti-file-type-pdf" style={{ color: 'var(--accent)', flexShrink: 0 }} />
-            <span className="list-row-title">{r.title}</span>
-            <span className="list-row-meta">{nameById[r.source_id] || ''}</span>
-          </div>
-        ))
-      )}
     </Shell>
   );
 }
@@ -765,7 +732,6 @@ export const WIDGETS = [
   { id: 'habits', title: 'Habits', icon: 'ti-repeat', Component: HabitsW, w: 3, h: 3 },
   { id: 'nutrition', title: 'Macros', icon: 'ti-salad', Component: NutritionW, w: 3, h: 3 },
   { id: 'life_view', title: 'Life View', icon: 'ti-hourglass', Component: LifeViewW, w: 3, h: 2 },
-  { id: 'reports', title: 'Reports', icon: 'ti-report', Component: ReportsW, w: 4, h: 3 },
 ];
 
 export const WIDGETS_BY_ID = Object.fromEntries(WIDGETS.map((w) => [w.id, w]));
@@ -775,4 +741,4 @@ export function sizeFor(id) {
   return { w: w?.w || 3, h: w?.h || 2 };
 }
 
-export const DEFAULT_WIDGETS = ['net_worth', 'open_tasks', 'calories', 'portfolio', 'calendar_view', 'tasks', 'quick_add', 'reports'];
+export const DEFAULT_WIDGETS = ['net_worth', 'open_tasks', 'calories', 'portfolio', 'calendar_view', 'tasks', 'quick_add'];

@@ -61,9 +61,9 @@ export default function Socials() {
     <div className="fade-in">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Socials</h1>
+          <h1 className="sr-only">Socials</h1>
           <div className="page-header-sub">
-            {socials.channels.length} {socials.channels.length === 1 ? 'section' : 'sections'} · each channel gets its own page
+            {socials.channels.length} {socials.channels.length === 1 ? 'channel' : 'channels'}
           </div>
         </div>
         {socials.ready && (

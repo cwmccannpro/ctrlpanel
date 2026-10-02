@@ -222,11 +222,11 @@ function HabitTracker() {
           <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>{ROLL_WINDOW}-day rolling completion rate · one point per day</div>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={trend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-              <CartesianGrid stroke="#1e1818" vertical={false} />
-              <XAxis dataKey="label" stroke="#8a7070" fontSize={11} interval="preserveStartEnd" minTickGap={28} />
-              <YAxis stroke="#8a7070" fontSize={11} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+              <CartesianGrid stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={11} interval="preserveStartEnd" minTickGap={28} />
+              <YAxis stroke="var(--text-secondary)" fontSize={11} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
               <Tooltip
-                contentStyle={{ background: '#1a1414', border: '0.5px solid #2a2020', borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 }}
                 formatter={(v) => [`${v}%`, 'Completion']}
               />
               <Line
@@ -421,7 +421,7 @@ function BirthdateModal({ form, setForm, error, onClose, onSave }) {
           className="input"
           type="date"
           value={form.birthdate}
-          max={new Date().toISOString().slice(0, 10)}
+          max={dayKey(new Date())}
           onChange={(e) => setForm({ ...form, birthdate: e.target.value })}
         />
       </div>
@@ -473,8 +473,8 @@ export default function Habits() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="page-title">Habits</h1>
-          <div className="page-header-sub">Build consistency · see the bigger picture</div>
+          <h1 className="sr-only">Habits</h1>
+
         </div>
         <div className="segmented">
           <button className={tab === 'habits' ? 'active' : ''} onClick={() => selectTab('habits')}>Tracking</button>
