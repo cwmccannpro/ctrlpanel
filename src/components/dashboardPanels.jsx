@@ -11,6 +11,7 @@
 import { useState, useEffect, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import KnowledgePanel from './KnowledgePanel.jsx';
+import DayPlanPanel from './DayPlanPanel.jsx';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -22,7 +23,6 @@ import { projectForTask } from '../lib/links.js';
 import { planMyDayPrompt } from '../lib/prompts.js';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
-import { useCalendarEvents } from '../lib/useCalendarEvents.js';
 import { finance, youtube } from '../lib/api.js';
 import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS, WORKOUT_COLORS } from '../lib/mockData.js';
 import {
@@ -172,58 +172,6 @@ function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
               </div>
             );
           })
-        )}
-      </div>
-    </>
-  );
-}
-
-/* ============================================================
-   Calendar
-   ============================================================ */
-function SchedulePanel({ cfg = {}, onCfg = () => {} }) {
-  const navigate = useNavigate();
-  const events = useCalendarEvents();
-  const mode = cfg.mode || 'today';
-
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const spanDays = mode === 'today' ? 1 : 7;
-  const end = new Date(start.getTime() + spanDays * 86400000);
-
-  const items = events
-    .filter((e) => {
-      const s = new Date(e.starts_at);
-      return s >= start && s < end;
-    })
-    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))
-    .slice(0, 14);
-
-  const time = (e) =>
-    e.all_day ? 'All day' : new Date(e.starts_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
-  return (
-    <>
-      <div className="dash2-panel-head">
-        <PanelTitle to="/calendar">{mode === 'today' ? 'Today’s Schedule' : 'This Week'}</PanelTitle>
-        <div className="segmented segmented--xs">
-          <button className={mode === 'today' ? 'active' : ''} onClick={() => onCfg({ mode: 'today' })}>Day</button>
-          <button className={mode === 'week' ? 'active' : ''} onClick={() => onCfg({ mode: 'week' })}>Week</button>
-        </div>
-      </div>
-      <div className="dash2-tasks">
-        {items.length === 0 ? (
-          <Empty>Nothing scheduled{mode === 'today' ? ' today' : ' this week'}.</Empty>
-        ) : (
-          items.map((e) => (
-            <div className="dash2-task" key={e.id} onClick={() => navigate('/calendar')} title={e.title}>
-              <span className="dash2-dot" style={{ background: e.color || 'var(--accent)' }} />
-              <span className="dash2-task-title">{e.title}</span>
-              <span className="dash2-task-meta">
-                {mode === 'week' ? `${relativeDay(e.starts_at)} · ` : ''}{time(e)}
-              </span>
-            </div>
-          ))
         )}
       </div>
     </>
@@ -1200,7 +1148,7 @@ export const PANELS = [
   { id: 'board', title: 'Task Board Column', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
   { id: 'upcoming_tasks', title: 'Due Soon', icon: 'ti-alarm', group: 'Work', Component: UpcomingTasksPanel },
   { id: 'quick_add', title: 'Quick Add', icon: 'ti-plus', group: 'Work', Component: QuickAddPanel },
-  { id: 'schedule', title: 'Schedule', icon: 'ti-calendar', group: 'Work', Component: SchedulePanel },
+  { id: 'schedule', title: 'Day Plan', icon: 'ti-timeline-event', group: 'Work', Component: DayPlanPanel },
   { id: 'projects', title: 'Projects', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
   { id: 'crm', title: 'CRM Pipeline', icon: 'ti-users', group: 'Work', Component: CrmPanel },
   { id: 'opportunities', title: 'Opportunities', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },

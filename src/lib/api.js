@@ -177,6 +177,18 @@ export const agentsApi = {
   extractProfile: (pdfBase64, apiKey) => authApi.post('/agents/opportunities/profile', { pdfBase64, apiKey }),
 };
 
+// Read-only .ics feeds (iCloud public calendars etc.). The backend fetches and
+// parses them; `feeds` is the user's saved list, `tz` resolves floating times.
+export const ical = {
+  events: (feeds, { timeMin, timeMax } = {}) =>
+    authApi.post('/ical/events', {
+      feeds: feeds.map(({ id, label, url, color }) => ({ id, label, url, color })),
+      timeMin,
+      timeMax,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }),
+};
+
 export const gcal = {
   status: () => gfetch('/status'),
   connect: async () => {

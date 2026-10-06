@@ -1,0 +1,44 @@
+/* Dashboard "Day Plan" panel. Theme tokens + the event's own colour only. */
+.dp-nav{margin-left:auto;display:flex;align-items:center;gap:2px}
+.dp-nav .btn--icon{width:26px;height:26px;padding:4px}
+.dp-today{font-size:11px;font-weight:600;letter-spacing:.04em;padding:4px 9px;border-radius:999px;color:var(--text-primary);transition:background 140ms ease}
+.dp-today:hover:not(:disabled){background:var(--bg-elevated)}
+.dp-today:disabled{color:var(--text-secondary);cursor:default}
+.dp-date{font-size:20px;font-weight:450;letter-spacing:-.4px;margin:4px 0 12px}
+
+.dp-hero{--event-color:var(--accent);position:relative;display:flex;flex-direction:column;gap:3px;padding:11px 13px 12px 15px;border-radius:10px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--event-color) 18%,var(--bg-surface)),color-mix(in srgb,var(--event-color) 7%,var(--bg-surface)));
+  box-shadow:inset 3px 0 0 var(--event-color),inset 0 0 0 1px color-mix(in srgb,var(--event-color) 20%,transparent);overflow:hidden}
+.dp-hero-label{font-size:9.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:color-mix(in srgb,var(--event-color) 70%,var(--text-primary))}
+.dp-hero strong{font-size:14px;font-weight:600;letter-spacing:-.15px;line-height:1.25;overflow-wrap:anywhere}
+.dp-hero-meta{font-size:11px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.dp-progress{margin-top:7px;height:3px;border-radius:2px;background:color-mix(in srgb,var(--event-color) 18%,transparent);overflow:hidden}
+.dp-progress i{display:block;height:100%;background:var(--event-color);border-radius:2px;transition:width 600ms ease}
+
+.dp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin:12px 0 8px}
+.dp-stats>div{display:flex;flex-direction:column;gap:1px;padding:0 4px 0 10px;border-left:1px solid var(--border)}
+.dp-stats>div:first-child{border-left:0;padding-left:2px}
+.dp-stats b{font-size:14px;font-weight:550;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dp-stats span{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary)}
+.dp-load{height:3px;border-radius:2px;background:var(--border);margin-bottom:12px;overflow:hidden}
+.dp-load i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 40%,transparent),var(--accent));transition:width 400ms ease}
+
+.dp-timeline{height:360px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-surface)}
+.dp-timeline .wk{flex:1;min-height:0}
+
+.dp-todo{margin-top:12px}
+.dp-todo-head{display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:6px}
+.dp-todo-head small{font-size:10px;font-weight:500}
+.dp-task{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 3px;margin-bottom:3px;border-radius:7px;background:var(--bg-surface);box-shadow:inset 3px 0 0 var(--tint),inset 0 0 0 1px var(--border);cursor:grab;transition:background 140ms ease}
+.dp-task:hover{background:var(--bg-elevated)}
+.dp-task:active{cursor:grabbing}
+.dp-task.is-dragging{opacity:.35}
+.dp-grip{color:var(--text-muted);font-size:13px;flex-shrink:0;margin-left:3px}
+.dp-task-title{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-chip{flex-shrink:0;font-size:10px;font-variant-numeric:tabular-nums;padding:2px 7px;border-radius:999px;color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-bright)}
+.dp-chip:hover{color:var(--text-primary);box-shadow:inset 0 0 0 1px var(--accent)}
+.dp-snap{flex-shrink:0;width:24px;height:24px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--accent);background:var(--accent-dim);transition:background 140ms ease}
+.dp-snap:hover{background:var(--accent);color:#fff}
+.dp-more{display:block;font-size:11px;color:var(--text-secondary);padding:4px 2px}
+.dp-more:hover{color:var(--accent)}
+@media(prefers-reduced-motion:reduce){.dp-progress i,.dp-load i{transition:none}}

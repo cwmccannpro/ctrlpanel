@@ -1,0 +1,109 @@
+/* To Do time-blocking on the calendar: task blocks, the drop ghost, the day-load
+   bar, the compact (dashboard) grid and the To Do tray. Theme tokens only — the
+   one exception is the amber "overlaps" warning, which must read in every theme. */
+
+/* ---- Task blocks ---- */
+.wk-task{flex-direction:row;align-items:flex-start;gap:7px;cursor:grab;
+  background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--event-color) 11%,var(--bg-surface)) 0 7px,color-mix(in srgb,var(--event-color) 16%,var(--bg-surface)) 7px 14px);
+  box-shadow:inset 3px 0 0 var(--event-color),0 1px 2px rgba(0,0,0,.18);
+  outline:1px dashed color-mix(in srgb,var(--event-color) 60%,transparent);outline-offset:-1px}
+.wk-task:hover,.wk-task:focus-visible{box-shadow:inset 3px 0 0 var(--event-color),0 6px 16px rgba(0,0,0,.28);outline-style:solid}
+.wk-task:active{cursor:grabbing}
+.wk-task.is-dragging{opacity:.35;filter:saturate(.6)}
+.wk-task.is-resizing{z-index:6;outline-style:solid;box-shadow:inset 3px 0 0 var(--event-color),0 8px 22px rgba(0,0,0,.35)}
+.wk-task-text{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+.wk-task-text strong{color:color-mix(in srgb,var(--event-color) 38%,var(--text-primary))}
+.wk-task.is-done{filter:saturate(.45)}
+.wk-task.is-done .wk-task-text strong{text-decoration:line-through;color:var(--text-secondary)}
+.wk-check{flex-shrink:0;width:14px;height:14px;margin-top:1px;border-radius:50%;border:1.5px solid var(--event-color);display:inline-flex;align-items:center;justify-content:center;color:var(--bg-base);font-size:9px;transition:background 140ms ease,transform 140ms ease}
+.wk-check:hover{background:color-mix(in srgb,var(--event-color) 35%,transparent);transform:scale(1.12)}
+.wk-task.is-done .wk-check{background:var(--event-color)}
+.wk-event--s.wk-task{align-items:center}
+.wk-event--s .wk-check{margin-top:0}
+.wk-unschedule{position:absolute;top:3px;right:3px;width:16px;height:16px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-secondary);opacity:0;transition:opacity 140ms ease,background 140ms ease}
+.wk-task:hover .wk-unschedule,.wk-task:focus-within .wk-unschedule{opacity:1}
+.wk-unschedule:hover{background:color-mix(in srgb,var(--text-primary) 12%,transparent);color:var(--text-primary)}
+.wk-resize{position:absolute;left:0;right:0;bottom:0;height:9px;cursor:ns-resize;touch-action:none}
+.wk-resize::after{content:"";position:absolute;left:50%;bottom:2px;width:20px;height:3px;margin-left:-10px;border-radius:2px;background:var(--event-color);opacity:0;transition:opacity 140ms ease}
+.wk-task:hover .wk-resize::after,.wk-task.is-resizing .wk-resize::after{opacity:.75}
+
+/* ---- While dragging: a quarter-hour guide, and the ghost showing where it lands ---- */
+.wk--dragging .wk-cols::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(to bottom,color-mix(in srgb,var(--border-bright) 55%,transparent) 1px,transparent 1px);background-size:100% calc(var(--hour) / 4)}
+.wk--dragging .wk-event:not(.is-dragging){pointer-events:none}
+.wk-col.is-target{background:color-mix(in srgb,var(--accent) 4%,transparent)}
+.wk-ghost{position:absolute;left:2px;right:2px;z-index:7;pointer-events:none;display:flex;align-items:baseline;justify-content:space-between;gap:6px;padding:3px 8px;border-radius:6px;font-size:10.5px;overflow:hidden;
+  border:1.5px dashed var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--bg-surface));color:var(--text-primary);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.wk-ghost time{font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wk-ghost em{font-style:normal;font-size:9.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-ghost.magnet{border-style:solid;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent),0 8px 24px rgba(0,0,0,.35)}
+.wk-ghost.clash{border-color:#fbbf24;background:color-mix(in srgb,#fbbf24 14%,var(--bg-surface))}
+.wk-ghost.clash em{color:#fbbf24}
+
+/* ---- Day header: how booked the day is ---- */
+.wk-day{overflow:hidden}
+.wk-load{position:absolute;left:0;right:0;bottom:0;height:2px}
+.wk-load::after{content:"";position:absolute;left:0;top:0;bottom:0;width:calc(var(--load,0) * 100%);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 35%,transparent),var(--accent));border-radius:0 2px 2px 0;transition:width 300ms ease}
+
+/* ---- Compact (dashboard Day Plan) ---- */
+.wk--compact{min-width:0;--gutter:40px}
+.wk--compact .wk-hours span{font-size:9px;right:7px}
+.wk--compact .wk-event strong{font-size:11px}
+
+/* ---- To Do tray ---- */
+.calendar-layout--week.has-tray{grid-template-columns:minmax(0,1fr) 300px}
+.tray{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg-base);border-left:1px solid var(--border-bright)}
+.tray-head{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 18px 10px}
+.tray-head span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-secondary)}
+.tray-head h2{font-size:20px;font-weight:450;letter-spacing:-.4px;margin-top:3px;display:flex;align-items:baseline;gap:8px}
+.tray-head h2 small{font-size:12px;color:var(--text-secondary);font-weight:400}
+.tray-tools{display:flex;flex-direction:column;gap:8px;padding:0 14px 10px}
+.tray-search{position:relative;display:block}
+.tray-search i{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text-secondary);pointer-events:none}
+.tray-search .input{width:100%;padding:6px 10px 6px 30px;font-size:12px}
+.tray-list{flex:1;min-height:0;overflow-y:auto;padding:0 10px 10px;scrollbar-width:thin;scrollbar-color:var(--border-bright) transparent}
+.tray-group h3{display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-secondary);padding:12px 6px 6px}
+.tray-group h3 small{font-size:10px;font-weight:500}
+.tray-group.bad h3{color:var(--red)}
+.tray-group ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.tray-task{display:flex;align-items:center;gap:4px;padding:6px 6px 6px 4px;border-radius:8px;background:var(--bg-surface);box-shadow:inset 3px 0 0 var(--tint),inset 0 0 0 1px var(--border);cursor:grab;transition:background 140ms ease,box-shadow 140ms ease}
+.tray-task:hover{background:var(--bg-elevated);box-shadow:inset 3px 0 0 var(--tint),inset 0 0 0 1px var(--border-bright)}
+.tray-task:active{cursor:grabbing}
+.tray-task.is-dragging{opacity:.35}
+.tray-grip{color:var(--text-muted);font-size:14px;flex-shrink:0;margin-left:3px}
+.tray-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;text-align:left;padding:2px 4px}
+.tray-main strong{font-size:12px;font-weight:500;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+.tray-main small{font-size:10px;color:var(--text-secondary)}
+.tray-dur{flex-shrink:0;font-size:10px;font-variant-numeric:tabular-nums;padding:3px 7px;border-radius:999px;color:var(--text-secondary);box-shadow:inset 0 0 0 1px var(--border-bright);transition:color 140ms ease,box-shadow 140ms ease}
+.tray-dur:hover{color:var(--text-primary);box-shadow:inset 0 0 0 1px var(--accent)}
+.tray-snap{flex-shrink:0;width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--accent);background:var(--accent-dim);transition:background 140ms ease,transform 140ms ease}
+.tray-snap:hover{background:var(--accent);color:#fff;transform:scale(1.06)}
+.tray-empty{padding:34px 10px;text-align:center;color:var(--text-secondary);font-size:12px}
+.tray-empty i{display:block;font-size:24px;margin-bottom:10px;opacity:.6}
+.tray-foot{border-top:1px solid var(--border);padding:10px 16px;font-size:10.5px;line-height:1.5;color:var(--text-secondary)}
+.tray-foot i{margin-right:4px}
+.tray-foot b{color:var(--accent)}
+
+@media(max-width:900px){.calendar-layout--week.has-tray{grid-template-columns:minmax(0,1fr)}.tray{border-left:0;border-top:1px solid var(--border-bright);max-height:380px}}
+@media(prefers-reduced-motion:reduce){.tray-task,.tray-snap,.wk-check,.wk-load::after{transition:none}}
+
+/* ---- Toolbar toggle, footer legend, task detail ---- */
+.calendar-tray-toggle small{margin-left:6px;font-size:10px;padding:1px 6px;border-radius:999px;background:var(--accent-dim);color:var(--accent);font-variant-numeric:tabular-nums}
+.calendar-tray-toggle.on{color:var(--text-primary);background:var(--bg-elevated)}
+.calendar-legend i{width:9px;height:9px;border-radius:3px;background:var(--event-color);box-shadow:0 0 0 3px color-mix(in srgb,var(--event-color) 22%,transparent)}
+.calendar-legend .dashed i{background:transparent;box-shadow:none;border:1.5px dashed var(--event-color)}
+.task-detail{min-width:min(380px,100%);gap:16px}
+.task-detail-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)}
+.task-detail-dot{width:8px;height:8px;border-radius:50%;background:var(--event-color);box-shadow:0 0 0 3px color-mix(in srgb,var(--event-color) 25%,transparent)}
+.task-detail-form{display:grid;grid-template-columns:1fr 110px;gap:10px;width:100%}
+.task-detail-form label{display:flex;flex-direction:column;gap:5px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary)}
+.task-detail-form .input,.task-detail-form .select{width:100%;text-transform:none;letter-spacing:0;font-size:13px}
+.task-detail-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* ---- Feed colour picker ---- */
+.calendar-feeds-swatch-btn{width:20px;height:20px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.calendar-feeds-swatch-btn i{width:10px;height:10px;border-radius:3px;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 25%,transparent)}
+.calendar-feeds-swatch-btn:hover{background:var(--bg-elevated)}
+.calendar-feeds-list li>.calendar-feeds-palette{flex:0 0 100%;flex-direction:row;flex-wrap:wrap;gap:8px;padding:4px 0 2px 32px}
+.calendar-feeds-palette button{width:22px;height:22px;border-radius:7px;background:var(--c);box-shadow:inset 0 0 0 2px transparent;transition:transform 140ms ease}
+.calendar-feeds-palette button:hover{transform:scale(1.12)}
+.calendar-feeds-palette button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--bg-surface),0 0 0 4px var(--c)}

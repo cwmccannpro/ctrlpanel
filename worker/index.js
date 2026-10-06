@@ -27,6 +27,7 @@ import {
   getYoutubeAnalytics,
 } from '../backend/youtube.js';
 import { getSheetsStatus, handleSheetsRequest } from '../backend/sheets.js';
+import { icalEvents } from '../backend/ical.js';
 import {
   backendReady,
   authUrl,
@@ -228,6 +229,13 @@ export default {
         if (evMatch && method === 'DELETE') {
           return json(await deleteEvent(user.id, decodeURIComponent(evMatch[1]), url.searchParams.get('calendarId') || 'primary'));
         }
+      }
+
+      /* ---- iCalendar feeds (read-only; same handler as backend/routes/ical.js) ---- */
+      if (pathname === '/api/ical/events' && method === 'POST') {
+        const user = await userFrom(request, url);
+        if (!user) return json({ error: 'Not authenticated' }, 401);
+        return json(await icalEvents(await request.json().catch(() => ({}))));
       }
 
       /* ---- Google Sheets (CRM backing, service-account auth) ---- */

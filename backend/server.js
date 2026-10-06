@@ -8,6 +8,7 @@ import cors from 'cors';
 
 import aiRoutes from './routes/ai.js';
 import calendarRoutes from './routes/calendar.js';
+import icalRoutes from './routes/ical.js';
 import financeRoutes from './routes/finance.js';
 import nutritionRoutes from './routes/nutrition.js';
 import agentsRoutes from './routes/agents.js';
@@ -37,6 +38,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/ai', aiRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/ical', icalRoutes); // read-only .ics feeds (iCloud public calendars etc.)
 app.use('/api/finance', financeRoutes);
 app.use('/api/nutrition', nutritionRoutes); // external API-key logging
 app.use('/api/agents', agentsRoutes); // Agents folder (Opportunities Agent runs, per-user session)

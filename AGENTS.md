@@ -269,6 +269,7 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - `GET  /api/calendar/status|connect|callback|calendars|events` ·
   `POST /api/calendar/disconnect|events` · `PATCH|DELETE /api/calendar/events/:id`
   (auth = Supabase access token via `Authorization: Bearer` or `?token=`)
+- `POST /api/ical/events` — read-only .ics feeds (see Calendar note; `backend/ical.js`)
 - `POST /api/nutrition/log` — external clients; auth = per-user API key
   (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
 - `POST /api/agents/opportunities/run` `{ apiKey?, today }` → NDJSON progress
@@ -324,6 +325,32 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   (`src/pages/Calendar.jsx`, `src/lib/calendarView.js`). Event writes are absent
   from the page; Google events are read for the visible range. Manage events
   through Google Calendar. Date-only and overnight events use local-day overlap.
+  **iCal feeds** (Calendar → Feeds): read-only `.ics` / `webcal://` URLs (iCloud "Public
+  Calendar" links etc.) saved in `user_settings.ui_preferences.calendar.feeds`
+  `[{id,label,url,color}]` — no schema change, no OAuth. Colours come from a curated
+  palette (`FEED_COLORS`); a new feed takes the nearest swatch to its own
+  `X-APPLE-CALENDAR-COLOR`, and the Feeds dialog has a per-feed picker.
+  `POST /api/ical/events` `{feeds,timeMin,timeMax,tz}` (Supabase-token auth; POST so the
+  secret URL stays out of logs) → `{events,feeds:[{id,ok,count,suggestedColor?,error?}]}`;
+  logic in `backend/ical.js` (Workers-compatible; hand-written parser: RRULE/EXDATE/RDATE,
+  RECURRENCE-ID overrides, TZID via Intl, floating times use the viewer's `tz`; a repeating
+  event longer than its own interval is shown as a 1h marker). The server refuses non-https,
+  IP-literal, localhost/internal hosts and re-checks every redirect hop.
+  `useCalendarEvents` (dashboard/review/projects) merges feeds in. Not yet fed to the Master
+  Controller snapshot (`mcTools.js`).
+  **Week view = time grid** (`CalendarWeekGrid.jsx`, pure layout in `lib/weekLayout.js`): 6 AM–12 AM
+  vertical axis, events positioned/sized by duration, side-by-side lanes for overlaps, now-line,
+  all-day row, per-day booked bar; hour height fits the window (min 30px). The page opens on Week.
+  **Time-blocking To Do tasks** (`TaskTray.jsx`, `useTaskPlanner.js`, pure `lib/taskBlocks.js`):
+  drag a task from the tray (or ⚡ "next free slot", or the task dialog's exact time) onto the
+  grid; snaps to 15 min and magnetises to neighbouring event edges, ghost shows the landing
+  slot/conflicts; blocks can be dragged, resized from the bottom edge, ticked off (moves the task
+  to its board's Done column) or removed. Blocks live in
+  `ui_preferences.calendar.blocks` `{taskId:{start,mins}}` (no schema change; stale ids for deleted
+  tasks are ignored). Move to `tasks` columns if it ever needs querying server-side.
+  **Dashboard `schedule` panel is now the Day Plan** (`DayPlanPanel.jsx`): Now/Next card, booked/free
+  stats, a 1-column `CalendarWeekGrid` (same drag/resize/snap), and "Needs a time" tasks with ⚡.
+  Tests: `tests/ical.test.mjs`, `weekLayout.test.mjs`, `taskBlocks.test.mjs`.
 - Generic section headings are visually hidden but retained for accessibility.
   To Do's board selector is the heading; shared chrome uses restrained surfaces,
   inset segmented controls, and reduced-motion-aware transitions.

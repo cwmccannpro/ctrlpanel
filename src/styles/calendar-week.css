@@ -1,0 +1,69 @@
+/* Week time grid — 6 AM to midnight. Every colour is a theme token or the
+   event's own calendar colour (--event-color); nothing is hardcoded. */
+.calendar-layout--week{grid-template-columns:minmax(0,1fr);min-height:640px}
+.calendar-layout--week .calendar-agenda{display:none}
+.calendar-layout--week .calendar-sheet{min-height:0;overflow-x:auto}
+
+.wk{--gutter:54px;display:flex;flex-direction:column;flex:1;min-height:0;min-width:640px}
+.wk-gutter{width:var(--gutter);flex-shrink:0;color:var(--text-secondary);font-size:9px;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:flex-end;justify-content:flex-end;padding:0 10px 6px 0}
+
+.wk-head{display:flex;border-bottom:1px solid var(--border-bright)}
+.wk-day{flex:1;min-width:0;display:flex;align-items:baseline;justify-content:center;gap:8px;padding:12px 4px 11px;color:var(--text-secondary);position:relative;transition:color 160ms ease,background 160ms ease}
+.wk-day small{font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+.wk-day b{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 4px;border-radius:13px;font-size:15px;font-weight:500;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.wk-day:hover{background:var(--bg-elevated)}
+.wk-day.today small{color:var(--accent)}.wk-day.today b{background:var(--accent);color:#fff;font-weight:650}
+.wk-day.selected:not(.today) b{box-shadow:inset 0 0 0 1px var(--border-bright);background:var(--bg-elevated)}
+.wk-day em{position:absolute;right:6px;top:6px;font-style:normal;font-size:9px;color:var(--text-secondary)}
+
+.wk-allday{display:flex;border-bottom:1px solid var(--border-bright);background:var(--bg-base)}
+.wk-allday .wk-gutter{align-items:flex-start;padding-top:8px}
+.wk-allday-cell{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding:5px 3px;border-left:1px solid var(--border)}
+.wk-allday-cell small{font-size:9px;color:var(--text-secondary);padding-left:4px}
+.wk-chip{width:100%;text-align:left;font-size:10.5px;font-weight:550;line-height:1.2;padding:3px 7px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:color-mix(in srgb,var(--event-color) 50%,var(--text-primary));background:color-mix(in srgb,var(--event-color) 20%,var(--bg-surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--event-color) 30%,transparent);transition:background 160ms ease}
+.wk-chip:hover{background:color-mix(in srgb,var(--event-color) 32%,var(--bg-surface))}
+
+.wk-body{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;position:relative;scrollbar-width:thin;scrollbar-color:var(--border-bright) transparent}
+.wk-canvas{position:relative}
+
+.wk-hours{position:absolute;left:0;top:0;bottom:0;width:var(--gutter);pointer-events:none}
+.wk-hours span{position:absolute;right:10px;transform:translateY(-50%);font-size:10px;line-height:1;color:var(--text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.wk-cols{position:absolute;left:var(--gutter);right:0;display:grid;grid-template-columns:repeat(var(--cols,7),minmax(0,1fr));
+  /* hour lines, with a fainter half-hour line between them */
+  background-image:linear-gradient(to bottom,var(--border) 0,var(--border) 1px,transparent 1px),linear-gradient(to bottom,transparent 0,transparent calc(50% - .5px),color-mix(in srgb,var(--border) 45%,transparent) calc(50% - .5px),color-mix(in srgb,var(--border) 45%,transparent) calc(50% + .5px),transparent calc(50% + .5px));
+  background-size:100% var(--hour);box-shadow:inset 0 -1px 0 var(--border)}
+.wk-col{position:relative;border-left:1px solid var(--border);min-width:0}
+.wk-col.today{background:linear-gradient(to bottom,color-mix(in srgb,var(--accent) 5%,transparent),color-mix(in srgb,var(--accent) 2%,transparent))}
+.wk-col.selected:not(.today){background:color-mix(in srgb,var(--text-primary) 2.5%,transparent)}
+
+/* Events: tinted by their calendar colour, a solid edge, and text that stays legible in every theme. */
+.wk-event{position:absolute;display:flex;flex-direction:column;gap:1px;overflow:hidden;text-align:left;padding:4px 7px 4px 8px;border-radius:6px;
+  color:color-mix(in srgb,var(--event-color) 42%,var(--text-primary));
+  background:linear-gradient(135deg,color-mix(in srgb,var(--event-color) 24%,var(--bg-surface)),color-mix(in srgb,var(--event-color) 14%,var(--bg-surface)));
+  box-shadow:inset 3px 0 0 var(--event-color),inset 0 0 0 1px color-mix(in srgb,var(--event-color) 22%,transparent),0 1px 2px rgba(0,0,0,.18);
+  transition:transform 140ms ease,box-shadow 140ms ease,filter 140ms ease,z-index 0s}
+.wk-event:hover,.wk-event:focus-visible{z-index:3;filter:brightness(1.12);transform:translateY(-1px);box-shadow:inset 3px 0 0 var(--event-color),inset 0 0 0 1px color-mix(in srgb,var(--event-color) 55%,transparent),0 6px 16px rgba(0,0,0,.28)}
+.wk-event:focus-visible{outline:2px solid var(--event-color);outline-offset:1px}
+.wk-event strong{font-size:11.5px;font-weight:620;line-height:1.22;letter-spacing:-.005em;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+.wk-event time{font-size:10px;line-height:1.2;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--event-color) 28%,var(--text-secondary));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-event span{font-size:10px;line-height:1.2;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk-event--s{padding-top:2px;padding-bottom:2px;justify-content:center}.wk-event--s strong{font-size:10.5px;-webkit-line-clamp:1}
+.wk-event--m strong{-webkit-line-clamp:1}
+.wk-event.clip-top{border-top-left-radius:0;border-top-right-radius:0}.wk-event.clip-bottom{border-bottom-left-radius:0;border-bottom-right-radius:0}
+
+.wk-after{position:absolute;right:4px;bottom:2px;font-style:normal;font-size:9px;color:var(--text-secondary)}
+
+/* Now line */
+.wk-now{position:absolute;left:0;right:0;height:0;border-top:1.5px solid var(--accent);z-index:4;pointer-events:none;filter:drop-shadow(0 0 4px var(--accent-glow))}
+.wk-now::before{content:"";position:absolute;left:-4px;top:-5px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+/* Footer bar (source + colour legend), replaces the agenda panel in week mode */
+.calendar-source--bar{border:1px solid var(--border-bright);border-radius:12px;background:var(--bg-surface);padding:10px 16px;gap:14px}
+.calendar-source--bar>span{flex:0 1 auto}
+.calendar-legend{display:flex;flex-wrap:wrap;gap:6px 16px;flex:1;min-width:0}
+.calendar-legend span{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--text-secondary)}
+.calendar-legend i{width:9px;height:9px;border-radius:3px;background:var(--event-color);box-shadow:0 0 0 3px color-mix(in srgb,var(--event-color) 22%,transparent)}
+
+@media(prefers-reduced-motion:reduce){.wk-event,.wk-chip,.wk-day{transition:none}.wk-event:hover{transform:none}}
+@media(max-width:760px){.wk{min-width:560px}.wk{--gutter:44px}.wk-day{flex-direction:column;align-items:center;gap:2px;padding:8px 2px}.wk-day small{font-size:9px;letter-spacing:.08em}}
