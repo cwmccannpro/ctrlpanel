@@ -2471,6 +2471,11 @@ table.data-table {
 .dash2-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .dash2-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .dash2-task-meta { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+/* Task rows can be dragged onto the Day Plan; a clock marks the ones already placed there. */
+.dash2-task.is-draggable { cursor: grab; }
+.dash2-task.is-draggable:active { cursor: grabbing; }
+.dash2-task.is-dragging { opacity: 0.4; }
+.dash2-planned { flex-shrink: 0; font-size: 12px; color: var(--accent); }
 .dash2-empty { font-size: 12px; color: var(--text-muted); padding: 6px 2px; }
 
 /* Macro rings */

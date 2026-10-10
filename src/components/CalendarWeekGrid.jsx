@@ -86,15 +86,19 @@ export default function CalendarWeekGrid({
     const raw = GRID.start * 60 + ((e.clientY - colTop) / hour) * 60 - (drag.grabMin || 0);
     const edges = edgesOnDay(events, days[i], { skipTaskId: drag.taskId });
     const { start, edge } = snapToSlot({ rawMin: raw, mins: drag.mins, edges });
-    const clash = busyOnDay(events, days[i], { skipTaskId: drag.taskId }).find(([s, en]) => s < start + drag.mins && en > start);
-    return { col: i, start, mins: drag.mins, edge, clash: Boolean(clash) };
+    const overlaps = busyOnDay(events, days[i], { skipTaskId: drag.taskId }).filter(([s, en]) => s < start + drag.mins && en > start).length;
+    // Overlapping blocks stack side by side, so preview the lane this one will take:
+    // run the same layout with the dragged block placed (and its old position removed).
+    const probe = { id: '__ghost__', kind: 'task', task_id: drag.taskId, starts_at: atMin(days[i], start).toISOString(), ends_at: atMin(days[i], start + drag.mins).toISOString() };
+    const placed = layoutDay(eventsForDay([...events.filter((x) => x.task_id !== drag.taskId), probe], days[i]), days[i]).blocks.find((b) => b.event === probe);
+    return { col: i, start, mins: drag.mins, edge, overlaps, lane: placed?.col ?? 0, lanes: placed?.cols ?? 1 };
   };
   const onDragOver = (e, i) => {
     if (!drag || !planning) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     const g = slotFor(e, i);
-    setGhost((p) => (p && p.col === g.col && p.start === g.start && p.edge === g.edge && p.clash === g.clash ? p : g));
+    setGhost((p) => (p && p.col === g.col && p.start === g.start && p.edge === g.edge && p.overlaps === g.overlaps && p.lane === g.lane && p.lanes === g.lanes ? p : g));
   };
   const onDrop = (e, i) => {
     if (!drag || !planning) return;
@@ -152,7 +156,7 @@ export default function CalendarWeekGrid({
         role="button"
         tabIndex={0}
         draggable={planning && hot !== e.task_id && !resizing}
-        className={`wk-event wk-task wk-event--${size} ${e.done ? 'is-done' : ''} ${dragging ? 'is-dragging' : ''} ${resizing?.id === e.task_id ? 'is-resizing' : ''}`}
+        className={`wk-event wk-task wk-event--${size} ${b.cols >= 3 ? 'wk-narrow' : ''} ${e.done ? 'is-done' : ''} ${dragging ? 'is-dragging' : ''} ${resizing?.id === e.task_id ? 'is-resizing' : ''}`}
         style={{
           top: px(b.top) + 1,
           height,
@@ -282,11 +286,16 @@ export default function CalendarWeekGrid({
                   })}
                   {ghost?.col === i && drag && (
                     <div
-                      className={`wk-ghost ${ghost.clash ? 'clash' : ''} ${ghost.edge != null ? 'magnet' : ''}`}
-                      style={{ top: px(ghost.start) + 1, height: Math.max(18, (ghost.mins / 60) * hour - 2) }}
+                      className={`wk-ghost ${ghost.overlaps ? 'stack' : ''} ${ghost.edge != null ? 'magnet' : ''}`}
+                      style={{
+                        top: px(ghost.start) + 1,
+                        height: Math.max(18, (ghost.mins / 60) * hour - 2),
+                        left: `calc(${(ghost.lane / ghost.lanes) * 100}% + 2px)`,
+                        width: `calc(${100 / ghost.lanes}% - 4px)`,
+                      }}
                     >
                       <time>{clock(atMin(date, ghost.start))} – {clock(atMin(date, ghost.start + ghost.mins))}</time>
-                      <em>{ghost.clash ? 'Overlaps an event' : ghost.edge != null ? 'Snapped to event' : `${SLOT}-min grid`}</em>
+                      <em>{ghost.overlaps ? `Beside ${ghost.overlaps} ${ghost.overlaps === 1 ? 'item' : 'items'}` : ghost.edge != null ? 'Snapped to event' : `${SLOT}-min grid`}</em>
                     </div>
                   )}
                   {after > 0 && <em className="wk-after" title={`${after} later events`}>↓ {after}</em>}

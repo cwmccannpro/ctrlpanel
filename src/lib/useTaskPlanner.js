@@ -14,7 +14,7 @@ import { DEFAULT_MINS, clampDuration, findFreeSlot, sanitizeBlocks, taskItems } 
 export function useTaskPlanner() {
   const { settings, updateUiPreferences } = useAuth();
   const toast = useToast();
-  const { rows: tasks, patch, loading } = useCrud('tasks');
+  const { rows: tasks, patch, loading, reload } = useCrud('tasks');
   const { rows: boards } = useRows('boards', []);
 
   const saved = settings?.ui_preferences?.calendar?.blocks;
@@ -85,15 +85,15 @@ export function useTaskPlanner() {
     [boards, doneOf, patch]
   );
 
-  /** Schedule or move a task and offer Undo. */
+  /** Schedule or move a task and offer Undo. `title` names it when this hook hasn't loaded the row yet. */
   const place = useCallback(
-    (taskId, start, mins) => {
+    (taskId, start, mins, title) => {
       const prev = blocksRef.current[taskId];
       const task = tasks.find((t) => t.id === taskId);
       schedule(taskId, start, mins);
       const when = new Date(start).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
       toast({
-        message: `${prev ? 'Moved' : 'Scheduled'} “${task?.title || 'task'}” · ${when}`,
+        message: `${prev ? 'Moved' : 'Scheduled'} “${task?.title || title || 'task'}” · ${when}`,
         action: { label: 'Undo', onClick: () => (prev ? schedule(taskId, prev.start, prev.mins) : unschedule(taskId)) },
       });
     },
@@ -115,5 +115,5 @@ export function useTaskPlanner() {
     [place, toast]
   );
 
-  return { tasks, openTasks, unscheduled, blocks, items, loading, doneOf, schedule, place, unschedule, resize, toggleDone, snapToNextFree };
+  return { tasks, openTasks, unscheduled, blocks, items, loading, reload, doneOf, schedule, place, unschedule, resize, toggleDone, snapToNextFree };
 }

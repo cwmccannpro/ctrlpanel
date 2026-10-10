@@ -4,6 +4,7 @@ import CalendarWeekGrid from './CalendarWeekGrid.jsx';
 import { eventsForDay } from '../lib/calendarView.js';
 import { dayKey, parseLocalDate } from '../lib/helpers.js';
 import { DEFAULT_MINS, DURATIONS, dayLoad, durationLabel, tintFor } from '../lib/taskBlocks.js';
+import { useTaskDrag } from '../lib/taskDrag.js';
 import { useCalendarEvents } from '../lib/useCalendarEvents.js';
 import { useTaskPlanner } from '../lib/useTaskPlanner.js';
 import '../styles/dayplan.css';
@@ -22,13 +23,17 @@ const span = (ms) => {
  * Dashboard "Day Plan": the day as a 6 AM–midnight timeline (calendar events and
  * scheduled To Do blocks together), a live Now/Next card, booked-vs-free stats, and
  * a list of tasks that still need a time — drag them onto the timeline or tap ⚡.
+ *
+ * Task rows in the other dashboard panels (To Do boards, Due Soon, Today) drag onto
+ * the timeline too; the in-flight drag is shared through lib/taskDrag.js. Blocks that
+ * overlap each other or a calendar event sit side by side (lanes from weekLayout.js).
  */
 export default function DayPlanPanel() {
   const navigate = useNavigate();
   const events = useCalendarEvents();
   const planner = useTaskPlanner();
   const [offset, setOffset] = useState(0);
-  const [drag, setDrag] = useState(null);
+  const [drag, setDrag] = useTaskDrag();
   const [mins, setMins] = useState({});
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -71,6 +76,13 @@ export default function DayPlanPanel() {
 
   const open = (e) => navigate(e.kind === 'task' ? '/todo' : '/calendar');
 
+  // A task added on the dashboard after this panel loaded isn't in the planner's copy
+  // yet — fetch it first, or its block would be hidden as "deleted".
+  const dropTask = async (taskId, d, startMin, m) => {
+    if (!planner.tasks.some((t) => t.id === taskId)) await planner.reload();
+    planner.place(taskId, atMin(d, startMin), m, drag?.title);
+  };
+
   return (
     <>
       <div className="dash2-panel-head">
@@ -105,7 +117,7 @@ export default function DayPlanPanel() {
           <>
             <span className="dp-hero-label">{isToday ? 'Clear' : 'Open day'}</span>
             <strong>{isToday ? 'Nothing else on the calendar' : 'Nothing scheduled'}</strong>
-            <span className="dp-hero-meta">{durationLabel(Math.max(0, load.free))} free · drag a task onto the timeline</span>
+            <span className="dp-hero-meta">{durationLabel(Math.max(0, load.free))} free · drag a task here to plan it</span>
           </>
         )}
       </div>
@@ -127,7 +139,7 @@ export default function DayPlanPanel() {
           onOpen={open}
           drag={drag}
           setDrag={setDrag}
-          onDropTask={(taskId, d, startMin, m) => planner.place(taskId, atMin(d, startMin), m)}
+          onDropTask={dropTask}
           onResizeTask={planner.resize}
           onToggleTask={(id) => { const t = planner.tasks.find((x) => x.id === id); if (t) planner.toggleDone(t); }}
           onUnscheduleTask={planner.unschedule}

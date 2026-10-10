@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { layoutDay } from '../src/lib/weekLayout.js';
+import { taskItems } from '../src/lib/taskBlocks.js';
 
 const day = new Date(2026, 9, 6); // Tue Oct 6 2026, local
 const at = (h, m = 0, d = 6) => new Date(2026, 9, d, h, m).toISOString();
@@ -61,4 +62,21 @@ test('an event at 11:50 PM stays inside the grid', () => {
   const { blocks } = layoutDay([{ id: 'z', starts_at: at(23, 50), ends_at: at(23, 55) }], day);
   assert.equal(blocks[0].bottom, 1440);
   assert.equal(blocks[0].top, 1410);
+});
+
+test('task blocks planned into the same slot stack side by side, and beside a calendar event', () => {
+  const tasks = [{ id: 'a', title: 'Write brief' }, { id: 'b', title: 'Review PRs' }, { id: 'c', title: 'Invoice' }];
+  const blocks = { a: { start: at(9, 0), mins: 60 }, b: { start: at(9, 0), mins: 60 }, c: { start: at(9, 30), mins: 30 } };
+  const meeting = ev('standup', 9, 0, 9, 45, { kind: 'event' });
+  const { blocks: laid } = layoutDay([...taskItems(blocks, tasks), meeting], day);
+  assert.equal(laid.length, 4);
+  assert.ok(laid.every((b) => b.cols === 4)); // all four chain-overlap → four equal lanes
+  assert.equal(new Set(laid.map((b) => b.col)).size, 4); // none share a lane
+});
+
+test('a task planned right after another does not stack with it', () => {
+  const tasks = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
+  const blocks = { a: { start: at(9, 0), mins: 60 }, b: { start: at(10, 0), mins: 60 } };
+  const { blocks: laid } = layoutDay(taskItems(blocks, tasks), day);
+  assert.deepEqual(laid.map((b) => [b.col, b.cols]), [[0, 1], [0, 1]]);
 });

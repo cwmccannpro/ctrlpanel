@@ -350,7 +350,13 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   tasks are ignored). Move to `tasks` columns if it ever needs querying server-side.
   **Dashboard `schedule` panel is now the Day Plan** (`DayPlanPanel.jsx`): Now/Next card, booked/free
   stats, a 1-column `CalendarWeekGrid` (same drag/resize/snap), and "Needs a time" tasks with ⚡.
-  Tests: `tests/ical.test.mjs`, `weekLayout.test.mjs`, `taskBlocks.test.mjs`.
+  **Task rows in other dashboard panels (To Do board columns, Due Soon, Today) drag onto the Day Plan**:
+  the in-flight drag is a module-level store (`lib/taskDrag.js`, `useTaskDrag()`), because source and
+  target are different panels; rows opt in with `useTaskDragSource()` (`lib/useTaskDragSource.js`:
+  `dragProps(task)`, `rowClass(task)`, `plannedAt(task)` → clock marker). Re-dragging a planned task
+  moves it and keeps its length. Overlapping blocks (task/task or task/event) stack side by side via the
+  `weekLayout` lanes; the drop ghost previews its lane ("Beside N items") instead of warning.
+  Tests: `tests/ical.test.mjs`, `weekLayout.test.mjs`, `taskBlocks.test.mjs`, `taskDrag.test.mjs`.
 - Generic section headings are visually hidden but retained for accessibility.
   To Do's board selector is the heading; shared chrome uses restrained surfaces,
   inset segmented controls, and reduced-motion-aware transitions.

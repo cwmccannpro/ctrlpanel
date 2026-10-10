@@ -23,6 +23,7 @@ import { projectForTask } from '../lib/links.js';
 import { planMyDayPrompt } from '../lib/prompts.js';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
+import { useTaskDragSource } from '../lib/useTaskDragSource.js';
 import { finance, youtube } from '../lib/api.js';
 import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS, WORKOUT_COLORS } from '../lib/mockData.js';
 import {
@@ -64,11 +65,19 @@ function PanelTitle({ children, to }) {
 }
 const Empty = ({ children }) => <div className="dash2-empty">{children}</div>;
 
+// Marks a task row that already has a time on the Day Plan (dragging it again moves it).
+function PlannedMark({ at }) {
+  if (!at) return null;
+  const when = at.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  return <i className="ti ti-clock dash2-planned" title={`On your Day Plan · ${when}`} aria-label={`Planned for ${when}`} />;
+}
+
 /* ============================================================
    Tasks
    ============================================================ */
 function BoardPanel({ cfg = {}, onCfg = () => {} }) {
   const navigate = useNavigate();
+  const plan = useTaskDragSource();
   const { user } = useAuth();
   const { rows: boardRows } = useRows('boards', []);
   const { rows: taskRows } = useRows('tasks', []);
@@ -113,9 +122,10 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
           <Empty>Nothing in {column}.</Empty>
         ) : (
           items.map((t) => (
-            <div className="dash2-task" key={t.id} onClick={() => navigate(`/todo/${board.id}`)} title={t.title}>
+            <div className={`dash2-task ${plan.rowClass(t)}`} key={t.id} onClick={() => navigate(`/todo/${board.id}`)} title={`${t.title}\nDrag onto the Day Plan to give it a time`} {...plan.dragProps(t)}>
               <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
               <span className="dash2-task-title">{t.title}</span>
+              <PlannedMark at={plan.plannedAt(t)} />
               {t.due_date && <span className="dash2-task-meta">{relativeDay(t.due_date)}</span>}
             </div>
           ))
@@ -128,6 +138,7 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
 // Everything due soon across every board, soonest first.
 function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
   const navigate = useNavigate();
+  const plan = useTaskDragSource();
   const { user } = useAuth();
   const { rows: taskRows } = useRows('tasks', []);
   const tasks = taskRows.filter((t) => t.user_id === user?.id);
@@ -165,9 +176,10 @@ function UpcomingTasksPanel({ cfg = {}, onCfg = () => {} }) {
           items.map((t) => {
             const late = parseLocalDate(t.due_date) < cutoff;
             return (
-              <div className="dash2-task" key={t.id} onClick={() => navigate(t.board_id ? `/todo/${t.board_id}` : '/todo')} title={t.title}>
+              <div className={`dash2-task ${plan.rowClass(t)}`} key={t.id} onClick={() => navigate(t.board_id ? `/todo/${t.board_id}` : '/todo')} title={`${t.title}\nDrag onto the Day Plan to give it a time`} {...plan.dragProps(t)}>
                 <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
                 <span className="dash2-task-title">{t.title}</span>
+                <PlannedMark at={plan.plannedAt(t)} />
                 <span className={`dash2-task-meta ${late ? 'text-red' : ''}`}>{relativeDay(t.due_date)}</span>
               </div>
             );
@@ -974,6 +986,7 @@ function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
 // capture box that understands "@fri" / "!high" and defaults to due today.
 function TodayTasksPanel() {
   const navigate = useNavigate();
+  const plan = useTaskDragSource();
   const toast = useToast();
   const { send } = useMasterController();
   const { projects } = useWorkspace();
@@ -1044,7 +1057,7 @@ function TodayTasksPanel() {
           focus.map((t) => {
             const project = projectForTask(t, projects.rows);
             return (
-            <div className="dash2-task" key={t.id}>
+            <div className={`dash2-task ${plan.rowClass(t)}`} key={t.id} {...plan.dragProps(t)}>
               <button className="dash2-check" onClick={() => complete(t)} aria-label={`Mark done: ${t.title}`} title="Mark done">
                 <i className="ti ti-check" />
               </button>
@@ -1061,6 +1074,7 @@ function TodayTasksPanel() {
                   {project.name}
                 </button>
               )}
+              <PlannedMark at={plan.plannedAt(t)} />
               <span className={`dash2-task-meta ${t.due_date < today ? 'text-red' : ''}`}>{relativeDay(t.due_date)}</span>
             </div>
             );

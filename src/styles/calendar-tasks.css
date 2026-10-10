@@ -12,7 +12,12 @@
 .wk-task.is-dragging{opacity:.35;filter:saturate(.6)}
 .wk-task.is-resizing{z-index:6;outline-style:solid;box-shadow:inset 3px 0 0 var(--event-color),0 8px 22px rgba(0,0,0,.35)}
 .wk-task-text{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
-.wk-task-text strong{color:color-mix(in srgb,var(--event-color) 38%,var(--text-primary))}
+.wk-task-text strong{color:color-mix(in srgb,var(--event-color) 38%,var(--text-primary));overflow-wrap:anywhere}
+/* Three or more blocks sharing a slot: tighten up so titles stay readable in narrow lanes. */
+.wk-task.wk-narrow{gap:4px;padding-left:6px;padding-right:3px}
+.wk-narrow .wk-check{width:12px;height:12px}
+.wk-narrow .wk-task-text strong{font-size:10px}
+.wk-narrow .wk-task-text time{display:none}
 .wk-task.is-done{filter:saturate(.45)}
 .wk-task.is-done .wk-task-text strong{text-decoration:line-through;color:var(--text-secondary)}
 .wk-check{flex-shrink:0;width:14px;height:14px;margin-top:1px;border-radius:50%;border:1.5px solid var(--event-color);display:inline-flex;align-items:center;justify-content:center;color:var(--bg-base);font-size:9px;transition:background 140ms ease,transform 140ms ease}
@@ -36,8 +41,8 @@
 .wk-ghost time{font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
 .wk-ghost em{font-style:normal;font-size:9.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wk-ghost.magnet{border-style:solid;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent),0 8px 24px rgba(0,0,0,.35)}
-.wk-ghost.clash{border-color:#fbbf24;background:color-mix(in srgb,#fbbf24 14%,var(--bg-surface))}
-.wk-ghost.clash em{color:#fbbf24}
+/* Overlapping is the point (blocks stack side by side), so it reads as information, not a warning. */
+.wk-ghost.stack em{color:var(--accent)}
 
 /* ---- Day header: how booked the day is ---- */
 .wk-day{overflow:hidden}
