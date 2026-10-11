@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -12,8 +12,8 @@ import Badge from '../components/shared/Badge.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import { useCrud } from '../lib/useData.js';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
-import { projectForBoard, projectForTask } from '../lib/links.js';
-import { allBoardsColumns, canDropInColumn, columnsOf } from '../lib/boards.js';
+import { projectForBoard } from '../lib/links.js';
+import { canDropInColumn, columnsOf } from '../lib/boards.js';
 import { useToast } from '../components/Toaster.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { relativeDay } from '../lib/helpers.js';
@@ -84,7 +84,6 @@ export default function ToDo() {
   const tasks = useCrud('tasks', 'created_at');
   const { boardId: boardIdParam } = useParams();
   const navigate = useNavigate();
-  const boardId = boardIdParam || null;
   const goToBoard = (id, opts) => navigate(id ? `/todo/${id}` : '/todo', opts);
   const [editing, setEditing] = useState(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -98,19 +97,19 @@ export default function ToDo() {
     [tasks.rows, user?.id]
   );
 
-  // No board selected → "All Boards", a virtual view combining my boards' cards.
-  const board = boardId ? ownedBoards.find((b) => b.id === boardId) || null : null;
-  const columns = useMemo(
-    () => (board ? columnsOf(board, DEFAULT_COLUMNS) : allBoardsColumns(DEFAULT_COLUMNS, ownedBoards, ownedTasks)),
-    [board, ownedBoards, ownedTasks]
-  );
+  // The base route (or a removed board) opens the first saved board.
+  const board = ownedBoards.find((b) => b.id === boardIdParam) || ownedBoards[0] || null;
+  const boardId = board?.id || null;
+  useEffect(() => {
+    if (!boards.loading && boardId && boardIdParam !== boardId) {
+      navigate(`/todo/${boardId}`, { replace: true });
+    }
+  }, [boards.loading, boardId, boardIdParam, navigate]);
+  const columns = board ? columnsOf(board, DEFAULT_COLUMNS) : [];
   const visibleTasks = useMemo(
-    () => (boardId ? ownedTasks.filter((t) => t.board_id === boardId) : ownedTasks),
+    () => (boardId ? ownedTasks.filter((t) => t.board_id === boardId) : []),
     [ownedTasks, boardId]
   );
-  const boardNameFor = !board ? (t) => ownedBoards.find((b) => b.id === t.board_id)?.name : undefined;
-  // Cross-links: in "All Boards" each card names its project; a project's own board links back to it.
-  const projectFor = !board ? (t) => projectForTask(t, projects.rows) : undefined;
   const boardProject = board ? projectForBoard(projects.rows, board.id) : null;
   const openProject = (pid) => navigate(`/projects/${pid}`);
   // The editor can show a different board's columns once a task is moved to a project.
@@ -182,7 +181,8 @@ export default function ToDo() {
   };
 
   const openNew = (column) => {
-    setEditing({ id: null, title: '', description: '', column_name: column, priority: 'Medium', due_date: '', project_id: '' });
+    if (!boardId) return;
+    setEditing({ id: null, board_id: boardId, title: '', description: '', column_name: column, priority: 'Medium', due_date: '', project_id: '' });
   };
 
   const saveTask = () => {
@@ -212,10 +212,10 @@ export default function ToDo() {
     <div className="fade-in todo-page">
       <div className="page-header">
         <div>
-          <select aria-label="Select board" className="board-title-select" value={boardId || ''} onChange={(e) => goToBoard(e.target.value)} style={{ width: 'auto' }}>
-          <option value="">All Boards</option>
-          {ownedBoards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
+          <select aria-label="Select board" className="board-title-select" value={boardId || ''} disabled={!board} onChange={(e) => goToBoard(e.target.value)} style={{ width: 'auto' }}>
+            {!board && <option value="">{boards.loading ? 'Loading boards…' : 'No boards yet'}</option>}
+            {ownedBoards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
       </div>
 
@@ -228,7 +228,11 @@ export default function ToDo() {
         {board && <button className="btn" style={{ marginLeft: 'auto' }} onClick={addColumn}><i className="ti ti-columns-3" /> Add column</button>}
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      {!board ? (
+        <p className="body-text" role="status">
+          {boards.loading ? 'Loading boards…' : 'Create a board to start adding tasks.'}
+        </p>
+      ) : <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="kanban" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(220px, 1fr))` }}>
           {columns.map((col, i) => (
             <Column
@@ -237,8 +241,6 @@ export default function ToDo() {
               index={i}
               total={columns.length}
               tasks={visibleTasks.filter((t) => t.column_name === col).sort(byPriority)}
-              boardNameFor={boardNameFor}
-              projectFor={projectFor}
               onProject={openProject}
               locked={!board}
               onCardClick={setEditing}
@@ -249,7 +251,7 @@ export default function ToDo() {
             />
           ))}
         </div>
-      </DndContext>
+      </DndContext>}
 
       {editing && (
         <Modal
