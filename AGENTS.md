@@ -472,3 +472,28 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   endpoint verifies the JWT signature); `tests/sheetsTable.test.mjs` covers the table logic.
 - Page rename, spreadsheet replacement, and page deletion live in the page options menu. Existing local
   crm_contacts rows are retained; no database migration is needed.
+
+## Nutrition photo logging + custom GPT
+- `NutritionSettings` provides timezone preferences, generated OpenAPI + GPT
+  instructions, hashed key creation/revocation, and a read-only connection check.
+- `NutritionMealEditor` supports mobile camera/gallery and plain meal descriptions.
+  Nutrition values are read-only estimates; corrections re-analyze the input.
+  No manual macro fields. Changing input invalidates the estimate before saving.
+  Token-based analysis cost is shown. Photos go to Claude but are not persisted.
+  `backend/claude.js` is the only vision caller and keeps `claude-sonnet-4-6`.
+- `backend/nutritionApi.js` has one dispatcher used in Express + Worker: public
+  `/openapi.json`, session `/status` + `/analyze`, key-auth `/check` + `/log`.
+  External ownership comes only from the key. Native writes remain anon/RLS.
+- Shared validation/local-day calculations: `lib/nutrition.js`; setup contract:
+  `lib/nutritionIntegration.js`. Save `ui_preferences.nutrition.timeZone` before
+  connecting a GPT. Retry ids use existing UUID constraints; no schema migration.
+- Nutrition refreshes external uploads on focus/visible intervals; checked writes
+  in `lib/nutritionClient.js` never claim success on a failed database save.
+- See `docs/nutrition-photo-logging.md`; tests: `tests/nutrition.test.mjs`.
+
+## Dashboard panel options
+- Nutrition is available in Customize → Add panel → Health, with daily totals,
+  recent meals and direct photo/text logging shortcuts.
+- The Add panel picker searches registry titles, groups and descriptions.
+- Add useful feature summaries as self-contained PANELS entries with stable id,
+  title, description, icon, group and Component. Preserve saved dashboard layouts.

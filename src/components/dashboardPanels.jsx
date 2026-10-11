@@ -12,6 +12,8 @@ import { useState, useEffect, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import KnowledgePanel from './KnowledgePanel.jsx';
 import DayPlanPanel from './DayPlanPanel.jsx';
+import NutritionPanel from './NutritionPanel.jsx';
+import '../styles/dashboardOptions.css';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -1155,33 +1157,34 @@ function TodayHabitsPanel() {
    ============================================================ */
 export const PANELS = [
   // Today
-  { id: 'today_tasks', title: 'Today', icon: 'ti-sun', group: 'Today', Component: TodayTasksPanel },
-  { id: 'today_habits', title: 'Habits Today', icon: 'ti-circle-check', group: 'Today', Component: TodayHabitsPanel },
-  { id: 'knowledge', title: 'Knowledge Base', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
+  { id: 'today_tasks', title: 'Today', description: 'Tasks due today, overdue work, and your next priorities.', icon: 'ti-sun', group: 'Today', Component: TodayTasksPanel },
+  { id: 'today_habits', title: 'Habits Today', description: 'Tick off today’s habits and see what remains.', icon: 'ti-circle-check', group: 'Today', Component: TodayHabitsPanel },
+  { id: 'knowledge', title: 'Knowledge Base', description: 'Pinned notes and recently updated context.', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
   // Tasks & work
-  { id: 'board', title: 'Task Board Column', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
-  { id: 'upcoming_tasks', title: 'Due Soon', icon: 'ti-alarm', group: 'Work', Component: UpcomingTasksPanel },
-  { id: 'quick_add', title: 'Quick Add', icon: 'ti-plus', group: 'Work', Component: QuickAddPanel },
-  { id: 'schedule', title: 'Day Plan', icon: 'ti-timeline-event', group: 'Work', Component: DayPlanPanel },
-  { id: 'projects', title: 'Projects', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
-  { id: 'crm', title: 'CRM Pipeline', icon: 'ti-users', group: 'Work', Component: CrmPanel },
-  { id: 'opportunities', title: 'Opportunities', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },
+  { id: 'board', title: 'Task Board Column', description: 'View a board category and quickly add tasks in place.', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
+  { id: 'upcoming_tasks', title: 'Due Soon', description: 'Upcoming deadlines across all your task boards.', icon: 'ti-alarm', group: 'Work', Component: UpcomingTasksPanel },
+  { id: 'quick_add', title: 'Quick Add', description: 'Capture a task without leaving the dashboard.', icon: 'ti-plus', group: 'Work', Component: QuickAddPanel },
+  { id: 'schedule', title: 'Day Plan', description: 'Calendar events and draggable task time blocks.', icon: 'ti-timeline-event', group: 'Work', Component: DayPlanPanel },
+  { id: 'projects', title: 'Projects', description: 'Active projects, progress, and linked work.', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
+  { id: 'crm', title: 'CRM Pipeline', description: 'A snapshot of contacts in your CRM pages.', icon: 'ti-users', group: 'Work', Component: CrmPanel },
+  { id: 'opportunities', title: 'Opportunities', description: 'Top job, program, and event matches from your agent.', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },
   // Finance
-  { id: 'networth', title: 'Net Worth', icon: 'ti-wallet', group: 'Finance', Component: NetWorthPanel },
-  { id: 'cashflow', title: 'Cashflow', icon: 'ti-arrows-exchange', group: 'Finance', Component: CashflowPanel },
-  { id: 'budget', title: 'Budget Categories', icon: 'ti-receipt', group: 'Finance', Component: BudgetPanel },
-  { id: 'investing', title: 'Portfolio', icon: 'ti-chart-line', group: 'Finance', Component: InvestingPanel },
+  { id: 'networth', title: 'Net Worth', description: 'Account balances and total assets, with optional debt.', icon: 'ti-wallet', group: 'Finance', Component: NetWorthPanel },
+  { id: 'cashflow', title: 'Cashflow', description: 'Income, spending, and what remains this month.', icon: 'ti-arrows-exchange', group: 'Finance', Component: CashflowPanel },
+  { id: 'budget', title: 'Budget Categories', description: 'Category budgets and actual spending.', icon: 'ti-receipt', group: 'Finance', Component: BudgetPanel },
+  { id: 'investing', title: 'Portfolio', description: 'Recorded holdings and portfolio allocation.', icon: 'ti-chart-line', group: 'Finance', Component: InvestingPanel },
   // Health
-  { id: 'weight', title: 'Weight', icon: 'ti-scale', group: 'Health', Component: WeightPanel },
-  { id: 'supplements', title: 'Supplement Stack', icon: 'ti-pill', group: 'Health', Component: SupplementsPanel },
-  { id: 'fitness', title: 'Today’s Training', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },
-  { id: 'workouts', title: 'Workouts', icon: 'ti-flame', group: 'Health', Component: WorkoutsPanel },
+  { id: 'nutrition', title: 'Nutrition', description: 'Today’s calories, macros, goals, meals, and photo or text logging.', icon: 'ti-tools-kitchen-2', group: 'Health', Component: NutritionPanel },
+  { id: 'weight', title: 'Weight', description: 'Recent weigh-ins and your weight trend.', icon: 'ti-scale', group: 'Health', Component: WeightPanel },
+  { id: 'supplements', title: 'Supplement Stack', description: 'Your supplements grouped by time of day.', icon: 'ti-pill', group: 'Health', Component: SupplementsPanel },
+  { id: 'fitness', title: 'Today’s Training', description: 'The workout planned for today.', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },
+  { id: 'workouts', title: 'Workouts', description: 'Completed sessions and recent training activity.', icon: 'ti-flame', group: 'Health', Component: WorkoutsPanel },
   // Habits
-  { id: 'habits_grid', title: 'Habits Week', icon: 'ti-checkbox', group: 'Habits', Component: HabitsGridPanel },
-  { id: 'habits_trend', title: 'Consistency Trend', icon: 'ti-chart-dots', group: 'Habits', Component: HabitsTrendPanel },
-  { id: 'life', title: 'Life Progress', icon: 'ti-hourglass', group: 'Habits', Component: LifePanel },
+  { id: 'habits_grid', title: 'Habits Week', description: 'A week of habit check-ins at a glance.', icon: 'ti-checkbox', group: 'Habits', Component: HabitsGridPanel },
+  { id: 'habits_trend', title: 'Consistency Trend', description: 'Habit completion rates over time.', icon: 'ti-chart-dots', group: 'Habits', Component: HabitsTrendPanel },
+  { id: 'life', title: 'Life Progress', description: 'Weeks of life and progress toward your life expectancy.', icon: 'ti-hourglass', group: 'Habits', Component: LifePanel },
   // Socials
-  { id: 'youtube', title: 'YouTube', icon: 'ti-brand-youtube', group: 'Socials', Component: YouTubePanel },
+  { id: 'youtube', title: 'YouTube', description: 'Channel subscribers, views, and watch hours.', icon: 'ti-brand-youtube', group: 'Socials', Component: YouTubePanel },
 ];
 
 export const PANELS_BY_ID = Object.fromEntries(PANELS.map((p) => [p.id, p]));

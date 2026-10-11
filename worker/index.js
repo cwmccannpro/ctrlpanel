@@ -14,7 +14,7 @@ import { streamChatCore, supplementAnalyze, interactionCheck, extractResumeProfi
 import { runOpportunitiesCore } from '../backend/opportunities.js';
 import { contextRequest } from '../backend/knowledge.js';
 import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
-import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../backend/nutritionApi.js';
+import { handleNutritionRequest, MAX_NUTRITION_BODY } from '../backend/nutritionApi.js';
 import {
   youtubeReady,
   youtubeAuthUrl,
@@ -131,15 +131,17 @@ export default {
         }
       }
 
-      /* ---- External nutrition logging (per-user API key, not a session) ---- */
-      if (pathname === '/api/nutrition/log' && method === 'POST') {
+      /* ---- Nutrition: shared dispatcher for GPT uploads + session photos ---- */
+      if (pathname.startsWith('/api/nutrition/')) {
         try {
-          const key = apiKeyFromHeaders((h) => request.headers.get(h) || '');
-          const userId = await userIdForApiKey(key);
-          if (!userId) return json({ error: 'Invalid or revoked API key.' }, 401);
-          return json(await logNutritionEntry(userId, await request.json().catch(() => ({}))));
+          const raw = method === 'POST' ? await request.text() : '';
+          if (new TextEncoder().encode(raw).length > MAX_NUTRITION_BODY) return json({ error: 'Photo is too large. Choose a smaller image.' }, 413);
+          let body;
+          try { body = raw ? JSON.parse(raw) : undefined; } catch { return json({ error: 'Invalid JSON.' }, 400); }
+          const result = await handleNutritionRequest(method, url, request.headers, body);
+          return new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
         } catch (e) {
-          return json({ error: e?.message || 'Request failed' }, 400);
+          return json({ error: e?.message || 'Nutrition request failed.' }, e.status || 400);
         }
       }
 

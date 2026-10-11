@@ -1,22 +1,14 @@
-// ============================================================
-// External nutrition logging (Express dev). Same surface exists in
-// worker/index.js; the logic lives in backend/nutritionApi.js.
-// Auth: per-user API key (Settings → Nutrition API), NOT a session.
-// ============================================================
 import { Router } from 'express';
-import { userIdForApiKey, apiKeyFromHeaders, logNutritionEntry } from '../nutritionApi.js';
+import { handleNutritionRequest } from '../nutritionApi.js';
 
 const router = Router();
-
-router.post('/log', async (req, res) => {
+router.use(async (req, res) => {
   try {
-    const key = apiKeyFromHeaders((h) => req.headers[h] || '');
-    const userId = await userIdForApiKey(key);
-    if (!userId) return res.status(401).json({ error: 'Invalid or revoked API key.' });
-    res.json(await logNutritionEntry(userId, req.body || {}));
-  } catch (e) {
-    res.status(400).json({ error: e?.message || 'Request failed' });
-  }
+    const url = new URL(req.originalUrl, process.env.FRONTEND_URL || 'http://localhost:5173');
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(req.headers)) if (typeof value === 'string') headers.set(key, value);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await handleNutritionRequest(req.method, url, headers, req.body));
+  } catch (e) { res.status(e.status || 400).json({ error: e.message || 'Nutrition request failed.' }); }
 });
-
 export default router;

@@ -225,6 +225,8 @@ export default function Dashboard() {
   const [widths, setWidths] = useState(null);
   const [editing, setEditing] = useState(false);
   const [picker, setPicker] = useState(null); // column index when open (columns.length = a new column)
+  const [panelQuery, setPanelQuery] = useState('');
+  const openPicker = (column) => { setPanelQuery(''); setPicker(column); };
   const [activeId, setActiveId] = useState(null);
   const [nav, setNav] = useState({ overflowing: false, canLeft: false, canRight: false });
 
@@ -439,7 +441,14 @@ export default function Dashboard() {
   const shownWidths = widths || normalizeWidths(undefined, shown.length);
   const used = useMemo(() => new Set(shown.flat().map((i) => i.id)), [shown]);
   const activeItem = activeId ? shown.flat().find((i) => i.uid === activeId) : null;
-  const groups = useMemo(() => [...new Set(PANELS.map((p) => p.group))], []);
+  const pickerPanels = useMemo(() => {
+    const terms = panelQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    return PANELS.filter((panel) => {
+      const text = `${panel.title} ${panel.group} ${panel.description || ''}`.toLowerCase();
+      return terms.every((term) => text.includes(term));
+    });
+  }, [panelQuery]);
+  const groups = [...new Set(pickerPanels.map((panel) => panel.group))];
 
   return (
     <div className="fade-in dash2-page" ref={pageRef}>
@@ -471,7 +480,7 @@ export default function Dashboard() {
             </button>
           )}
           {editing && (
-            <button className="btn btn--sm" onClick={() => setPicker(0)}>
+            <button className="btn btn--sm" onClick={() => openPicker(0)}>
               <i className="ti ti-plus" /> Add panel
             </button>
           )}
@@ -507,7 +516,7 @@ export default function Dashboard() {
                   onRemove={removePanel}
                   onHeight={setPanelHeight}
                   onCfg={setPanelCfg}
-                  onAdd={setPicker}
+                  onAdd={openPicker}
                   onMoveCol={moveCol}
                   onRemoveCol={removeCol}
                 />
@@ -533,7 +542,11 @@ export default function Dashboard() {
       </DndContext>
 
       {picker !== null && (
-        <Modal title="Add a panel" onClose={() => setPicker(null)}>
+        <Modal title="Add a panel" onClose={() => setPicker(null)} className="dash2-picker-modal">
+          <div className="field">
+            <label className="field-label" htmlFor="dashboard-panel-search">Find a panel</label>
+            <input id="dashboard-panel-search" className="input" type="search" placeholder="Search nutrition, tasks, finance…" value={panelQuery} onChange={(event) => setPanelQuery(event.target.value)} autoFocus />
+          </div>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">Column</label>
             <div className="segmented" style={{ flexWrap: 'wrap' }}>
@@ -549,14 +562,16 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          <p className="dash2-panel-note" role="status">{pickerPanels.length} panel options · Add any panel to your chosen column.</p>
+          {groups.length === 0 && <p className="dash2-panel-note">No panels match that search. Try a feature name or clear the search.</p>}
           {groups.map((g) => (
             <div key={g} style={{ marginBottom: 14 }}>
               <div className="section-label" style={{ marginBottom: 6 }}>{g}</div>
               <div className="dash2-picker">
-                {PANELS.filter((p) => p.group === g).map((p) => (
-                  <button key={p.id} className="dash2-pick" onClick={() => addPanel(picker, p.id)}>
-                    <i className={`ti ${p.icon}`} />
-                    <span>{p.title}</span>
+                {pickerPanels.filter((p) => p.group === g).map((p) => (
+                  <button key={p.id} className="dash2-pick" aria-label={p.title} onClick={() => addPanel(picker, p.id)}>
+                    <i className={`ti ${p.icon}`} aria-hidden="true" />
+                    <span className="dash2-pick-copy"><strong>{p.title}</strong>{p.description && <small>{p.description}</small>}</span>
                     {used.has(p.id) && <i className="ti ti-check dash2-pick-used" title="Already on your dashboard" />}
                   </button>
                 ))}
