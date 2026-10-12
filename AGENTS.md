@@ -1,5 +1,15 @@
 # CTRLpanel — Project Context for Agents
 
+## Fitness plan (2026-10-11)
+- **Fitness is a weekly plan, not a workout logger.** `/health/fitness` (`pages/health/Fitness.jsx`, styles `fitness.css`,
+  pure logic `lib/fitnessPlan.js`, tests `fitnessPlan.test.mjs`) shows Mon–Sun with today preselected; each day has a free-text
+  split name (Push/Pull/Legs/Rest/anything) and an ordered exercise list `[{id,name,sets,reps,weight,note}]` stored in
+  `fitness_schedule.exercises` (jsonb; apply `migrations/20261011-fitness-plan.sql`, also in the schema). Sets/reps are text
+  ("8-10", "AMRAP"). The page has no fixed starter week: day names, routines and notes come only from saved user rows.
+  The responsive routine view separates sets/reps/weight, and `lib/useFitnessPlan.js` validates DB saves and exposes load failures. The `fitness` dashboard panel
+  (Today's Training) renders today's routine + tomorrow's split. The `workouts` panel and workout logging UI are retired;
+  `workout_logs` is kept for history and the Weekly Review no longer shows a workouts stat.
+
 > Read this file at the start of EVERY session before writing code.
 > **`supabase-schema.sql` is the single source of truth for the database.**
 > This doc describes architecture and conventions; when in doubt about a

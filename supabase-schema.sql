@@ -742,3 +742,6 @@ begin
     );
   end loop;
 end $$;
+
+-- Weekly fitness plan: ordered exercises per weekday (safe to re-run).
+alter table fitness_schedule add column if not exists exercises jsonb not null default '[]'::jsonb;

@@ -287,7 +287,7 @@ export function reviewNoteTemplate(review) {
     lines.push(`- **Habits:** ${habits.rate ?? 0}% completed${vs}${best}`);
   }
   lines.push(`- **Tasks:** ${tasks.dueThisWeek.total} due this week, ${tasks.dueThisWeek.done} done · ${tasks.overdue.length} overdue now`);
-  lines.push(`- **Training:** ${workouts.count} workout${workouts.count === 1 ? '' : 's'} (last week ${workouts.prevCount})`);
+  if (workouts.count || workouts.prevCount) lines.push(`- **Training:** ${workouts.count} workout${workouts.count === 1 ? '' : 's'} (last week ${workouts.prevCount})`);
   if (nutrition.loggedDays) {
     const goal = nutrition.goalCalories ? ` vs goal ${nutrition.goalCalories.toLocaleString('en-US')}` : '';
     lines.push(`- **Nutrition:** avg ${nutrition.avgCalories.toLocaleString('en-US')} kcal/day over ${nutrition.loggedDays} logged day${nutrition.loggedDays === 1 ? '' : 's'}${goal}`);

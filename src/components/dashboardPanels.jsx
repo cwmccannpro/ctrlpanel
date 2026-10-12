@@ -14,6 +14,8 @@ import KnowledgePanel from './KnowledgePanel.jsx';
 import DayPlanPanel from './DayPlanPanel.jsx';
 import NutritionPanel from './NutritionPanel.jsx';
 import '../styles/dashboardOptions.css';
+import '../styles/fitness.css';
+import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps, typeColor } from '../lib/fitnessPlan.js';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -27,7 +29,7 @@ import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
 import { useTaskDragSource } from '../lib/useTaskDragSource.js';
 import { finance, youtube } from '../lib/api.js';
-import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS, WORKOUT_COLORS } from '../lib/mockData.js';
+import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS } from '../lib/mockData.js';
 import {
   relativeDay, formatDate, parseLocalDate, currency, percent, compactCurrency, compactNumber, number, lifeStats, channelLabel,
 } from '../lib/helpers.js';
@@ -35,7 +37,6 @@ import { RANGES, computeTrend, recentDays, dayKey, currentStreak } from '../lib/
 import { parseCapture, taskRowFromCapture, doneColumn, readCaptureBoard, writeCaptureBoard } from '../lib/commandPalette.js';
 
 const todayKey = () => dayKey(new Date());
-const todayShort = () => new Date().toLocaleDateString('en-US', { weekday: 'short' });
 const TIP = { background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
 
 const PRIORITY_RANK = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
@@ -281,70 +282,38 @@ function SupplementsPanel() {
 }
 
 function FitnessPanel() {
-  const { rows: schedule } = useRows('fitness_schedule', []);
-  const dow = todayShort();
-  const row = schedule.find((r) => r.day_of_week === dow);
-  const type = row?.workout_type;
-  const color = WORKOUT_COLORS[type] || 'var(--border-bright)';
+  const { rows: schedule, loading } = useRows('fitness_schedule', []);
+  const byDay = planByDay(schedule);
+  const today = dayKeyFor();
+  const plan = dayPlan(byDay[today]);
+  const tomorrow = dayPlan(byDay[nextDayKey(today)]);
+  const color = typeColor(plan.type);
   return (
     <>
-      <PanelTitle to="/health/fitness">Today’s Training · {new Date().toLocaleDateString('en-US', { weekday: 'long' })}</PanelTitle>
-      {!type || type === 'Rest' ? (
+      <div className="dash2-train-head">
+        <PanelTitle to="/health/fitness">Today’s Training · {dayLabel(today)}</PanelTitle>
+        {plan.planned && !plan.rest && <span className="dash2-fit-badge" style={{ background: color }}><i className="ti ti-barbell" /> {plan.type}</span>}
+      </div>
+      {loading ? null : !plan.planned ? (
+        <Empty>Nothing planned for today. Set up your week under Health → Fitness.</Empty>
+      ) : plan.rest ? (
         <div className="dash2-fit">
-          <span className="dash2-fit-badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
-            <i className="ti ti-bed" /> {type === 'Rest' ? 'Rest day' : 'No workout scheduled'}
-          </span>
+          <span className="dash2-fit-badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}><i className="ti ti-bed" /> Rest day</span>
         </div>
+      ) : plan.exercises.length === 0 ? (
+        <Empty>{plan.type} day — add your exercises under Health → Fitness.</Empty>
       ) : (
-        <div className="dash2-fit">
-          <span className="dash2-fit-badge" style={{ background: color }}><i className="ti ti-barbell" /> {type}</span>
-          <span className="dash2-fit-sub">Scheduled for today</span>
-        </div>
-      )}
-    </>
-  );
-}
-
-// Recent workout activity + current streak.
-function WorkoutsPanel() {
-  const { rows: logs } = useRows('workout_logs', [], 'completed_at');
-  const doneDays = new Set(logs.map((w) => (w.completed_at || '').slice(0, 10)).filter(Boolean));
-
-  let streak = 0;
-  const cur = new Date();
-  cur.setHours(0, 0, 0, 0);
-  while (doneDays.has(dayKey(cur))) { streak++; cur.setDate(cur.getDate() - 1); }
-
-  const last28 = recentDays(28);
-  const thisMonth = last28.filter((d) => doneDays.has(dayKey(d))).length;
-  const recent = [...logs].sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 4);
-
-  return (
-    <>
-      <div className="dash2-panel-head">
-        <PanelTitle to="/health/fitness">Workouts</PanelTitle>
-        <span className="dash2-count">🔥 {streak}</span>
-      </div>
-      <div className="dash2-yt-stats" style={{ marginBottom: 8 }}>
-        <div><span className="dash2-yt-num">{thisMonth}</span><span className="dash2-yt-lbl">last 28d</span></div>
-        <div><span className="dash2-yt-num">{logs.length}</span><span className="dash2-yt-lbl">all time</span></div>
-      </div>
-      <div className="dash2-heat">
-        {last28.map((d) => (
-          <span key={dayKey(d)} className={`dash2-heat-cell ${doneDays.has(dayKey(d)) ? 'on' : ''}`} title={dayKey(d)} />
-        ))}
-      </div>
-      {recent.length > 0 && (
-        <div className="dash2-tasks" style={{ marginTop: 8 }}>
-          {recent.map((w) => (
-            <div className="dash2-task" key={w.id}>
-              <span className="dash2-dot" style={{ background: WORKOUT_COLORS[w.workout_type] || 'var(--accent)' }} />
-              <span className="dash2-task-title">{w.workout_type || 'Workout'}</span>
-              <span className="dash2-task-meta">{relativeDay(w.completed_at)}</span>
-            </div>
+        <ol className="dash2-train-list">
+          {plan.exercises.map((ex) => (
+            <li className="dash2-train-ex" key={ex.id}>
+              <span className="dash2-train-name">{ex.name}{ex.weight ? <span className="muted"> · {ex.weight}</span> : null}</span>
+              <span className="dash2-train-sets" style={{ color }}>{setsReps(ex)}</span>
+            </li>
           ))}
-        </div>
+        </ol>
       )}
+      {!loading && plan.notes && <p className="dash2-train-next">{plan.notes}</p>}
+      {!loading && tomorrow.planned && <div className="dash2-train-next">Tomorrow · {tomorrow.rest ? 'Rest' : tomorrow.type}</div>}
     </>
   );
 }
@@ -1177,8 +1146,7 @@ export const PANELS = [
   { id: 'nutrition', title: 'Nutrition', description: 'Today’s calories, macros, goals, meals, and photo or text logging.', icon: 'ti-tools-kitchen-2', group: 'Health', Component: NutritionPanel },
   { id: 'weight', title: 'Weight', description: 'Recent weigh-ins and your weight trend.', icon: 'ti-scale', group: 'Health', Component: WeightPanel },
   { id: 'supplements', title: 'Supplement Stack', description: 'Your supplements grouped by time of day.', icon: 'ti-pill', group: 'Health', Component: SupplementsPanel },
-  { id: 'fitness', title: 'Today’s Training', description: 'The workout planned for today.', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },
-  { id: 'workouts', title: 'Workouts', description: 'Completed sessions and recent training activity.', icon: 'ti-flame', group: 'Health', Component: WorkoutsPanel },
+  { id: 'fitness', title: 'Today’s Training', description: 'Today’s split and exercises, with sets and reps.', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },
   // Habits
   { id: 'habits_grid', title: 'Habits Week', description: 'A week of habit check-ins at a glance.', icon: 'ti-checkbox', group: 'Habits', Component: HabitsGridPanel },
   { id: 'habits_trend', title: 'Consistency Trend', description: 'Habit completion rates over time.', icon: 'ti-chart-dots', group: 'Habits', Component: HabitsTrendPanel },

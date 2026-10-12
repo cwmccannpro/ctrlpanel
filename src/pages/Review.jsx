@@ -57,7 +57,6 @@ export default function Review() {
   const habitLogs = useRows('habit_logs', []);
   const tasks = useRows('tasks', []);
   const boards = useRows('boards', []);
-  const workouts = useRows('workout_logs', []);
   const nutrition = useRows('nutrition_logs', []);
   const goals = useRows('user_goals', []);
   const weights = useRows('weight_logs', []);
@@ -74,16 +73,16 @@ export default function Review() {
       .catch(() => setNotes([]));
   useEffect(() => { loadNotes(); }, []);
 
-  const loading = [habits, habitLogs, tasks, boards, workouts, nutrition, goals, weights, transactions, categories].some((r) => r.loading) || notes === null;
+  const loading = [habits, habitLogs, tasks, boards, nutrition, goals, weights, transactions, categories].some((r) => r.loading) || notes === null;
 
   const review = useMemo(
     () => buildReview({
       today: new Date(),
-      habits: habits.rows, habitLogs: habitLogs.rows, tasks: tasks.rows, boards: boards.rows, workouts: workouts.rows,
+      habits: habits.rows, habitLogs: habitLogs.rows, tasks: tasks.rows, boards: boards.rows,
       nutrition: nutrition.rows, goals: goals.rows, weights: weights.rows, transactions: transactions.rows,
       categories: categories.rows, notes: notes || [], events,
     }),
-    [habits.rows, habitLogs.rows, tasks.rows, boards.rows, workouts.rows, nutrition.rows, goals.rows, weights.rows, transactions.rows, categories.rows, notes, events]
+    [habits.rows, habitLogs.rows, tasks.rows, boards.rows, nutrition.rows, goals.rows, weights.rows, transactions.rows, categories.rows, notes, events]
   );
 
   const title = reviewNoteTitle(review);
@@ -104,7 +103,7 @@ export default function Review() {
     }
   };
 
-  const { habits: h, tasks: t, workouts: w, nutrition: n, weight: wt, spend: s, notes: nt, windows } = review;
+  const { habits: h, tasks: t, nutrition: n, weight: wt, spend: s, notes: nt, windows } = review;
   const projectOf = (task) => projectForTask(task, projects.rows);
 
   if (loading) {
@@ -132,9 +131,6 @@ export default function Review() {
         </Stat>
         <Stat label="Tasks done" value={`${t.dueThisWeek.done}/${t.dueThisWeek.total}`} to="/todo">
           <span className="review-delta review-delta--flat">{t.overdue.length ? `${t.overdue.length} overdue now` : 'nothing overdue'}</span>
-        </Stat>
-        <Stat label="Workouts" value={w.count} to="/health/fitness">
-          <Delta current={w.count} previous={w.prevCount} />
         </Stat>
         <Stat label="Spending" value={s.count ? currency(s.total) : '—'} to="/finance/budget">
           {s.count ? <Delta current={s.total} previous={s.prevTotal} good="neutral" format={(x) => currency(x)} /> : <span className="review-delta review-delta--flat">nothing logged</span>}
@@ -183,7 +179,6 @@ export default function Review() {
         <Card className="card-section" static>
           <div className="card-section-title">Body</div>
           <dl className="review-facts">
-            <div><dt>Training</dt><dd>{w.count} workout{w.count === 1 ? '' : 's'} on {w.activeDays} day{w.activeDays === 1 ? '' : 's'}{Object.keys(w.types).length ? ` (${Object.entries(w.types).map(([k, v]) => `${k} ×${v}`).join(', ')})` : ''}</dd></div>
             <div><dt>Nutrition</dt><dd>{n.loggedDays ? `${n.avgCalories.toLocaleString('en-US')} kcal/day avg over ${n.loggedDays} logged day${n.loggedDays === 1 ? '' : 's'}${n.goalCalories ? ` (goal ${n.goalCalories.toLocaleString('en-US')})` : ''}` : 'Nothing logged this week'}</dd></div>
             <div><dt>Weight</dt><dd>{wt.entries ? `${wt.first} → ${wt.last}${wt.change !== null ? ` (${wt.change > 0 ? '+' : ''}${wt.change})` : ''}` : 'No weigh-ins this week'}</dd></div>
           </dl>
