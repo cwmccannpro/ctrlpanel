@@ -13,3 +13,8 @@ yarn-error.log*
 
 # Local context-sync project list (contains local paths)
 tools/context-projects.json
+
+# Local scratch — never commit. .finance-release/ holds a copy of .env.
+.finance-release/
+finance-launch-tests.log
+.claude/

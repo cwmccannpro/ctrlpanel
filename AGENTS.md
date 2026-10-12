@@ -1,5 +1,38 @@
 # CTRLpanel — Project Context for Agents
 
+## AI access + spend limits (2026-10-12)
+- **Every `/api/ai/*` route needs a signed-in user** (Bearer token only — never `?token=`). One dispatcher, `backend/ai.js`
+  (`handleAiRequest`), serves Express (`backend/routes/ai.js`, a thin adapter) and the Worker; add AI routes there, not in two places.
+  It also validates input (1 MB body, ≤200 chat messages / supplements, names ≤200 chars) before anything is reserved.
+- **`backend/aiGuard.js` decides who may spend the server's `ANTHROPIC_API_KEY`.** `reserveAi({user, apiKey, estimateUsd})` returns a lease:
+  it *reserves* an estimate, then `settle({usd,input_tokens,output_tokens})` swaps in the real cost (no `usd` keeps the estimate; `release()`
+  refunds a call that spent nothing). Helpers: `withAiLease` (one-shot calls — a throw refunds), `reserveAgentRun` (settles from the run's
+  `done.cost_usd`). **Any new code that can reach the server key must go through one of these** — today that is the dispatcher, the two agent
+  runs, the resume parser (Express + Worker) and nutrition `/analyze`. A call with the user's own key from Settings → Connectors (`apiKey`) is
+  authenticated but free and uncounted.
+- Limits are per user per **UTC** day: `AI_DAILY_USD_LIMIT` (default 10; `0` switches the shared key off), `AI_DAILY_REQUEST_LIMIT` (500),
+  `AI_BURST_PER_MINUTE` (30, in memory per runtime instance), and optional `AI_ALLOWED_EMAILS` (only those accounts may use the shared
+  key; registration is open, so set it). Refusals are 429 `{error, code: requests|spend|rate}` (+`Retry-After` for `rate`), 403 `forbidden`, or
+  503 `limiter` — the limiter fails closed if the database errors. `GET /api/ai/usage` feeds Settings → "AI usage today" (`AiUsage.jsx`).
+- Storage: `ai_usage` + RPCs `ai_usage_reserve` / `ai_usage_settle` (`migrations/20261012-ai-usage.sql`, also in the schema). Server-only, like
+  `google_tokens`: RLS on with no policy, and the SECURITY DEFINER functions are executable by `service_role` only. If the migration isn't applied
+  yet the caps fall back to in-memory counters and usage reports `persistent: false`.
+- The public `/api/health` no longer reports whether an Anthropic key is configured. Tests: `tests/aiGuard.test.mjs`.
+
+## Reliable writes, visible load errors, deploy gate (2026-10-12)
+- **`useCrud` no longer lies about saves.** Its optimistic `add/patch/remove` run through `src/lib/crudWriter.js` (pure, injectable, tested in
+  `tests/crudWriter.test.mjs`): a rejected insert removes the placeholder row and `add` resolves to `null`; a rejected edit rolls back only the
+  keys still holding the failed value; a rejected delete puts the row back where it was; an update that matches no row (deleted elsewhere / RLS)
+  counts as failed and reloads. Editing or deleting a row whose insert is still in flight waits for the real id — a `tmp-…` id is never sent to
+  the database. **Callers must treat a falsy `add()` result as failure** (the three that use it already do).
+- Failures reach the UI through one window event (`src/lib/writeStatus.js` → `ToastProvider`): an error toast with **Retry**, de-duplicated by
+  `key` (`table:action`). `useRows` now exposes `error`, toasts a failed load with Retry, and keeps already-loaded rows when a refresh fails
+  instead of blanking to the empty mock. This is the seam for a future save-status indicator (#18 in the 2026-10-12 audit).
+- **Deploy gate**: `npm test` runs the suite (`node --test tests/*.test.mjs`, Node ≥22). `npm run deploy` = `scripts/deploy.mjs`: the git tree must be
+  clean (modified/staged/untracked all block) → `npm run build` → `npm test` → writes `dist/version.json` (commit, subject, dirty flag) → `wrangler deploy`.
+  `npm run deploy:check` runs everything but the final deploy. `ALLOW_DIRTY_DEPLOY=1` is the emergency override (stamps `dirty: true`). Check what is
+  live with `GET /version.json`. Local scratch (`.finance-release/` — holds a copy of `.env` — `finance-launch-tests.log`, `.claude/`) is gitignored.
+
 ## Combined Health page + nutrient targets (2026-10-11)
 - **One Health page**: `/health` (`pages/health/Health.jsx`, styles `health.css`) stacks Nutrition → Supplements → Fitness → Weight, each
   a component in `components/health/`. `/health/nutrition|supplements|fitness` render the same page and scroll to
@@ -374,7 +407,8 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 
 ## API Surface (`/api/*` — identical in Express and the Worker)
 - `GET  /api/health`
-- `POST /api/ai/chat` (NDJSON stream) · `POST /api/ai/supplement-analyze` · `POST /api/ai/interaction-check`
+- `POST /api/ai/chat` (NDJSON stream) · `POST /api/ai/supplement-analyze` · `POST /api/ai/interaction-check` ·
+  `GET /api/ai/usage` — all Supabase-token auth with per-user limits (see "AI access + spend limits"; logic in `backend/ai.js`)
 - `GET  /api/finance/prices?tickers=A,B` · `GET /api/finance/history?ticker=&scale=` ·
   `POST /api/finance/portfolio-history` `{ holdings:[{ticker,shares}], scale }`
   (Yahoo Finance, no key; scales 1D/1W/1M/3M/6M/1Y/5Y/ALL)
@@ -407,7 +441,7 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - `worker/index.js` is the production backend; it reuses the modules in
   `backend/` (claude.js, google.js, finance.js). `wrangler.jsonc` serves
   `./dist` as SPA assets with `run_worker_first: ["/api/*"]` + `nodejs_compat`.
-- Deploy: `npm run deploy` (build + `wrangler deploy`). Secrets via
+- Deploy: `npm run deploy` (clean tree + build + tests + `wrangler deploy`; see "deploy gate"). Secrets via
   `npx wrangler secret put` — list in wrangler.jsonc header and `.env.example`.
 - Local dev stays Vite + Express (`npm run dev` + `npm run server`).
 - **If you add an API route, add it to BOTH `backend/routes/*` and
