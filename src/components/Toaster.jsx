@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { DATA_FAILED_EVENT } from '../lib/writeStatus.js';
 import '../styles/overlays.css';
 
 // App-wide toasts: `const toast = useToast(); toast('Saved')` or
@@ -55,12 +56,24 @@ export function ToastProvider({ children }) {
       action: opts.action,
       ttl: opts.ttl ?? (tone === 'error' ? TTL.error : TTL.default),
     };
-    // Keep the stack short: the newest three win.
-    setToasts((prev) => [...prev, toast].slice(-3));
+    toast.key = opts.key;
+    // Keep the stack short: the newest three win. A toast with a `key` replaces
+    // the visible one with the same key, so repeated failures don't pile up.
+    setToasts((prev) => [...prev.filter((t) => !toast.key || t.key !== toast.key), toast].slice(-3));
     return toast.id;
   }, []);
 
   const api = useMemo(() => Object.assign(push, { dismiss }), [push, dismiss]);
+
+  // Save/load failures from lib code (useCrud, useRows): an error toast with Retry.
+  useEffect(() => {
+    const onFailed = (e) => {
+      const { message, key, retry } = e.detail || {};
+      if (message) push({ tone: 'error', message, key, action: retry ? { label: 'Retry', onClick: retry } : undefined });
+    };
+    window.addEventListener(DATA_FAILED_EVENT, onFailed);
+    return () => window.removeEventListener(DATA_FAILED_EVENT, onFailed);
+  }, [push]);
 
   return (
     <ToastContext.Provider value={api}>
