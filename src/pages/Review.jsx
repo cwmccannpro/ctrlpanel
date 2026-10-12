@@ -134,7 +134,7 @@ export default function Review() {
         <Stat label="Tasks done" value={`${t.dueThisWeek.done}/${t.dueThisWeek.total}`} to="/todo">
           <span className="review-delta review-delta--flat">{t.overdue.length ? `${t.overdue.length} overdue now` : 'nothing overdue'}</span>
         </Stat>
-        <Stat label="Spending" value={!finance.error && finance.connected && s.count ? currency(s.total) : '—'} to="/finance/budget">
+        <Stat label="Spending" value={!finance.error && finance.connected && s.count ? currency(s.total) : '—'} to="/finance#cashflow">
           {finance.error || !finance.connected ? <span className="review-delta review-delta--flat">{finance.loading ? 'reading finance workbook' : finance.error ? 'workbook unavailable' : 'connect finance workbook'}</span> : s.count ? <Delta current={s.total} previous={s.prevTotal} good="neutral" format={(x) => currency(x)} /> : <span className="review-delta review-delta--flat">nothing logged</span>}
         </Stat>
       </div>

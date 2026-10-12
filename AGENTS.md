@@ -1,10 +1,14 @@
 # CTRLpanel — Project Context for Agents
 
 ## Combined Health page + nutrient targets (2026-10-11)
-- **One Health page**: `/health` (`pages/health/Health.jsx`, styles `health.css`) stacks Nutrition → Supplements → Fitness, each
-  an `embedded` component in `components/health/`. `/health/nutrition|supplements|fitness` render the same page and scroll to
-  that section; links should use `/health#nutrition|#supplements|#fitness` (`?log=photo|text` opens the meal editor). The sidebar
-  Health folder has a single Overview entry. Each section is flat — no collapsible sub-sections (trends, weight log and the supplement AI tools are always visible).
+- **One Health page**: `/health` (`pages/health/Health.jsx`, styles `health.css`) stacks Nutrition → Supplements → Fitness → Weight, each
+  a component in `components/health/`. `/health/nutrition|supplements|fitness` render the same page and scroll to
+  that section; links should use `/health#nutrition|#supplements|#fitness|#weight` (`?log=photo|text` opens the meal editor). In the
+  sidebar, Health is a plain top-level link (like Dashboard) — no folder and no sub-pages. Each section is flat — no collapsible
+  sub-sections (the trends chart and the supplement AI tools are always visible). There is no per-day Meals list: Nutrition's
+  **Past entries** button opens a dialog of every logged meal grouped by day (newest first, 14 days at a time) with edit/delete.
+  The weight log is its own last section (`Weight.jsx`, with its own date field). `lib/useMealTimeZone.js` returns the saved meal
+  timezone. The Fitness section has no header, "Today" button or "weekly rhythm" label — just the week summary, day tabs and routine.
 - **Nutrition goes past macros.** `lib/nutrition.js` defines `NUTRIENTS` (calories/protein/carbs/fat) and `MICRO_NUTRIENTS`
   (32 keys with units; starting targets are FDA Daily Values; sodium, saturated fat, added sugar and cholesterol are `limit: true`).
   Meal micros live in `nutrition_logs.micros` jsonb; **a missing key means unreported, never zero** (`micronutrientTotals` returns
@@ -180,7 +184,7 @@
   The Master Controller is NOT on the page — it's a global bottom dock (see
   below). The legacy `dashboardWidgets.jsx` registry is superseded and unused.
 - **Sidebar** (`src/components/Sidebar.jsx`): top-level links (Dashboard,
-  Calendar, To Do, Habits) + **folders**. A folder header is *only* a folder —
+  Calendar, To Do, Habits, Health, Finance) + **folders**. A folder header is *only* a folder —
   clicking it expands/collapses, it never navigates. Sections with an overview
   page (CRM, Agents, Projects, Socials) expose it through the small `+` manage
   button on the header instead; that page is where new items get created.
@@ -188,7 +192,7 @@
   as does the drag-resized width. Collapsed rail: hovering a folder icon opens a
   fixed-position flyout with the same sub-pages. Dynamic items come from
   `WorkspaceProvider` (projects, CRM boards, socials channels); the Agents
-  folder lists `src/lib/agentRegistry.js`; Health + Finance are fixed lists.
+  folder lists `src/lib/agentRegistry.js`. Health and Finance are plain top-level links, not folders.
 - **Master Controller dock**: `MasterControllerDock` in
   `src/components/MasterController.jsx`, rendered once in `App.jsx`. Fixed to
   the bottom on every page, hidden until the pointer comes within ~100px of the
@@ -602,9 +606,15 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   conflict protection, the installed Windows task and revocation. No schema change.
 
 ## Finance Sheets source of truth
-- Finance pages (`/finance`, `/finance/networth`, `/finance/budget`, `/finance/investing`)
-  use `components/FinanceDashboard.jsx` and `lib/useFinance.js`. Old `/finance/debt`
-  links redirect to the overview. Five `FinancePanel` variants are in the dashboard registry; existing saved finance
+- **Finance is one page**, `/finance` (`components/FinanceDashboard.jsx`, `lib/useFinance.js`, styles `finance.css`):
+  Overview (hero, key metrics, assets-over-time + allocation charts, insights), then numbered
+  `FinanceSection` blocks 01 Assets, 02 Cashflow (month picker, budget categories, income, transactions),
+  03 Investing (market context, investment accounts, positions) and 04 Goals. A jump nav and the ids
+  `#overview|#assets|#cashflow|#investing|#goals` scroll to a block once the workbook has loaded; link with
+  `/finance#cashflow`, not a sub-path. The old `/finance/networth|budget|investing|debt` routes only redirect to
+  those anchors (`routes.jsx`). Finance is a plain top-level sidebar link with no sub-pages; the command palette
+  has entries per section. Investment/Crypto accounts show under Investing, every other asset under Assets.
+  Section cards use `h3` under the section's `h2`. Five `FinancePanel` variants are in the dashboard registry; existing saved finance
   panel IDs still work. Keep the main dashboard card-less.
 - `lib/financeSheet.js` is the shared, import-free workbook contract and calculations.
   Accounts, Income, Budget, Transactions, Holdings, History and Goals are read by

@@ -167,8 +167,8 @@ export async function executeTool(name, input = {}, { navigate, confirm } = {}) 
         const routes = {
           dashboard: '/', calendar: '/calendar', todo: '/todo', habits: '/habits',
           agents: '/agents', opportunities: '/agents/opportunities', industry: '/agents/industry-problems', projects: '/projects', crm: '/crm',
-          health: '/health', nutrition: '/health#nutrition', supplements: '/health#supplements', fitness: '/health#fitness',
-          networth: '/finance/networth', budget: '/finance/budget', investing: '/finance/investing',
+          health: '/health', nutrition: '/health#nutrition', supplements: '/health#supplements', fitness: '/health#fitness', weight: '/health#weight',
+          networth: '/finance#assets', budget: '/finance#cashflow', investing: '/finance#investing',
           finance: '/finance', debt: '/finance',
           settings: '/settings', knowledge: '/knowledge',
         };

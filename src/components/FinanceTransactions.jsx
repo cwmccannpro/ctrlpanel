@@ -8,7 +8,7 @@ export default function FinanceTransactions({ summary, data, onEdit, onAdd, comp
   const rows = [...summary.transactions].sort((a, b) => b.date.localeCompare(a.date)).filter((t) => `${t.name} ${t.notes}`.toLowerCase().includes(query.toLowerCase()));
   const safePage = Math.min(page, Math.max(0, Math.ceil(rows.length / size) - 1));
   return <section className="fin-section">
-    <div className="fin-section-head"><div><h2>Recent activity</h2><p>{summary.transactions.length ? `${summary.transactions.length} records this month` : 'Your recorded money movements'}</p></div><button className="btn btn--sm" onClick={onAdd}><i className="ti ti-plus" aria-hidden="true" /> Log transaction</button></div>
+    <div className="fin-section-head"><div><h3>Recent activity</h3><p>{summary.transactions.length ? `${summary.transactions.length} records this month` : 'Your recorded money movements'}</p></div><button className="btn btn--sm" onClick={onAdd}><i className="ti ti-plus" aria-hidden="true" /> Log transaction</button></div>
     {!compact && !!summary.transactions.length && <label className="fin-search"><i className="ti ti-search" aria-hidden="true" /><input className="input" aria-label="Search transactions" placeholder="Find a transaction" value={query} onChange={(e) => { setQuery(e.target.value); setPage(0); }} /></label>}
     {!rows.length && <div className="fin-empty">{query ? 'No matching transactions.' : 'No transactions recorded this month. Log expenses and income to see actual cashflow.'}</div>}
     {rows.slice(safePage * size, (safePage + 1) * size).map((t) => <button key={t.id} className="fin-transaction" onClick={() => onEdit(t)}>

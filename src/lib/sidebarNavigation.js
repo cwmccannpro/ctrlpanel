@@ -8,6 +8,8 @@ export const TOP_LINKS = [
   { to: '/todo', label: 'To Do', icon: 'ti-checkbox' },
   { to: '/knowledge', label: 'Knowledge Base', icon: 'ti-notebook' },
   { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
+  { to: '/health', label: 'Health', icon: 'ti-heart' },
+  { to: '/finance', label: 'Finance', icon: 'ti-coin' },
   { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
 ];
 
@@ -26,21 +28,6 @@ export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {
       {
         id: 'folder:projects', label: 'Projects', icon: 'ti-folder', indexTo: '/projects', emptyLabel: 'No projects yet',
         items: projects.map((p) => ({ label: p.name || 'Untitled', to: `/projects/${p.id}` })),
-      },
-      {
-        id: 'folder:health', label: 'Health', icon: 'ti-heart',
-        items: [
-          { label: 'Overview', to: '/health' },
-        ],
-      },
-      {
-        id: 'folder:finance', label: 'Finance', icon: 'ti-coin',
-        items: [
-          { label: 'Overview', to: '/finance' },
-          { label: 'Assets', to: '/finance/networth' },
-          { label: 'Cashflow', to: '/finance/budget' },
-          { label: 'Investing', to: '/finance/investing' },
-        ],
       },
       {
         id: 'folder:socials', label: 'Socials', icon: 'ti-share', indexTo: '/socials', emptyLabel: 'No accounts yet',

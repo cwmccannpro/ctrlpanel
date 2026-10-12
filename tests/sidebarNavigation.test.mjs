@@ -16,7 +16,7 @@ test('debt is absent from navigation and search even with old opt-ins and Show a
     const settings = { ui_preferences: { finance: { includeDebt } } };
     const navigation = sidebarNavigation({ ...workspace, settings });
     assert.equal(paths(visibleSidebarNavigation(navigation, { '/finance/debt': true })).includes('/finance/debt'), false);
-    assert.equal(navigation.folders.find((f) => f.id === 'folder:finance').items.find((i) => i.to === '/finance/networth').label, 'Assets');
+    assert.equal(paths(navigation).some((path) => path.startsWith('/finance/')), false);
   }
   assert.equal(PAGES.some((p) => p.to === '/finance/debt'), false);
 });
@@ -45,7 +45,7 @@ test('individual pages disappear in expanded navigation and rail flyouts using t
   const hidden = { '/health': false, '/projects/project-1': false, '/socials/youtube/youtube-1': false, '/agents/opportunities': false };
   const visible = visibleSidebarNavigation(all, hidden);
   for (const path of Object.keys(hidden)) assert.equal(paths(visible).includes(path), false);
-  assert.ok(paths(visible).includes('/finance/investing'));
+  assert.ok(paths(visible).includes('/finance'));
   assert.ok(paths(visible).includes('/socials/instagram/instagram-1'));
   assert.equal(visible.folders.find((f) => f.id === 'folder:projects').indexTo, '/projects');
   assert.equal(visible.folders.find((f) => f.id === 'folder:projects').emptyLabel, 'All pages hidden');
@@ -53,9 +53,13 @@ test('individual pages disappear in expanded navigation and rail flyouts using t
   assert.ok(paths(all).includes('/projects/project-1'));
 });
 
-test('hiding all static children removes an empty folder; empty dynamic sections keep Manage', () => {
-  const hidden = Object.fromEntries(all.folders.find((f) => f.id === 'folder:health').items.map((i) => [i.to, false]));
-  assert.equal(visibleSidebarNavigation(all, hidden).folders.some((f) => f.id === 'folder:health'), false);
+test('hiding all static children removes an empty folder; sections with a Manage link stay', () => {
+  const folder = { id: 'folder:static', label: 'Static', icon: 'ti-folder', items: [{ label: 'One', to: '/one' }, { label: 'Two', to: '/two' }] };
+  const hidden = { '/one': false, '/two': false };
+  assert.equal(visibleSidebarNavigation({ links: [], folders: [folder] }, hidden).folders.length, 0);
+  const agents = all.folders.find((f) => f.id === 'folder:agents');
+  const agentsHidden = visibleSidebarNavigation(all, Object.fromEntries(agents.items.map((i) => [i.to, false]))).folders.find((f) => f.id === 'folder:agents');
+  assert.equal(agentsHidden.indexTo, '/agents');
   assert.ok(visibleSidebarNavigation(sidebarNavigation()).folders.some((f) => f.id === 'folder:projects'));
 });
 
@@ -67,29 +71,39 @@ test('renaming a dynamic page keeps its hidden choice and does not affect anothe
 });
 
 test('showing a parent restores only its visible children; saved child choices survive', () => {
-  const visibility = { 'folder:finance': false, '/finance/budget': false };
-  assert.equal(visibleSidebarNavigation(all, visibility).folders.some((f) => f.id === 'folder:finance'), false);
-  const restored = visibleSidebarNavigation(all, { ...visibility, 'folder:finance': true });
-  assert.equal(paths(restored).includes('/finance/budget'), false);
-  assert.ok(paths(restored).includes('/finance/investing'));
+  const visibility = { 'folder:agents': false, '/agents/opportunities': false };
+  assert.equal(visibleSidebarNavigation(all, visibility).folders.some((f) => f.id === 'folder:agents'), false);
+  const restored = visibleSidebarNavigation(all, { ...visibility, 'folder:agents': true });
+  assert.equal(paths(restored).includes('/agents/opportunities'), false);
+  assert.ok(paths(restored).includes('/agents/industry-problems'));
   const showAll = Object.fromEntries(Object.keys(visibility).map((id) => [id, true]));
   assert.deepEqual(paths(visibleSidebarNavigation(all, showAll)), paths(all));
 });
 
-test('Health has one combined overview; search jumps to its sections', () => {
-  assert.deepEqual(all.folders.find((folder) => folder.id === 'folder:health').items, [{ label: 'Overview', to: '/health' }]);
+test('Health is one top-level link with no sub-pages; search jumps to its sections', () => {
+  assert.deepEqual(all.links.find((link) => link.to === '/health'), { to: '/health', label: 'Health', icon: 'ti-heart' });
+  assert.equal(all.folders.some((folder) => folder.id === 'folder:health'), false);
   assert.ok(PAGES.some((page) => page.to === '/health#nutrition'));
   assert.ok(PAGES.some((page) => page.to === '/health#supplements'));
   assert.ok(PAGES.some((page) => page.to === '/health#fitness'));
+  assert.ok(PAGES.some((page) => page.to === '/health#weight'));
+});
+
+test('Finance is one top-level link with no sub-pages; search jumps to its sections', () => {
+  assert.deepEqual(all.links.find((link) => link.to === '/finance'), { to: '/finance', label: 'Finance', icon: 'ti-coin' });
+  assert.equal(all.folders.some((folder) => folder.id === 'folder:finance'), false);
+  for (const section of ['assets', 'cashflow', 'investing', 'goals']) assert.ok(PAGES.some((page) => page.to === `/finance#${section}`), section);
+  assert.equal(PAGES.some((page) => /^\/finance\/\w/.test(page.to)), false);
+  assert.equal(visibleSidebarNavigation(all, { '/finance': false }).links.some((link) => link.to === '/finance'), false);
 });
 
 test('sidebar visibility leaves widget settings and other preferences intact', () => {
-  const settings = { dashboard_widgets: { v: 7, columns: [[{ id: 'board' }, { id: 'nutrition' }]] }, ui_preferences: { sidebar: { width: 280, folders: { Health: true } }, sidebarVisibility: { '/todo': false, 'folder:health': false }, finance: { includeDebt: false } } };
+  const settings = { dashboard_widgets: { v: 7, columns: [[{ id: 'board' }, { id: 'nutrition' }]] }, ui_preferences: { sidebar: { width: 280, folders: { Health: true } }, sidebarVisibility: { '/todo': false, '/health': false }, finance: { includeDebt: false } } };
   const before = structuredClone(settings);
   const navigation = sidebarNavigation({ ...workspace, settings });
   const visible = visibleSidebarNavigation(navigation, settings.ui_preferences.sidebarVisibility);
   assert.equal(paths(visible).includes('/todo'), false);
   assert.equal(paths(visible).includes('/finance/debt'), false);
-  assert.equal(navigation.folders.find((f) => f.id === 'folder:finance').items.find((i) => i.to === '/finance/networth').label, 'Assets');
+  assert.ok(paths(visible).includes('/finance'));
   assert.deepEqual(settings, before);
 });

@@ -21,10 +21,7 @@ const loaders = {
   CRM: () => import('./pages/CRM.jsx'),
   Settings: () => import('./pages/Settings.jsx'),
   Health: () => import('./pages/health/Health.jsx'),
-  NetWorth: () => import('./pages/finance/NetWorth.jsx'),
   Finance: () => import('./pages/finance/Finance.jsx'),
-  Budget: () => import('./pages/finance/Budget.jsx'),
-  Investing: () => import('./pages/finance/Investing.jsx'),
   Socials: () => import('./pages/socials/Socials.jsx'),
   YouTube: () => import('./pages/socials/YouTube.jsx'),
   Instagram: () => import('./pages/socials/Instagram.jsx'),
@@ -44,10 +41,7 @@ const KnowledgeBase = lazy(loaders.KnowledgeBase);
 const CRM = lazy(loaders.CRM);
 const Settings = lazy(loaders.Settings);
 const Health = lazy(loaders.Health);
-const NetWorth = lazy(loaders.NetWorth);
 const Finance = lazy(loaders.Finance);
-const Budget = lazy(loaders.Budget);
-const Investing = lazy(loaders.Investing);
 const Socials = lazy(loaders.Socials);
 const YouTube = lazy(loaders.YouTube);
 const Instagram = lazy(loaders.Instagram);
@@ -65,10 +59,7 @@ export const pageLoaders = [
   loaders.CRM,
   loaders.Settings,
   loaders.Health,
-  loaders.NetWorth,
   loaders.Finance,
-  loaders.Budget,
-  loaders.Investing,
   loaders.Agents,
   loaders.OpportunitiesAgent,
   loaders.IndustryProblemsAgent,
@@ -98,11 +89,12 @@ export const appChildren = [
   { path: 'health/nutrition', element: <Health /> },
   { path: 'health/supplements', element: <Health /> },
   { path: 'health/fitness', element: <Health /> },
-  { path: 'finance/networth', element: <NetWorth /> },
   { path: 'finance', element: <Finance /> },
+  // Finance is one page; the old sub-pages open it at their section.
+  { path: 'finance/networth', element: <Navigate to="/finance#assets" replace /> },
+  { path: 'finance/budget', element: <Navigate to="/finance#cashflow" replace /> },
+  { path: 'finance/investing', element: <Navigate to="/finance#investing" replace /> },
   { path: 'finance/debt', element: <Navigate to="/finance" replace /> },
-  { path: 'finance/budget', element: <Budget /> },
-  { path: 'finance/investing', element: <Investing /> },
   { path: 'socials', element: <Socials /> },
   // Kept so older links (and the OAuth callback) still land on the overview.
   { path: 'socials/youtube', element: <Socials /> },

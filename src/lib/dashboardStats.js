@@ -241,7 +241,7 @@ export function weekKpis({ habits = [], habitLogs = [], tasks = [], boards = [],
   if (s.count || s.prevTotal) {
     tiles.push({
       id: 'spend', label: 'Spend', value: currency(s.total), sub: s.weeklyBudget ? `of ~${currency(s.weeklyBudget)} / week` : 'last 7 days',
-      delta: delta(s.total, s.prevTotal), unit: '$', good: 'down', to: '/finance/budget',
+      delta: delta(s.total, s.prevTotal), unit: '$', good: 'down', to: '/finance#cashflow',
     });
   }
   if (h.longestStreak?.streak >= 2) {

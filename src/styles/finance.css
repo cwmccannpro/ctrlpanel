@@ -2,13 +2,22 @@
 .fin-page { --fin-line: var(--border-bright); display: flex; flex-direction: column; gap: 20px; padding-bottom: 72px; max-width: 1600px; margin: 0 auto; }
 .fin-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .fin-eyebrow { font-size: 10px; letter-spacing: .14em; font-weight: 600; color: var(--text-secondary); }
-.fin-header h2 { font-size: 27px; font-weight: 500; letter-spacing: -.045em; margin: 5px 0 4px; }
 .fin-header p, .fin-caption { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 .fin-header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.fin-nav { display: flex; gap: 6px; border-bottom: 1px solid var(--border-bright); padding-bottom: 12px; flex-wrap: wrap; }
-.fin-nav a { padding: 7px 16px; color: var(--text-secondary); border-radius: 6px; font-size: 12px; transition: background var(--transition), color var(--transition); }
-.fin-nav a:hover { background: var(--tint); color: var(--text-primary); }
-.fin-nav a.active { color: var(--accent); background: var(--accent-dim); }
+.fin-header h1 { font-size: clamp(28px, 3vw, 38px); letter-spacing: -1.3px; font-weight: 600; margin: 8px 0 6px; line-height: 1.1; }
+.fin-header h1 > span { color: var(--accent); }
+.fin-jump { align-self: flex-start; flex-wrap: wrap; gap: 2px; padding: 4px; }
+.fin-jump a { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 14px; color: var(--text-secondary); font-size: 12px; border-radius: var(--radius-sm); transition: background var(--transition), color var(--transition); }
+.fin-jump a:hover { background: var(--bg-elevated); color: var(--text-primary); }
+/* Every part of the page is a block: the overview first, then numbered sections divided by hairlines. */
+.fin-block { display: flex; flex-direction: column; gap: 20px; min-width: 0; scroll-margin-top: 20px; }
+.fin-block + .fin-block { padding-top: 28px; border-top: 1px solid var(--border-bright); }
+.fin-block-head { display: flex; align-items: center; gap: 12px; }
+.fin-block-number { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; border: 1px solid var(--border-bright); border-radius: var(--radius-sm); padding: 8px; }
+.fin-block-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.4px; margin: 0 0 2px; }
+.fin-block-head p { color: var(--text-secondary); font-size: 12px; margin: 0; line-height: 1.6; }
+.fin-block-head > i { margin-left: auto; color: var(--text-secondary); font-size: 22px; }
+.fin-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 .fin-source-status { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap; }
 .fin-status-dot { width: 5px; height: 5px; flex-shrink: 0; background: var(--green); border-radius: 50%; }
 .fin-status-dot--error { background: var(--amber); }
@@ -39,7 +48,7 @@
 .fin-two-col { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .fin-section { border: 1px solid var(--border-bright); background: var(--glass); border-radius: var(--radius-lg); padding: 24px; min-width: 0; }
 .fin-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 22px; flex-wrap: wrap; }
-.fin-section-head h2 { font-size: 14px; font-weight: 500; letter-spacing: -.015em; }
+.fin-section-head h3 { font-size: 14px; font-weight: 500; letter-spacing: -.015em; }
 .fin-section-head p { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
 .fin-chart-empty { min-height: 200px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 9px; color: var(--text-secondary); text-align: center; font-size: 11px; padding: 20px; }
 .fin-chart-empty > i { font-size: 28px; color: var(--accent); margin-bottom: 7px; }
@@ -73,6 +82,7 @@ button:hover > .fin-edit-hint, button:hover .fin-account-top .fin-edit-hint { op
 .fin-budget-track { grid-column: 1 / -1; height: 3px; border-radius: 3px; background: var(--border-bright); overflow: hidden; width: 100%; }
 .fin-budget-track > span { display: block; height: 100%; background: var(--accent); }
 .fin-insights { background: var(--tint); }
+.fin-insight-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 32px; }
 .fin-insight { display: flex; align-items: flex-start; gap: 12px; border-top: 1px solid var(--border); padding: 16px 0; }
 .fin-insight:last-child { padding-bottom: 0; }
 .fin-insight > i { margin-top: 2px; font-size: 17px; }
@@ -173,11 +183,12 @@ button:hover > .fin-edit-hint, button:hover .fin-account-top .fin-edit-hint { op
 @media (max-width: 760px) {
   .fin-page { gap: 16px; }
   .fin-header { align-items: flex-start; flex-direction: column; gap: 14px; }
-  .fin-header h2 { font-size: 25px; }
   .fin-header-actions { width: 100%; }
   .fin-header-actions .btn { flex: 1; }
-  .fin-nav { gap: 4px; }
-  .fin-nav a { padding: 10px 11px; min-height: 40px; }
+  .fin-jump { align-self: stretch; }
+  .fin-jump a { flex: 1; min-height: 40px; padding-inline: 8px; }
+  .fin-block + .fin-block { padding-top: 22px; }
+  .fin-block-head > i { display: none; }
   .fin-hero { grid-template-columns: minmax(0, 1fr); }
   .fin-hero-main { padding: 24px; }
   .fin-hero-aside { border-left: 0; border-top: 1px solid var(--border-bright); padding: 20px 24px; }
