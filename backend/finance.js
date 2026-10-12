@@ -92,7 +92,7 @@ export async function getPrices(tickers = []) {
         const prev = c.meta.prevClose;
         if (price == null) return;
         const change = price != null && prev ? Number((((price - prev) / prev) * 100).toFixed(2)) : 0;
-        out[t] = { price: Number(price), change };
+        out[t] = { price: Number(price), change, currency: c.currency };
       } catch {
         /* omit — the UI falls back to the holding's manual/avg price */
       }
@@ -133,12 +133,15 @@ export async function getPortfolioHistory(holdings = [], scale = '6M') {
     valid.map(async (h) => {
       try {
         const c = await fetchChart(h.ticker, range, interval);
-        return { shares: Number(h.shares), points: c.series };
+        return { shares: Number(h.shares), points: c.series, currency: c.currency };
       } catch {
         return null;
       }
     })
   );
+
+  if (results.some((r) => !r)) throw new Error('Market history is unavailable for some positions. Select an individual holding to inspect its price history.');
+  if (results.some((r) => r.currency !== 'USD')) throw new Error('The combined chart supports USD-priced positions. Select a holding to view prices in its quoted currency.');
 
   // Union of all timestamps, ascending.
   const tset = new Set();

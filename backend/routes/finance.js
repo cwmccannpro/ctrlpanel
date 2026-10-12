@@ -1,7 +1,17 @@
 import { Router } from 'express';
 import { getPrices, getHistory, getPortfolioHistory } from '../finance.js';
+import { verifyUser } from '../google.js';
+import { handleFinanceSheetsRequest } from '../financeSheets.js';
 
 const router = Router();
+
+router.all('/sheets/:action', async (req, res) => {
+  const user = await verifyUser(req);
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+  const result = await handleFinanceSheetsRequest(req.method, req.params.action, { token, user, body: req.body || {} });
+  if (!result) return res.status(404).json({ error: 'Not found' });
+  res.status(result.status).json(result.json);
+});
 
 // GET /api/finance/prices?tickers=AAPL,MSFT,BTC
 router.get('/prices', async (req, res) => {

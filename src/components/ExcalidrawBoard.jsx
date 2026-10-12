@@ -7,6 +7,12 @@
 // immediately when the tab is hidden/closed or the canvas unmounts, so a
 // quick refresh right after drawing doesn't lose the last stroke.
 //
+// The stored scene never includes scroll/zoom (Excalidraw strips the viewport
+// when serializing), so on open we scroll to the saved content — otherwise a
+// drawing that lives away from the origin loads as an apparently empty canvas.
+// A full-screen toggle expands the canvas to the whole window (Fullscreen API
+// where available, with a fixed-position overlay as the fallback).
+//
 // Excalidraw fires onChange very frequently (pointer moves, selection,
 // cursor blink), so we gate all work behind a cheap content signature and
 // keep every callback identity stable via refs — otherwise the parent's
@@ -37,7 +43,13 @@ const blobToDataUrl = (blob) =>
 export default function ExcalidrawBoard({ initialScene, onPersist }) {
   // Capture once — initialData is only read on mount, and we don't want our
   // own persists (which update the project row) to look like fresh props.
-  const initial = useRef(initialScene || null).current;
+  const initial = useRef(
+    initialScene
+      ? { ...initialScene, appState: { ...(initialScene.appState || {}) }, scrollToContent: true }
+      : null
+  ).current;
+  // Signature seed must come from the stored elements, not the wrapped copy.
+  const storedElements = initialScene?.elements || [];
 
   // Keep the latest onPersist in a ref so our callbacks never change identity
   // (and thus never re-subscribe onChange / re-run the unload effect).
@@ -48,9 +60,11 @@ export default function ExcalidrawBoard({ initialScene, onPersist }) {
   const pending = useRef(null); // latest { elements, appState, files } not yet saved
   // Signature already committed to the DB — seed from the loaded scene so the
   // mount-time onChange doesn't look like a fresh edit.
-  const savedSig = useRef(sceneSig(initial?.elements || []));
+  const savedSig = useRef(sceneSig(storedElements));
   const [status, setStatus] = useState('saved'); // 'saved' | 'pending' | 'saving' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
+  const [full, setFull] = useState(false);
+  const rootRef = useRef(null);
 
   const runSave = useCallback(async () => {
     if (timer.current) {
@@ -144,8 +158,37 @@ export default function ExcalidrawBoard({ initialScene, onPersist }) {
     };
   }, [runSave]);
 
+  const enterFull = useCallback(() => {
+    setFull(true);
+    // Real browser full screen when allowed; the CSS overlay covers the rest.
+    rootRef.current?.requestFullscreen?.().catch(() => {});
+  }, []);
+  const exitFull = useCallback(() => {
+    setFull(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }, []);
+
+  // Excalidraw only re-measures its canvas on window resize, so nudge it after
+  // the container changes size (again once the browser's full-screen settles).
+  useEffect(() => {
+    const nudge = () => window.dispatchEvent(new Event('resize'));
+    const raf = requestAnimationFrame(nudge);
+    const later = setTimeout(nudge, 250);
+    return () => { cancelAnimationFrame(raf); clearTimeout(later); };
+  }, [full]);
+
+  // Esc in browser full screen leaves it without going through exitFull.
+  useEffect(() => {
+    const onFs = () => { if (!document.fullscreenElement) setFull(false); };
+    document.addEventListener('fullscreenchange', onFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFs);
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+
   return (
-    <div>
+    <div ref={rootRef} className={full ? 'excalidraw-board excalidraw-board--full' : 'excalidraw-board'}>
       <div className="excalidraw-savebar">
         {status === 'saving' && <span className="muted">Saving…</span>}
         {status === 'pending' && <span className="muted">Unsaved changes…</span>}
@@ -156,6 +199,14 @@ export default function ExcalidrawBoard({ initialScene, onPersist }) {
             <button className="btn btn--ghost btn--sm" onClick={runSave}>Retry</button>
           </span>
         )}
+        <button
+          className="btn btn--ghost btn--sm"
+          onClick={full ? exitFull : enterFull}
+          title={full ? 'Exit full screen' : 'Full screen'}
+          aria-label={full ? 'Exit full screen' : 'Full screen'}
+        >
+          <i className={`ti ${full ? 'ti-arrows-minimize' : 'ti-arrows-maximize'}`} /> {full ? 'Exit full screen' : 'Full screen'}
+        </button>
       </div>
       <div className="excalidraw-wrap">
         <Excalidraw theme="dark" initialData={initial} onChange={handleChange} />

@@ -113,6 +113,15 @@ export const authApi = {
   del: (path) => authRequest(path, { method: 'DELETE' }),
 };
 
+export const financeSheets = {
+  status: () => authApi.get('/finance/sheets/status'),
+  workbook: () => authApi.get('/finance/sheets/workbook'),
+  connect: (spreadsheetId) => authApi.post('/finance/sheets/connect', { spreadsheetId }),
+  disconnect: () => authApi.post('/finance/sheets/disconnect'),
+  save: (record) => authApi.post('/finance/sheets/record', record),
+  snapshot: (date) => authApi.post('/finance/sheets/snapshot', { date }),
+};
+
 // Google Calendar — authenticated with the current Supabase session so the
 // backend knows which user's calendar to act on.
 async function authHeaders() {
@@ -177,24 +186,30 @@ export const sheets = {
   deleteRows: (id, sheetId, rows) => authApi.post('/sheets/delete-rows', { id, sheetId, rows }),
 };
 
-// Agents folder. The Opportunities run streams NDJSON progress events
-// (start / search / results / status / ping / done / error) — see
-// backend/opportunities.js. The server reads the user's config itself.
+// Agents folder. The Opportunities and Industry Problems runs stream NDJSON
+// progress events (start / search / results / status / ping / done / error) —
+// see backend/opportunities.js and backend/industry.js. The server reads the
+// user's config itself.
+async function streamAgentRun(path, payload, onEvent, signal) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({}));
+    onEvent({ type: 'error', message: body?.error || `API ${res.status}` });
+    return;
+  }
+  await readNdjson(res, onEvent);
+}
+
 export const agentsApi = {
-  async runOpportunities({ apiKey, today } = {}, onEvent, signal) {
-    const res = await fetch(`${BASE}/agents/opportunities/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-      body: JSON.stringify({ apiKey, today }),
-      signal,
-    });
-    if (!res.ok || !res.body) {
-      const body = await res.json().catch(() => ({}));
-      onEvent({ type: 'error', message: body?.error || `API ${res.status}` });
-      return;
-    }
-    await readNdjson(res, onEvent);
-  },
+  runOpportunities: ({ apiKey, today } = {}, onEvent, signal) =>
+    streamAgentRun('/agents/opportunities/run', { apiKey, today }, onEvent, signal),
+  runIndustry: ({ apiKey, today, industry, focus } = {}, onEvent, signal) =>
+    streamAgentRun('/agents/industry/run', { apiKey, today, industry, focus }, onEvent, signal),
   extractProfile: (pdfBase64, apiKey) => authApi.post('/agents/opportunities/profile', { pdfBase64, apiKey }),
 };
 

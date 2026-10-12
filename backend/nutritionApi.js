@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeNutritionMeal } from './claude.js';
-import { nutritionEntry, nutritionTimeZone, nutritionDayRange, nutritionTotals, nutritionGoals } from '../src/lib/nutrition.js';
+import { nutritionEntry, nutritionTimeZone, nutritionDayRange, nutritionTotals, nutritionGoals, nutritionMicros, micronutrientTotals, micronutrientGoals } from '../src/lib/nutrition.js';
 import { nutritionOpenApi } from '../src/lib/nutritionIntegration.js';
 
 export const MAX_NUTRITION_BODY = 950000;
@@ -59,12 +59,15 @@ async function settingsFor(client, userId) {
 async function daySummary(client, userId, loggedAt, timezone) {
   const { day, start, end } = nutritionDayRange(loggedAt, timezone);
   const [logs, goals] = await Promise.all([
-    client.from('nutrition_logs').select('calories,protein,carbs,fat').eq('user_id', userId).gte('logged_at', start).lt('logged_at', end),
-    client.from('user_goals').select('calories,protein,carbs,fat').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1),
+    client.from('nutrition_logs').select('calories,protein,carbs,fat,micros').eq('user_id', userId).gte('logged_at', start).lt('logged_at', end),
+    client.from('user_goals').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(1),
   ]);
   // A successful insert is still successful when a subsequent totals read fails.
   // Do not make a client retry an already-persisted meal because totals failed.
-  return { day, timezone, day_totals: logs.error ? null : nutritionTotals(logs.data), goals: goals.error ? null : nutritionGoals(goals.data?.[0]) };
+  return { day, timezone,
+    day_totals: logs.error ? null : { ...nutritionTotals(logs.data), micros: Object.fromEntries(Object.entries(micronutrientTotals(logs.data)).map(([key, value]) => [key, value.amount])) },
+    goals: goals.error ? null : { ...nutritionGoals(goals.data?.[0]), micros: micronutrientGoals(goals.data?.[0]) },
+  };
 }
 function mealId(userId, requestId) {
   const hex = hashKey(`nutrition:${userId}:${requestId}`).slice(0, 32);
@@ -87,6 +90,7 @@ export async function logNutritionEntry(userId, payload = {}) {
     entry = found.data;
     if (!entry || Object.keys(values).some((k) => {
       if (['calories', 'protein', 'carbs', 'fat'].includes(k)) return Number(entry[k]) !== values[k];
+      if (k === 'micros') return JSON.stringify(nutritionMicros(entry.micros || {})) !== JSON.stringify(values[k]);
       if (k === 'logged_at') return new Date(entry[k]).getTime() !== new Date(values[k]).getTime();
       return (entry[k] || null) !== (values[k] || null);
     })) throw fail('This request_id already belongs to a different meal. Use a new id for a new meal.', 409);
@@ -95,7 +99,7 @@ export async function logNutritionEntry(userId, payload = {}) {
   if (!entry?.id) throw fail('The meal save was not confirmed. Retry with the same request_id.', 503);
   return {
     ok: true, replayed,
-    entry: Object.fromEntries(['id', 'meal_name', 'calories', 'protein', 'carbs', 'fat', 'logged_at'].map((k) => [k, entry[k]])),
+    entry: Object.fromEntries(['id', 'meal_name', 'calories', 'protein', 'carbs', 'fat', 'micros', 'logged_at'].map((k) => [k, entry[k]])),
     ...(await daySummary(client, userId, entry.logged_at, timezone)),
   };
 }

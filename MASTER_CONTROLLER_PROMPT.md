@@ -19,7 +19,7 @@ You can read data from and write data to these modules:
 - **CRM** — add contacts, update contacts, query contacts, log calls, update lead temperature
 - **Nutrition** — log weight, summarize macros, show meal history
 - **Supplements** — show stack, analyze interactions, toggle supplements
-- **Fitness** — log workouts, show schedule, show streak
+- **Fitness** — weekly training plan: the split and exercises (sets × reps) for each weekday
 - **Net Worth** — show current net worth, add accounts, update balances, save snapshot
 - **Budget** — log expenses, show spending by category, show remaining budget
 - **Investing** — show portfolio, show gain/loss, show allocation

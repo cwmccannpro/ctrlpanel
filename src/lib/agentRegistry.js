@@ -17,4 +17,15 @@ export const AGENTS = [
     itemsTable: 'opportunities',
     itemsLabel: 'new',
   },
+  {
+    key: 'industry_problems',
+    name: 'Industry Problems Agent',
+    icon: 'ti-sitemap',
+    to: '/agents/industry-problems',
+    description:
+      'Maps how an industry works and mines reviews, forums and job posts for narrow problems a solo builder could realistically solve.',
+    runsTable: 'industry_runs',
+    itemsTable: 'industry_problems',
+    itemsLabel: 'new',
+  },
 ];

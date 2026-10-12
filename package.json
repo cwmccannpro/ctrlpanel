@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "server": "node backend/server.js",
     "server:watch": "node --watch backend/server.js",
+    "vault:sync": "node tools/ctrlpanel-vault-sync.mjs",
+    "vault:watch": "node tools/ctrlpanel-vault-sync.mjs --watch",
     "deploy": "npm run build && npx wrangler deploy",
     "cf:dev": "npm run build && npx wrangler dev"
   },

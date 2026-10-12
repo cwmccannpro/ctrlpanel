@@ -9,7 +9,7 @@
  *
  * tests/pwa.test.mjs runs this file in a sandbox to enforce those rules.
  */
-const VERSION = 'ctrlpanel-v1';
+const VERSION = 'ctrlpanel-v3';
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 const CDN = `${VERSION}-cdn`;

@@ -7,6 +7,74 @@ export const NUTRIENTS = [
   { key: 'fat', label: 'Fat', unit: 'g', max: 10000 },
 ];
 
+// FDA Daily Values are editable label references, not personalized prescriptions.
+// https://www.fda.gov/food/nutrition-facts-label/daily-value-nutrition-and-supplement-facts-labels
+export const MICRO_NUTRIENTS = [
+  { key: 'fiber', label: 'Fiber', unit: 'g', target: 28, group: 'Other' },
+  { key: 'vitamin_d', label: 'Vitamin D', unit: 'mcg', target: 20, group: 'Vitamins' },
+  { key: 'calcium', label: 'Calcium', unit: 'mg', target: 1300, group: 'Minerals' },
+  { key: 'iron', label: 'Iron', unit: 'mg', target: 18, group: 'Minerals' },
+  { key: 'potassium', label: 'Potassium', unit: 'mg', target: 4700, group: 'Minerals' },
+  { key: 'magnesium', label: 'Magnesium', unit: 'mg', target: 420, group: 'Minerals' },
+  { key: 'vitamin_c', label: 'Vitamin C', unit: 'mg', target: 90, group: 'Vitamins' },
+  { key: 'vitamin_b12', label: 'Vitamin B12', unit: 'mcg', target: 2.4, group: 'Vitamins' },
+  { key: 'zinc', label: 'Zinc', unit: 'mg', target: 11, group: 'Minerals' },
+  { key: 'sodium', label: 'Sodium', unit: 'mg', target: 2300, group: 'Other', limit: true },
+  { key: 'vitamin_a', label: 'Vitamin A', unit: 'mcg RAE', target: 900, group: 'Vitamins' },
+  { key: 'vitamin_e', label: 'Vitamin E', unit: 'mg', target: 15, group: 'Vitamins' },
+  { key: 'vitamin_k', label: 'Vitamin K', unit: 'mcg', target: 120, group: 'Vitamins' },
+  { key: 'thiamin', label: 'B1 · Thiamin', unit: 'mg', target: 1.2, group: 'Vitamins' },
+  { key: 'riboflavin', label: 'B2 · Riboflavin', unit: 'mg', target: 1.3, group: 'Vitamins' },
+  { key: 'niacin', label: 'B3 · Niacin', unit: 'mg NE', target: 16, group: 'Vitamins' },
+  { key: 'pantothenic_acid', label: 'B5 · Pantothenic acid', unit: 'mg', target: 5, group: 'Vitamins' },
+  { key: 'vitamin_b6', label: 'Vitamin B6', unit: 'mg', target: 1.7, group: 'Vitamins' },
+  { key: 'biotin', label: 'B7 · Biotin', unit: 'mcg', target: 30, group: 'Vitamins' },
+  { key: 'folate', label: 'Folate', unit: 'mcg DFE', target: 400, group: 'Vitamins' },
+  { key: 'choline', label: 'Choline', unit: 'mg', target: 550, group: 'Other' },
+  { key: 'phosphorus', label: 'Phosphorus', unit: 'mg', target: 1250, group: 'Minerals' },
+  { key: 'iodine', label: 'Iodine', unit: 'mcg', target: 150, group: 'Minerals' },
+  { key: 'selenium', label: 'Selenium', unit: 'mcg', target: 55, group: 'Minerals' },
+  { key: 'copper', label: 'Copper', unit: 'mg', target: 0.9, group: 'Minerals' },
+  { key: 'manganese', label: 'Manganese', unit: 'mg', target: 2.3, group: 'Minerals' },
+  { key: 'chromium', label: 'Chromium', unit: 'mcg', target: 35, group: 'Minerals' },
+  { key: 'molybdenum', label: 'Molybdenum', unit: 'mcg', target: 45, group: 'Minerals' },
+  { key: 'chloride', label: 'Chloride', unit: 'mg', target: 2300, group: 'Minerals' },
+  { key: 'saturated_fat', label: 'Saturated fat', unit: 'g', target: 20, group: 'Other', limit: true },
+  { key: 'added_sugar', label: 'Added sugar', unit: 'g', target: 50, group: 'Other', limit: true },
+  { key: 'cholesterol', label: 'Cholesterol', unit: 'mg', target: 300, group: 'Other', limit: true },
+].map((field) => ({ max: 100000, ...field }));
+export const ALL_NUTRIENTS = [...NUTRIENTS, ...MICRO_NUTRIENTS];
+
+// A missing value stays missing. Blank form fields remove a value; an explicit
+// zero means the nutrient was measured and absent from this meal.
+export function nutritionMicros(value = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Micronutrients must be an object of nutrient amounts.');
+  for (const key of Object.keys(value)) {
+    if (!MICRO_NUTRIENTS.some((field) => field.key === key)) throw new Error(`Unknown micronutrient: ${key}. Use the listed nutrient keys and units.`);
+  }
+  return Object.fromEntries(MICRO_NUTRIENTS.filter(({ key }) => value[key] != null && value[key] !== '').map(({ key }) => [key, nutritionNumber(value[key], key)]));
+}
+
+export function micronutrientTotals(rows = []) {
+  return Object.fromEntries(MICRO_NUTRIENTS.map(({ key }) => {
+    const reported = rows.map((row) => row.micros?.[key]).filter((value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0);
+    return [key, { amount: reported.length ? Math.round(reported.reduce((sum, value) => sum + Number(value), 0) * 100) / 100 : null, reported: reported.length, meals: rows.length }];
+  }));
+}
+
+export function micronutrientGoals(row) {
+  return Object.fromEntries(MICRO_NUTRIENTS.map(({ key, target }) => [key, row?.micros?.[key] == null ? target : Number(row.micros[key])]));
+}
+
+export function nutrientProgress(amount, target) {
+  const known = amount != null && Number.isFinite(amount) && amount >= 0;
+  const hasTarget = Number.isFinite(target) && target > 0;
+  const percent = known && hasTarget ? amount / target * 100 : null;
+  return { known, hasTarget, percent, width: percent == null ? 0 : Math.min(100, Math.max(0, percent)) };
+}
+
+export const formatNutrient = (value) => value == null ? '—' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
 export function nutritionTimeZone(value = 'UTC') {
   try { return new Intl.DateTimeFormat('en', { timeZone: value }).resolvedOptions().timeZone; }
   catch { throw new Error('Choose a valid meal timezone, such as America/New_York.'); }
@@ -57,7 +125,8 @@ export function nutritionDayRange(value, timeZone) {
 }
 
 export function nutritionNumber(value, key) {
-  const field = NUTRIENTS.find((n) => n.key === key);
+  const field = ALL_NUTRIENTS.find((n) => n.key === key);
+  if (!field) throw new Error('Unknown nutrient.');
   if (value === '' || value == null || !['number', 'string'].includes(typeof value) || (typeof value === 'string' && !value.trim())) {
     throw new Error(`${field.label} is required.`);
   }
@@ -90,6 +159,7 @@ export function nutritionEntry(payload) {
   return {
     meal_name: name.trim(),
     ...Object.fromEntries(NUTRIENTS.map(({ key }) => [key, nutritionNumber(payload[key], key)])),
+    ...(payload.micros !== undefined ? { micros: nutritionMicros(payload.micros) } : {}),
     notes: payload.notes?.trim() || null, photo_url, ...(logged_at ? { logged_at } : {}),
   };
 }

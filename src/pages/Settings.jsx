@@ -4,6 +4,7 @@ import Modal from '../components/shared/Modal.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings, saveProfile } from '../lib/supabase.js';
 import NutritionSettings from '../components/NutritionSettings.jsx';
+import SidebarVisibility from '../components/SidebarVisibility.jsx';
 import { ACCENT_OPTIONS, getSavedAccent, saveAccent, FONT_SIZES } from '../lib/helpers.js';
 import { THEMES, getSavedTheme, saveTheme } from '../lib/themes.js';
 
@@ -264,6 +265,11 @@ export default function Settings() {
         <p className="list-row-meta" style={{ marginTop: 12 }}>
           Dashboard widgets (Life View, Habits, finances, and more) are managed on the Dashboard via <strong>Add Widget</strong>.
         </p>
+      </Card>
+
+      <Card className="card-section" static>
+        <div className="card-section-title">Sidebar sections</div>
+        <SidebarVisibility />
       </Card>
 
       {/* Connectors */}

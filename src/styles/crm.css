@@ -16,7 +16,13 @@
 .crm-filters .select { width:100%; }
 .crm-sort { border:0; padding:0; background:none; color:inherit; font:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; text-align:left; width:100%; }
 .crm-sort:focus-visible, .crm-page summary:focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
-.crm-read-table td { white-space:pre-wrap; min-width:120px; max-width:360px; overflow-wrap:anywhere; }
+table.crm-read-table { width:max-content; min-width:100%; }
+.crm-read-table td { white-space:normal; min-width:120px; max-width:320px; vertical-align:top; }
+.crm-cell-text { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; max-width:296px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:18px; max-height:36px; }
+.crm-text-preview { position:fixed; z-index:130; width:min(480px,calc(100vw - 24px)); max-height:min(360px,calc(100vh - 24px)); overflow:auto; overscroll-behavior:contain; padding:14px 16px; border:1px solid var(--border-bright); border-radius:var(--radius-md); background:var(--bg-elevated); color:var(--text-primary); box-shadow:0 8px 24px var(--border); }
+.crm-text-preview:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.crm-text-preview-label { margin-bottom:8px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); }
+.crm-text-preview-body { font-size:12.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
 .crm-row-count { margin-top:12px; }
 .crm-error { color:var(--accent); margin-bottom:12px; }
 .crm-share-address { gap:8px; margin:12px 0 20px; }
@@ -35,7 +41,7 @@
 .crm-cell { position:relative; }
 .crm-cell.is-editable { cursor:cell; }
 .crm-cell.is-editable:hover { background:var(--tint); }
-.crm-cell.is-editable:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.crm-cell:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .crm-cell.is-editing { padding:0 !important; background:var(--bg-elevated); outline:2px solid var(--accent); outline-offset:-2px; }
 .crm-cell-input { width:100%; min-width:160px; border:0; border-radius:0; background:transparent; resize:none; padding:8px 12px; font:inherit; line-height:1.4; }
 .crm-cell-input:focus { box-shadow:none; }

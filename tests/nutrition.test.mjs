@@ -124,6 +124,19 @@ test('a retried current-time meal retains its original timestamp', async () => {
   assert.equal(retry.entry.logged_at, first.entry.logged_at);
   assert.equal(rows.length, 1);
 });
+test('external micro logging persists amounts, reports unknown totals, and retries without duplicates', async () => {
+  const payload = { ...meal, micros: { calcium: 125, iron: 2.5, sodium: 0 } };
+  const saved = await request('POST', 'log', payload);
+  assert.deepEqual(saved.entry.micros, payload.micros);
+  assert.equal(saved.day_totals.micros.calcium, 125);
+  assert.equal(saved.day_totals.micros.sodium, 0);
+  assert.equal(saved.day_totals.micros.vitamin_d, null);
+  assert.equal(saved.goals.micros.calcium, 1300);
+  const replay = await request('POST', 'log', { ...payload, micros: { sodium: 0, iron: 2.5, calcium: 125 } });
+  assert.equal(replay.replayed, true);
+  assert.equal(rows.length, 1);
+  await assert.rejects(request('POST', 'log', { ...payload, micros: { ...payload.micros, iron: 4 } }), (error) => error.status === 409);
+});
 test('invalid/revoked keys never write and service errors do not masquerade as invalid keys', async () => {
   for (const key of ['wrong', 'test-session']) await assert.rejects(request('POST', 'log', meal, key), (e) => e.status === 401);
   keys.delete(hashKey(rawKey));

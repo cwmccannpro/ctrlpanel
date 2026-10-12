@@ -22,6 +22,7 @@ import Modal from '../components/shared/Modal.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
 import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT, LAYOUTS } from '../components/dashboardPanels.jsx';
+import { financeDebtEnabled } from '../lib/financeSheet.js';
 import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
 import {
   DEFAULT_COL_W, MAX_COLS, addColumn, moveColumn, normalizeWidths, overflowInfo, removeColumn,
@@ -437,17 +438,19 @@ export default function Dashboard() {
     window.addEventListener('pointerup', onUp);
   };
 
-  const shown = columns || [[], [], []];
+  const includeDebt = financeDebtEnabled(settings);
+  const shown = (columns || [[], [], []]).map((items) => items.filter((item) => includeDebt || item.id !== 'finance_debt'));
   const shownWidths = widths || normalizeWidths(undefined, shown.length);
   const used = useMemo(() => new Set(shown.flat().map((i) => i.id)), [shown]);
   const activeItem = activeId ? shown.flat().find((i) => i.uid === activeId) : null;
   const pickerPanels = useMemo(() => {
     const terms = panelQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
     return PANELS.filter((panel) => {
-      const text = `${panel.title} ${panel.group} ${panel.description || ''}`.toLowerCase();
+      if (!includeDebt && panel.id === 'finance_debt') return false;
+      const text = `${panel.title} ${panel.group} ${panel.description || ''} ${!includeDebt && panel.id === 'networth' ? 'total assets' : ''}`.toLowerCase();
       return terms.every((term) => text.includes(term));
     });
-  }, [panelQuery]);
+  }, [panelQuery, includeDebt]);
   const groups = [...new Set(pickerPanels.map((panel) => panel.group))];
 
   return (
@@ -569,9 +572,9 @@ export default function Dashboard() {
               <div className="section-label" style={{ marginBottom: 6 }}>{g}</div>
               <div className="dash2-picker">
                 {pickerPanels.filter((p) => p.group === g).map((p) => (
-                  <button key={p.id} className="dash2-pick" aria-label={p.title} onClick={() => addPanel(picker, p.id)}>
+                  <button key={p.id} className="dash2-pick" aria-label={!includeDebt && p.id === 'networth' ? 'Total Assets' : p.title} onClick={() => addPanel(picker, p.id)}>
                     <i className={`ti ${p.icon}`} aria-hidden="true" />
-                    <span className="dash2-pick-copy"><strong>{p.title}</strong>{p.description && <small>{p.description}</small>}</span>
+                    <span className="dash2-pick-copy"><strong>{!includeDebt && p.id === 'networth' ? 'Total Assets' : p.title}</strong>{p.description && <small>{p.description}</small>}</span>
                     {used.has(p.id) && <i className="ti ti-check dash2-pick-used" title="Already on your dashboard" />}
                   </button>
                 ))}

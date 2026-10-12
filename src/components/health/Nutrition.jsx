@@ -4,16 +4,16 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import Card from '../../components/shared/Card.jsx';
 import Modal from '../../components/shared/Modal.jsx';
 import NutritionMealEditor from '../../components/NutritionMealEditor.jsx';
-import NutritionGoalEditor from '../../components/NutritionGoalEditor.jsx';
+import NutritionOverview from '../../components/NutritionOverview.jsx';
 import { useAuth } from '../../components/AuthProvider.jsx';
 import { useToast } from '../../components/Toaster.jsx';
 import { useNutritionRows } from '../../lib/useNutritionRows.js';
 import { deleteNutritionMeal, deleteNutritionWeight, saveNutritionWeight } from '../../lib/nutritionClient.js';
-import { NUTRIENTS, nutritionDay, nutritionTimeZone, nutritionTimestamp, nutritionTotals } from '../../lib/nutrition.js';
+import { nutritionDay, nutritionTimeZone, nutritionTimestamp } from '../../lib/nutrition.js';
 import { formatDate } from '../../lib/helpers.js';
 import '../../styles/nutrition.css';
 
-export default function Nutrition() {
+export default function Nutrition({ embedded = false }) {
   const { settings } = useAuth();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -38,7 +38,6 @@ export default function Nutrition() {
   }, [params, setParams]);
 
   const todaysMeals = meals.rows.filter((m) => nutritionDay(m.logged_at, timeZone) === date);
-  const totals = nutritionTotals(todaysMeals);
   const byDay = {};
   meals.rows.forEach((m) => {
     const day = nutritionDay(m.logged_at, timeZone);
@@ -74,7 +73,7 @@ export default function Nutrition() {
 
   return <div className="fade-in nutrition-page">
     <div className="page-header" style={{ marginBottom: 0 }}>
-      <h1 className="sr-only">Nutrition</h1>
+      {!embedded && <h1 className="sr-only">Nutrition</h1>}
       <div className="nutrition-toolbar">
         <label className="sr-only" htmlFor="nutrition-day">Meal day</label><input id="nutrition-day" className="input" type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
         <button className="btn btn--accent" onClick={() => setEditor({ photo: true })}><i className="ti ti-camera" aria-hidden="true" /> Log meal by photo</button>
@@ -83,12 +82,11 @@ export default function Nutrition() {
         <Link className="btn btn--ghost btn--icon" to="/settings#nutrition" aria-label="Nutrition settings"><i className="ti ti-settings" aria-hidden="true" /></Link>
       </div>
     </div>
-    <p className="list-row-meta">{timeZone} · GPT uploads refresh here automatically. <Link to="/settings#nutrition">Connect your GPT</Link></p>
+    <p className="list-row-meta">{timeZone} · Click a nutrient to set your daily target. <Link to="/settings#nutrition">Connect your GPT</Link></p>
     {meals.error && <p className="body-text text-red" role="alert">Could not load meals: {meals.error} <button className="btn btn--sm" onClick={meals.reload}>Retry</button></p>}
-    <div className="nutrition-summary">{NUTRIENTS.map(({ key, label, unit }) => <div key={key}><span>{label}</span><strong>{meals.loading || meals.error ? '—' : Math.round(totals[key])}<small> {unit}</small></strong></div>)}</div>
-    <div className="grid grid-2">
+    <NutritionOverview meals={todaysMeals} goalRow={goals.rows.at(-1)} loading={meals.loading} error={meals.error} goalsLoading={goals.loading} goalsError={goals.error} retryGoals={goals.reload} />
       <Card className="card-section" static>
-        <div className="card-section-title">Meals</div>
+        <div className="card-section-title"><span>Meals</span><span className="list-row-meta">{todaysMeals.length} logged</span></div>
         {meals.loading ? <p className="body-text">Loading meals…</p> : !meals.error && !todaysMeals.length && <div className="nutrition-empty"><i className="ti ti-tools-kitchen-2" aria-hidden="true" /><p className="body-text">No meals for this day. Take a photo or describe what you ate. Calories and macros are estimated for you.</p></div>}
         {todaysMeals.map((m) => <div className="nutrition-meal-row" key={m.id}>
           <div><strong>{m.meal_name || 'Meal'}</strong><p className="list-row-meta">{Math.round(m.calories || 0)} kcal · {Math.round(m.protein || 0)} g protein · {Math.round(m.carbs || 0)} g carbs · {Math.round(m.fat || 0)} g fat</p>{m.notes && <p className="list-row-meta">{m.notes}</p>}</div>
@@ -96,8 +94,7 @@ export default function Nutrition() {
           <button className="btn btn--ghost btn--icon" onClick={() => { setError(''); setDeleting({ type: 'meal', id: m.id, name: m.meal_name }); }} aria-label={`Delete ${m.meal_name || 'meal'}`}><i className="ti ti-trash" aria-hidden="true" /></button>
         </div>)}
       </Card>
-      <Card className="card-section" static><div className="card-section-title">Daily goals</div><NutritionGoalEditor row={goals.rows.at(-1)} loading={goals.loading} error={goals.error} /></Card>
-    </div>
+    <details className="health-details"><summary><i className="ti ti-chart-line" aria-hidden="true" /> Trends & weight <span>Meal history and weigh-ins</span></summary><div className="health-details-body">
     <Card className="card-section" static>
       <div className="card-section-title">Trends</div>
       {!history.length ? <p className="body-text">Log meals and weight to build your trend chart.</p> : <ResponsiveContainer width="100%" height={260}><LineChart data={history} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
@@ -114,6 +111,7 @@ export default function Nutrition() {
       {error && !deleting && <p className="body-text text-red" role="alert">{error}</p>}
       {[...weights.rows].reverse().slice(0, 6).map((w) => <div className="list-row" key={w.id}><span className="list-row-time">{formatDate(nutritionDay(w.logged_at, timeZone))}</span><span className="list-row-title">{w.weight} lb</span><button className="btn btn--ghost btn--icon" onClick={() => { setError(''); setDeleting({ type: 'weight', id: w.id, name: `${w.weight} lb` }); }} aria-label={`Delete weight ${w.weight} lb`}><i className="ti ti-trash" aria-hidden="true" /></button></div>)}
     </Card>
+    </div></details>
     {editor && <NutritionMealEditor meal={editor.meal} photoMode={editor.photo} date={date} timeZone={timeZone} onClose={() => setEditor(null)} onSaved={(row) => { setEditor(null); setDate(nutritionDay(row.logged_at, timeZone)); toast('Meal saved to CTRLpanel'); }} />}
     {deleting && <Modal title="Delete log entry?" onClose={() => !busy && setDeleting(null)} footer={<><button className="btn btn--ghost" onClick={() => setDeleting(null)} disabled={busy}>Cancel</button><button className="btn btn--danger" onClick={remove} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button></>}><p className="body-text">Delete “{deleting.name}” from your log?</p>{error && <p className="body-text text-red" role="alert">{error}</p>}</Modal>}
   </div>;

@@ -1,7 +1,27 @@
 # CTRLpanel — Project Context for Agents
 
-## Fitness plan (2026-10-11)
-- **Fitness is a weekly plan, not a workout logger.** `/health/fitness` (`pages/health/Fitness.jsx`, styles `fitness.css`,
+## Combined Health page + nutrient targets (2026-10-11)
+- **One Health page**: `/health` (`pages/health/Health.jsx`, styles `health.css`) stacks Nutrition → Supplements → Fitness, each
+  an `embedded` component in `components/health/`. `/health/nutrition|supplements|fitness` render the same page and scroll to
+  that section; links should use `/health#nutrition|#supplements|#fitness` (`?log=photo|text` opens the meal editor). The sidebar
+  Health folder has a single Overview entry. Trends/weight and the supplement stack's AI insights sit in collapsed `<details>`.
+- **Nutrition goes past macros.** `lib/nutrition.js` defines `NUTRIENTS` (calories/protein/carbs/fat) and `MICRO_NUTRIENTS`
+  (32 keys with units; starting targets are FDA Daily Values; sodium, saturated fat, added sugar and cholesterol are `limit: true`).
+  Meal micros live in `nutrition_logs.micros` jsonb; **a missing key means unreported, never zero** (`micronutrientTotals` returns
+  `amount: null`, and `reported`/`meals` for partial coverage). Targets live in `user_goals` (macros in their columns, micros in
+  `user_goals.micros`); a target of 0 turns that nutrient's bar off. Apply `migrations/20261011-health-nutrients.sql` (also in the
+  schema) — it adds both columns and the `set_nutrition_target(nutrient, target)` RPC, which patches one target atomically
+  (RLS-scoped, `security invoker`). **Never write goals with a whole-row update** — it would clobber the other targets.
+- **Shared display + editing**: `NutrientProgress` (box with a progress bar across the top; click to edit), `NutrientTargetEditor`
+  (modal → `saveNutritionTarget`), `NutritionOverview` (macro boxes + micronutrient grid, `detailed`/`compact` props). The Health
+  page and both dashboard panels use `NutritionOverview`, so bars and targets stay identical. Panels: `nutrition` = "Nutrition ·
+  Complete" (macros + micros + recent meals) and `nutrition_macros` = "Nutrition · Macros" (`NutritionMacrosPanel`, macros only).
+  Existing saved layouts keep the `nutrition` id. Meal estimates (photo/text, `analyzeNutritionMeal`) and the GPT `/api/nutrition/log`
+  contract (optional `micros` object, API contract version 3.0.0) carry micros; the meal editor lets the owner correct them from a label.
+- Tests: `tests/nutrients.test.mjs` (micro validation/totals/goals/progress/OpenAPI), `tests/nutrition.test.mjs` (API round trip).
+
+## Fitness plan + Excalidraw update (2026-10-11)
+- **Fitness is a weekly plan, not a workout logger.** The Fitness section of `/health` (`components/health/Fitness.jsx`, styles `fitness.css`,
   pure logic `lib/fitnessPlan.js`, tests `fitnessPlan.test.mjs`) shows Mon–Sun with today preselected; each day has a free-text
   split name (Push/Pull/Legs/Rest/anything) and an ordered exercise list `[{id,name,sets,reps,weight,note}]` stored in
   `fitness_schedule.exercises` (jsonb; apply `migrations/20261011-fitness-plan.sql`, also in the schema). Sets/reps are text
@@ -9,6 +29,10 @@
   The responsive routine view separates sets/reps/weight, and `lib/useFitnessPlan.js` validates DB saves and exposes load failures. The `fitness` dashboard panel
   (Today's Training) renders today's routine + tomorrow's split. The `workouts` panel and workout logging UI are retired;
   `workout_logs` is kept for history and the Weekly Review no longer shows a workouts stat.
+- **Excalidraw**: serialized scenes never contain scroll/zoom, so `ExcalidrawBoard` opens with `scrollToContent` (otherwise
+  drawings away from the origin looked empty). Stored scenes in `projects.excalidraw` are never rewritten on open — only on a real
+  element change. The tab has a Full screen toggle (Fullscreen API + fixed-overlay fallback; Excalidraw needs a window `resize`
+  nudge when its container changes size).
 
 ## Social connectivity update (2026-10-11)
 - Socials supports YouTube, Instagram and X accounts, plus a combined content-performance view.
@@ -84,9 +108,9 @@
   `google_tokens` (service-role only)
 - Socials: `youtube_channels` (service-role only; per-user OAuth tokens + cached
   channel stats, exposed to the owner only through `/api/youtube/*`)
-- Health: `nutrition_logs` (+ `notes`), `weight_logs`, `water_logs`,
-  `user_goals` (+ `water`), `supplements`, `supplement_logs`,
-  `fitness_schedule`, `workout_logs`
+- Health: `nutrition_logs` (+ `notes`, `micros` jsonb), `weight_logs`, `water_logs`,
+  `user_goals` (+ `water`, `micros` jsonb of micronutrient targets), `supplements`, `supplement_logs`,
+  `fitness_schedule` (weekly plan; `exercises` jsonb), `workout_logs` (retired, history only)
 - Nutrition API: `api_keys` (hashed per-user keys for the external logging endpoint)
 - Habits: `habits`, `habit_logs` (unique habit_id+log_date)
 - Finance: `accounts`, `net_worth_snapshots`, `income_sources`,
@@ -96,6 +120,11 @@
   falls back to title), cached sub/video/view counts, google_email + OAuth tokens —
   service-role only, RLS enabled with NO policy, same pattern as google_tokens;
   unique on (user_id, channel_id) so a user can connect many channels)
+- Socials (Instagram): `instagram_accounts` (one row per connected Instagram
+  professional account: `ig_user_id`, `username`, `label`, `account_type`, cached
+  follower/following/post counts, the 60-day `access_token` + `expires_at` — same
+  service-role-only pattern as `youtube_channels`; unique on (user_id, ig_user_id)).
+  Apply `migrations/20261006-socials-instagram.sql` before first use.
 - Agents: `agent_configs` (one row per user per agent — `agent_key` +
   `config` jsonb, unique on (user_id, agent_key)), `opportunity_runs` (one row
   per Opportunities Agent run: status running|complete|error, `summary` jsonb
@@ -104,6 +133,14 @@
   URL); `status` new|saved|applied|dismissed belongs to the user and is never
   overwritten by a re-run). **Never name new tables `agents` / `agent_runs`** —
   the schema's retired-features block still drops those on every re-run.
+  Industry Problems Agent: `industry_runs` (one row per run for one industry:
+  `industry` / `industry_key` slug, `focus`, status, cost, and `summary` jsonb =
+  `{ headline, where_to_start, market_notes, map:{stages:[{name,summary,
+  steps:[{name,pain,problem_key}]}]} }`) and `industry_problems` (ranked finds,
+  unique on (user_id, `dedupe_key` = `industry_key::title-slug`); `map_key` links
+  a problem to the map step that shows its pain; `scores` jsonb + `score`;
+  `evidence` jsonb; `status` new|saved|exploring|dismissed is the user's and is
+  never overwritten by a re-run).
 - Retired, data kept: `report_sources`, `reports` and the `reports` storage
   bucket from the removed Reports feature (no longer defined in the schema)
 - **Schema changes**: append idempotent SQL (`create table if not exists`,
@@ -134,7 +171,7 @@
     picker automatically — that is the only step needed for a new widget.
     Groups: Work (board column, due soon, quick add, schedule, projects, CRM,
     opportunities), Finance (net worth, cashflow, budget categories, portfolio),
-    Health (macros, water, weight, supplements, training, workouts), Habits
+    Health (nutrition complete, nutrition macros, weight, supplements, training), Habits
     (week grid, consistency trend, life), Socials (YouTube).
   · Layout saved to `user_settings.dashboard_widgets` as
     `{ v:7, widths:[px,…], columns:[[{uid,id,cfg,h}],…] }`. `normalize()` migrates
@@ -237,6 +274,31 @@
   fetched once app-wide by `WorkspaceProvider` (`socials`) so the sidebar and
   the pages share it; range persists via `user_settings.ui_preferences.youtube`.
   A compact roll-up of the same data sits in the dashboard's middle column.
+  **Instagram** is a second platform in the same modular shape: every connected
+  account is its own renameable section (`/socials/instagram/:id`,
+  `src/pages/socials/Instagram.jsx`, sidebar entry labelled `@handle` unless
+  renamed). It uses *Instagram API with Instagram Login* (no Facebook Page), so
+  only **Business/Creator** accounts work. Logic in `backend/instagram.js`
+  (Workers-compatible; env `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` /
+  `INSTAGRAM_REDIRECT_URI`, optional `INSTAGRAM_API_VERSION`): code → short-lived
+  → 60-day token, refreshed on use when <20 days remain (an account unopened for
+  60 days must be reconnected). Analytics ranges are **7d/14d/30d** — Instagram
+  serves ~30 days of account insights per request. Totals (views, reach, accounts
+  engaged, interactions, likes/comments/shares/saves, profile-link taps) are
+  `total_value` calls (`impressions` is retired); daily reach and new followers
+  are series (`follower_count` needs 100+ followers); recent posts carry per-post
+  insights. Anything Instagram doesn't return comes back as `null`/`notes` and
+  renders as "—" — one unsupported metric never blanks the page.
+  **The overview shows each platform independently** (`SocialPlatformSection`,
+  `SocialAccountCard`): one platform being unconfigured or erroring never hides
+  the other. `lib/socialPlatforms.js` (import-free) is the registry for platform
+  names/icons/paths and `socialSections()`, which feeds the sidebar and command
+  palette — add a platform there first. `WorkspaceProvider` exposes YouTube as
+  `socials.channels` and Instagram as `socials.instagram` (`{ ready, accounts,
+  error, rename, disconnect }`), loaded with `allSettled`. Chart dates are
+  date-only strings: parse with `parseLocalDate`, never `new Date('YYYY-MM-DD')`.
+  Tests: `tests/instagram.test.mjs` (fake Meta + Supabase behind global fetch),
+  `tests/socialPlatforms.test.mjs`.
 - **Opportunities Agent** (`/agents/opportunities`,
   `src/pages/agents/OpportunitiesAgent.jsx`): "Run now" has Claude search the
   web and rank jobs, internships, programs/fellowships, events, certifications
@@ -260,6 +322,34 @@
   `running` for 20+ minutes are marked interrupted by the next run. On demand
   only — no cron. Dashboard panel `opportunities`; the Master Controller reads
   `opportunities` (read-only) and lists top picks in its snapshot.
+- **Industry Problems Agent** (`/agents/industry-problems`,
+  `src/pages/agents/IndustryProblemsAgent.jsx`): name an industry (+ optional
+  focus) and "Run now" has Claude search the web, **map the industry's value
+  chain** (stages → steps → pains, drawn by `components/MindMap.jsx` as inline SVG:
+  click a stage to collapse, click a pain to jump to its problem, middle-drag to
+  pan, "Copy as Markdown" for Markmap) and **mine reviews, forums and job posts for
+  narrow problems the owner could build a solution for**. Each problem has the pain,
+  who has it, what to build, a first-version MVP, build weeks, pricing, how to reach
+  buyers, competition, risk and sourced evidence; Save / Exploring / Dismiss, "Start
+  project" (creates a `projects` row) and "Copy brief" (Markdown). The gear
+  (`IndustryConfigModal`) describes the *builder* — skills, solution types, buyers,
+  max build weeks, regulated-industry filter, home base, depth — because attainability is
+  scored against it. Config + enums in `src/lib/industryConfig.js` (shared with the
+  backend, key `industry_problems`); the map shape, tree layout and Markdown export
+  are pure in `src/lib/industryMap.js`; page helpers in `src/lib/industryProblems.js`.
+  **Score = pain 30 + attainable 25 + demand 20 + reach 15 + gap 10** (each part
+  clamped server-side, summed in `prepareProblems`). Evidence links are checked
+  against the hosts that actually appeared in the search results (same
+  `collectSourceUrls` / `isVerifiedHost` as Opportunities); a problem with **no
+  verified source gets demand 0 and pain capped at 15**, so unsupported ideas can't
+  rank high. Backend: `backend/industry.js` orchestrates (same retire-stale /
+  one-run-at-a-time / NDJSON-heartbeat flow as Opportunities); the Claude call is
+  `researchIndustry` in `backend/claude.js`, which now shares one
+  `researchWithSearch` loop (pause_turn resume, one nudge, refusal fallback) with
+  `researchOpportunities`. The Master Controller can read `industry_problems`
+  (read-only) and `navigate_to "industry"`. Apply
+  `migrations/20261005-agents-industry-problems.sql` (also at the end of
+  `supabase-schema.sql`) before first use.
 
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
@@ -294,9 +384,16 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   stream · `POST /api/agents/opportunities/profile` `{ pdfBase64, apiKey? }` →
   `{ profile }` (Supabase-token auth; logic in `backend/opportunities.js` +
   `backend/claude.js`)
+- `POST /api/agents/industry/run` `{ apiKey?, today, industry, focus? }` → NDJSON
+  progress stream (same events as the Opportunities run; logic in
+  `backend/industry.js` + `backend/claude.js`)
 - `GET /api/youtube/status|connect|callback|analytics` ·
   `POST /api/youtube/disconnect` (Supabase-token auth except OAuth callback;
   logic in `backend/youtube.js`)
+- `GET /api/instagram/status|connect|callback|analytics` ·
+  `POST /api/instagram/rename|disconnect` (Supabase-token auth except the OAuth
+  callback, which redirects to `/socials?instagram=connected|error`; logic in
+  `backend/instagram.js`, routes in `backend/routes/instagram.js` + `worker/index.js`)
 - `GET /api/sheets/status|connect|callback|list|meta|values` ·
   `POST /api/sheets/disconnect|cell|append|delete-rows|create`
   (Supabase-token auth except the OAuth callback; logic in `backend/sheets.js`
@@ -491,6 +588,49 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - Page rename, spreadsheet replacement, and page deletion live in the page options menu. Existing local
   crm_contacts rows are retained; no database migration is needed.
 
+## Knowledge network and linked context
+- `KnowledgeGraph` uses the pure `lib/knowledgeGraph.js` force layout. Undirected graph
+  edges are deduplicated; node sizes reflect degree, folder groups use theme tokens,
+  click focuses neighbours, double-click/Enter opens a note, Space focuses, and Local
+  view isolates direct connections. Wheel zoom anchors at the pointer; background
+  drag pans, node drag repositions, and Fit restores the view. Routine note refreshes
+  preserve camera positions when graph topology is unchanged.
+- `tools/ctrlpanel-file-sync.mjs` is a local-only filesystem bridge through the existing
+  Context Sync API. It is scoped to the seven top-level Confuzed Guy context files;
+  symlinks resolve canonical Obsidian content. Scripts, exports, templates, credentials,
+  other channels and Viridian are excluded. See `docs/context-sync.md` for operation,
+  conflict protection, the installed Windows task and revocation. No schema change.
+
+## Finance Sheets source of truth
+- Finance pages (`/finance`, `/finance/networth`, `/finance/budget`, `/finance/investing`)
+  use `components/FinanceDashboard.jsx` and `lib/useFinance.js`. Old `/finance/debt`
+  links redirect to the overview. Five `FinancePanel` variants are in the dashboard registry; existing saved finance
+  panel IDs still work. Keep the main dashboard card-less.
+- `lib/financeSheet.js` is the shared, import-free workbook contract and calculations.
+  Accounts, Income, Budget, Transactions, Holdings, History and Goals are read by
+  exact row-one headers, and edits find permanent IDs after a fresh read. Blank
+  balances stay unknown; gross income is excluded from net planning; cash reserve
+  excludes investments/receivables. Holdings are positions within account totals,
+  never additional assets. Prices are recorded values, not live market quotes.
+  `FinanceMarket` retains the existing Yahoo quotes/history as separate market
+  context (10-second quote refresh), without overwriting workbook prices.
+- `backend/financeSheets.js` uses the existing Sheets service account but validates
+  the hidden `_CTRLpanel` owner_email against the verified session on EVERY request.
+  DB connection metadata uses the session's anon/RLS token, never service role.
+  Generic CRM Sheets routes also enforce the finance ownership marker and block
+  finance writes. Keep both access paths protected.
+- Connection metadata lives in `ui_preferences.finance`; no schema migration.
+  Debt is permanently excluded from the app's presentation, including navigation,
+  search, dashboard panels and account editor options. Older `includeDebt:true`
+  preferences are ignored; there is no Finance debt toggle in Settings.
+  Snapshot writes preserve the workbook's full net worth; display history adds its
+  recorded debt back to derive assets. The workbook's original data stays intact.
+  Historical Supabase finance rows are retained and not mixed with sheet values.
+  Weekly Review and Master Controller finance reads use the workbook. MC finance
+  writes direct the user to Finance, rather than mutating legacy DB records.
+- See `docs/finance-sheets.md` for headers, definitions, setup, API and concurrent
+  edit limitations. Tests: `tests/financeSheets.test.mjs`.
+
 ## Nutrition photo logging + custom GPT
 - `NutritionSettings` provides timezone preferences, generated OpenAPI + GPT
   instructions, hashed key creation/revocation, and a read-only connection check.
@@ -510,8 +650,28 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - See `docs/nutrition-photo-logging.md`; tests: `tests/nutrition.test.mjs`.
 
 ## Dashboard panel options
-- Nutrition is available in Customize → Add panel → Health, with daily totals,
-  recent meals and direct photo/text logging shortcuts.
-- The Add panel picker searches registry titles, groups and descriptions.
-- Add useful feature summaries as self-contained PANELS entries with stable id,
-  title, description, icon, group and Component. Preserve saved dashboard layouts.
+- Nutrition is available in Customize → Add panel → Health: today’s calories,
+  macros and goal progress, recent meals, and shortcuts to photo/text meal logging.
+  It uses the saved meal timezone and the same refresh/validation helpers as the
+  Nutrition page, so GPT uploads appear while the dashboard is open.
+- Industry Problems and Instagram are optional panels too; their account,
+  industry and range selections persist per panel instance. Existing layouts
+  are preserved — additions are choices in the picker, not forced defaults.
+- When adding a feature with a useful dashboard summary or frequent action,
+  include its self-contained panel and a `PANELS` registry entry with a stable
+  `id`, `title`, `description`, `icon`, `group`, and `Component`. The picker derives
+  its groups and searches from this registry automatically. Never add placeholder
+  panels for features that do not exist or seed data to make a panel look full.
+
+## Dashboard task capture and sidebar visibility
+- Every Task Board Column panel has `TaskQuickAdd`; Quick Add also selects a board
+  and category. `lib/taskQuickAdd.js` validates the target, supports the existing
+  `@date` / `!priority` capture syntax, and checks the database write before clearing
+  the draft. Successful writes notify all mounted task readers via `notifyDataChanged`.
+- Customize sidebar (footer) and Settings → Sidebar sections share `SidebarVisibility`.
+  Visibility is saved through the existing atomic preference RPC in
+  `ui_preferences.sidebarVisibility` (route paths and stable `folder:*` IDs; only
+  explicit `false` hides an entry). `lib/sidebarNavigation.js` supplies both the full
+  choices and the filtered navigation for expanded, rail and phone modes. Settings
+  remains accessible; hiding a section never removes its dashboard panels or data.
+- No schema migration. Tests: `taskQuickAdd.test.mjs`, `sidebarNavigation.test.mjs`.

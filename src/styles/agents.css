@@ -166,3 +166,92 @@ a.opp-title:hover, a.opp-title:hover i { color: var(--accent); }
 
 .opp-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--text-primary); cursor: pointer; }
 .opp-check input { accent-color: var(--accent); }
+
+/* ============================================================
+   Industry Problems Agent — run form, mind map, problem cards
+   ============================================================ */
+.ind-run { display: flex; flex-wrap: wrap; gap: 8px; }
+.ind-run-industry { flex: 2 1 260px; }
+.ind-run-focus { flex: 3 1 300px; }
+.ind-run-chips { margin-top: 10px; }
+.ind-switch { margin-bottom: 16px; overflow-x: auto; }
+.ind-switch .segmented { flex-wrap: wrap; }
+.ind-headline { margin: 10px 0 0; color: var(--text-primary); }
+
+.ind-detail { margin-top: 12px; }
+.ind-detail-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.ind-detail-label i { color: var(--accent); font-size: 13px; }
+.ind-detail p { margin: 4px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-primary); }
+
+/* ---- Problem cards ---- */
+.ind-card--active { border-radius: var(--radius-md); background: var(--accent-dim); box-shadow: 0 0 0 0.5px var(--accent); }
+.ind-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.ind-title:hover, .ind-title:hover .opp-chevron { color: var(--accent); }
+.ind-problem { margin: 8px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-primary); }
+.ind-flag { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--amber); }
+.ind-body { margin-top: 4px; padding-top: 4px; border-top: 0.5px solid var(--border); }
+.ind-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+.ind-scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 14px; }
+.ind-score-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ind-score-bar { height: 4px; margin-top: 4px; border-radius: 999px; background: var(--bg-elevated); overflow: hidden; }
+.ind-score-bar span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+
+.ind-evidence { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.ind-evidence a { color: var(--accent); }
+.ind-evidence .list-row-meta { color: var(--text-secondary); }
+.ind-evidence-src { color: var(--text-primary); }
+
+/* ---- Mind map ---- */
+.mm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; flex-wrap: wrap; }
+.mm-key { color: var(--accent); }
+.mm-scroll {
+  max-height: 560px;
+  overflow: auto;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+}
+.mm-svg { display: block; font-family: var(--font); font-size: 12px; }
+.mm-link { fill: none; stroke: var(--border-bright); stroke-width: 1.25; }
+.mm-link--hot { stroke: var(--accent); opacity: 0.7; }
+
+.mm-node rect { fill: var(--bg-surface); stroke: var(--border-bright); stroke-width: 0.75; }
+.mm-node text { fill: var(--text-primary); }
+.mm-node--root rect { fill: var(--accent-dim); stroke: var(--accent); }
+.mm-node--root text { font-weight: 600; }
+.mm-node--stage rect { fill: var(--bg-elevated); }
+.mm-node--stage text { font-weight: 500; }
+.mm-node--hot rect { stroke: var(--accent); }
+.mm-node--pain rect { fill: var(--accent-dim); stroke: var(--accent); stroke-dasharray: 3 2; }
+.mm-node--pain text { fill: var(--text-primary); }
+.mm-node--link rect { stroke-dasharray: none; }
+.mm-node--active rect { stroke-width: 2; }
+.mm-node--press { cursor: pointer; outline: none; }
+.mm-node--press:hover rect, .mm-node--press:focus-visible rect { stroke: var(--accent); }
+.mm-node .mm-toggle { fill: var(--accent); font-size: 14px; font-weight: 600; }
+
+.ind-filters .segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.ind-filters .segmented::-webkit-scrollbar { display: none; }
+.ind-filters .segmented button { flex: none; white-space: nowrap; }
+
+@media (max-width: 760px) { .mm-scroll { max-height: 440px; } }
+/* Phones: the action buttons drop under the text so titles keep their width. */
+@media (max-width: 560px) {
+  .ind-card { grid-template-columns: 40px minmax(0, 1fr); }
+  .ind-card .opp-actions { grid-column: 1 / -1; justify-content: flex-end; margin-top: -4px; }
+}

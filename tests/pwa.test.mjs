@@ -220,5 +220,6 @@ test('activate removes old CTRLpanel caches but leaves other apps alone', async 
   const names = await sandbox.caches.keys();
   assert.ok(!names.includes('ctrlpanel-v0-shell'));
   assert.ok(names.includes('someone-elses-cache'));
-  assert.ok(names.includes('ctrlpanel-v1-shell'));
+  const version = read('public/sw.js').match(/const VERSION = '([^']+)'/)[1];
+  assert.ok(names.includes(`${version}-shell`));
 });

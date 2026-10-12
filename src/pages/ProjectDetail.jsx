@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
 import Card from '../components/shared/Card.jsx';
 import Badge from '../components/shared/Badge.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
@@ -19,23 +18,8 @@ import { formatDate } from '../lib/helpers.js';
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
 
 const STATUSES = ['Active', 'Paused', 'Complete'];
-const TABS = ['Project Dashboard', 'Board', 'Knowledge', 'Notes', 'Excalidraw', 'Files & Links', 'People'];
+const TABS = ['Project Dashboard', 'Board', 'Knowledge', 'Excalidraw', 'Files & Links', 'People'];
 const statusVariant = { Active: 'green', Paused: 'warm', Complete: 'accent' };
-
-let seq = 0;
-const newId = () => `n-${Date.now()}-${seq++}`;
-const mdSnippet = (md = '', len = 120) =>
-  md.replace(/[#*_>`[\]()]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, len);
-
-// Read a project's notes as a list, migrating the legacy single-blob `notes`
-// field into the first entry when notes_list hasn't been used yet.
-function notesOf(project) {
-  if (project.notes_list?.length) return project.notes_list;
-  if (project.notes) {
-    return [{ id: 'legacy', title: 'Notes', content: project.notes, pinned: false, updated_at: null }];
-  }
-  return [];
-}
 
 function Rollup({ icon, title, onClick, children }) {
   return (
@@ -58,7 +42,6 @@ export default function ProjectDetail() {
   const { rows: contacts } = useRows('crm_contacts', []);
   const [tab, setTab] = useState('Project Dashboard');
   const [knowledgeDirty, setKnowledgeDirty] = useState(false);
-  const [preview, setPreview] = useState({}); // note id → markdown preview on
   const [newLink, setNewLink] = useState({ title: '', url: '', type: 'link' });
   const [boardSettings, setBoardSettings] = useState(false);
 
@@ -78,7 +61,7 @@ export default function ProjectDetail() {
   const [projectNotes, setProjectNotes] = useState([]);
   useEffect(() => {
     let alive = true;
-    queryTable('knowledge_notes', { select: 'id,title,folder,pinned,updated_at,project_id', filters: { project_id: id }, order: 'updated_at', limit: 30 })
+    queryTable('knowledge_notes', { select: 'id,title,content,folder,pinned,updated_at,project_id', filters: { project_id: id }, order: 'updated_at', limit: 30 })
       .then(({ data }) => { if (alive) setProjectNotes(data || []); })
       .catch(() => {});
     return () => { alive = false; };
@@ -114,14 +97,6 @@ export default function ProjectDetail() {
   }, {});
   const blockedCount = projectTasks.filter((t) => /block/i.test(t.column_name || '')).length;
 
-  const notesList = notesOf(project);
-  const pinnedNotes = notesList.filter((n) => n.pinned);
-  const dashNotes = pinnedNotes.length
-    ? pinnedNotes
-    : notesList.length
-    ? [[...notesList].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0]]
-    : [];
-
   const entries = project.files || [];
   const recentEntries = [...entries]
     .sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''))
@@ -134,13 +109,6 @@ export default function ProjectDetail() {
   const metrics = charter.metrics || [];
   const patchCharter = (changes) => patch({ charter: { ...charter, ...changes } });
   const setMetric = (i, changes) => patchCharter({ metrics: metrics.map((m, j) => (j === i ? { ...m, ...changes } : m)) });
-
-  /* ---- Notes ops ---- */
-  const saveNotes = (next) => patch({ notes_list: next });
-  const addNote = () => saveNotes([...notesList, { id: newId(), title: 'New note', content: '', pinned: false, updated_at: new Date().toISOString() }]);
-  const patchNote = (nid, changes) =>
-    saveNotes(notesList.map((n) => (n.id === nid ? { ...n, ...changes, updated_at: new Date().toISOString() } : n)));
-  const delNote = (nid) => saveNotes(notesList.filter((n) => n.id !== nid));
 
   /* ---- Files & Links ops ---- */
   const addEntry = () => {
@@ -279,19 +247,6 @@ export default function ProjectDetail() {
                 )}
               </Rollup>
 
-              <Rollup icon="ti-note" title="Notes" onClick={() => setTab('Notes')}>
-                {dashNotes.length === 0 && <p className="body-text">No notes yet.</p>}
-                {dashNotes.slice(0, 3).map((n) => (
-                  <div key={n.id} style={{ marginBottom: 8 }}>
-                    <div className="row" style={{ gap: 6 }}>
-                      {n.pinned && <i className="ti ti-pin-filled" style={{ color: 'var(--accent)', fontSize: 12 }} />}
-                      <span className="list-row-title">{n.title || 'Untitled'}</span>
-                    </div>
-                    <div className="list-row-meta">{mdSnippet(n.content) || '—'}</div>
-                  </div>
-                ))}
-              </Rollup>
-
               <Rollup icon="ti-link" title="Files & Links" onClick={() => setTab('Files & Links')}>
                 <div className="value-md" style={{ marginBottom: 6 }}>{entries.length}</div>
                 {recentEntries.map((f, i) => (
@@ -383,42 +338,6 @@ export default function ProjectDetail() {
                 </div>
               </Modal>
             )}
-          </div>
-        )}
-
-        {/* ============ 4. NOTES ============ */}
-        {tab === 'Notes' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <button className="btn btn--sm btn--accent" onClick={addNote}><i className="ti ti-plus" /> Add note</button>
-            </div>
-            {notesList.length === 0 && <p className="body-text">No notes yet. Pinned notes surface on the Project Dashboard.</p>}
-            {notesList.map((n) => (
-              <Card className="card-section" static key={n.id}>
-                <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-                  <input className="input" value={n.title || ''} onChange={(e) => patchNote(n.id, { title: e.target.value })} placeholder="Note title" style={{ flex: 1 }} />
-                  <button
-                    className={`btn btn--ghost btn--icon ${n.pinned ? 'text-accent' : ''}`}
-                    onClick={() => patchNote(n.id, { pinned: !n.pinned })}
-                    title={n.pinned ? 'Unpin from Dashboard' : 'Pin to Dashboard'}
-                  >
-                    <i className={`ti ${n.pinned ? 'ti-pin-filled' : 'ti-pin'}`} />
-                  </button>
-                  <button className="btn btn--ghost btn--icon" onClick={() => setPreview((p) => ({ ...p, [n.id]: !p[n.id] }))} title={preview[n.id] ? 'Edit' : 'Preview'}>
-                    <i className={`ti ${preview[n.id] ? 'ti-pencil' : 'ti-eye'}`} />
-                  </button>
-                  <button className="btn btn--ghost btn--icon" onClick={() => delNote(n.id)} title="Delete note"><i className="ti ti-trash" /></button>
-                </div>
-                {preview[n.id] ? (
-                  <div className="ai-result" style={{ borderColor: 'var(--border-bright)' }}>
-                    <ReactMarkdown>{n.content || '_Empty note._'}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <textarea className="textarea" style={{ minHeight: 140 }} value={n.content || ''} onChange={(e) => patchNote(n.id, { content: e.target.value })} placeholder="Write in Markdown…" />
-                )}
-                {n.updated_at && <div className="list-row-meta mt-16">Updated {formatDate(n.updated_at)}</div>}
-              </Card>
-            ))}
           </div>
         )}
 

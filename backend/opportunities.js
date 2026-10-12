@@ -35,7 +35,7 @@ const MODES = ['remote', 'in_person', 'hybrid'];
 const RATES = { input: 5 / 1e6, output: 25 / 1e6, cacheWrite: 6.25 / 1e6, cacheRead: 0.5 / 1e6, search: 10 / 1000 };
 
 let _admin = null;
-function admin() {
+export function admin() {
   if (_admin) return _admin;
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -1,4 +1,4 @@
-import { NUTRIENTS } from './nutrition.js';
+import { NUTRIENTS, MICRO_NUTRIENTS } from './nutrition.js';
 
 export function publicNutritionOrigin(value) {
   try {
@@ -13,10 +13,11 @@ export function publicNutritionOrigin(value) {
 
 export function nutritionOpenApi(origin) {
   const metrics = Object.fromEntries(NUTRIENTS.map(({ key, label, unit, max }) => [key, { type: 'number', minimum: 0, maximum: max, description: `${label} in ${unit}.` }]));
+  const microMetrics = Object.fromEntries(MICRO_NUTRIENTS.map(({ key, label, unit, max }) => [key, { type: 'number', minimum: 0, maximum: max, description: `${label} in ${unit}, for the whole meal. Omit unknown values.` }]));
   const response = (description, schema) => ({ description, content: { 'application/json': { schema } } });
   const error = { $ref: '#/components/schemas/Error' };
   return {
-    openapi: '3.1.0', info: { title: 'CTRLpanel Nutrition', version: '2.0.0', description: 'Log meal estimates and read daily totals in your private CTRLpanel.' },
+    openapi: '3.1.0', info: { title: 'CTRLpanel Nutrition', version: '3.0.0', description: 'Log meal estimates, micronutrients, and read daily totals in your private CTRLpanel.' },
     servers: [{ url: publicNutritionOrigin(origin) }], security: [{ bearerAuth: [] }],
     paths: {
       '/api/nutrition/check': { get: {
@@ -26,7 +27,7 @@ export function nutritionOpenApi(origin) {
       } },
       '/api/nutrition/log': { post: {
         operationId: 'logNutritionEntry', summary: 'Log one meal or food item', 'x-openai-isConsequential': false,
-        description: 'Saves one meal with calories and macros. Returns its id, local-day totals and goals. Reuse request_id when retrying the same meal to avoid duplicates.',
+        description: 'Saves one meal with calories, macros, and optional micronutrient amounts. Returns its id, local-day totals and goals. Micronutrient totals include only reported meal values and can be partial. Reuse request_id when retrying the same meal to avoid duplicates.',
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NutritionEntry' } } } },
         responses: { '200': response('Meal saved', { $ref: '#/components/schemas/LogResult' }), '400': response('Invalid meal', error), '401': response('Invalid or revoked key', error), '409': response('request_id already used for another meal', error), '503': response('Nutrition service unavailable', error) },
       } },
@@ -36,15 +37,17 @@ export function nutritionOpenApi(origin) {
       schemas: {
         NutritionEntry: { type: 'object', required: ['food_name', ...NUTRIENTS.map((n) => n.key), 'request_id'], properties: {
           food_name: { type: 'string', maxLength: 200, description: 'Name of the whole meal or food item.' }, ...metrics,
+          micros: { $ref: '#/components/schemas/Micronutrients' },
           notes: { type: 'string', maxLength: 3000, description: 'Portions, ingredients, and assumptions. Label photo values as estimates.' },
           timestamp: { type: 'string', format: 'date-time', description: 'When eaten, including timezone offset. Omit for now.' },
           request_id: { type: 'string', minLength: 8, maxLength: 120, description: 'Unique id for this meal, reused unchanged on retries. A different meal needs a new id.' },
         } },
-        Totals: { type: 'object', properties: metrics },
+        Micronutrients: { type: 'object', additionalProperties: false, properties: microMetrics, description: 'Optional nutrient amounts. Follow each field’s units exactly; do not send IU, percentages, or different units. Omit unreported amounts rather than treating them as zero.' },
+        Totals: { type: 'object', properties: { ...metrics, micros: { type: 'object', properties: Object.fromEntries(Object.entries(microMetrics).map(([key, value]) => [key, { ...value, type: ['number', 'null'] }])) } } },
         DayResult: { type: 'object', properties: { ok: { type: 'boolean' }, day: { type: 'string' }, timezone: { type: 'string' }, day_totals: { $ref: '#/components/schemas/Totals' }, goals: { $ref: '#/components/schemas/Totals' } } },
         LogResult: { type: 'object', properties: {
           ok: { type: 'boolean' }, replayed: { type: 'boolean' }, day: { type: 'string' }, timezone: { type: 'string' },
-          entry: { type: 'object', properties: { id: { type: 'string' }, meal_name: { type: 'string' }, ...metrics, logged_at: { type: 'string', format: 'date-time' } } },
+          entry: { type: 'object', properties: { id: { type: 'string' }, meal_name: { type: 'string' }, ...metrics, micros: { $ref: '#/components/schemas/Micronutrients' }, logged_at: { type: 'string', format: 'date-time' } } },
           day_totals: { anyOf: [{ $ref: '#/components/schemas/Totals' }, { type: 'null' }] }, goals: { anyOf: [{ $ref: '#/components/schemas/Totals' }, { type: 'null' }] },
         } },
         Error: { type: 'object', properties: { error: { type: 'string' } } },
@@ -55,6 +58,7 @@ export function nutritionOpenApi(origin) {
 
 export const NUTRITION_GPT_INSTRUCTIONS = `You are my personal meal logger connected to CTRLpanel.
 When I send a food photo or ask you to log food, estimate the full meal's calories, protein, carbs and fat. Read nutrition labels when visible and scale by the amount eaten. Ask one brief portion question only if the image is too unclear to estimate. Record visible ingredients, assumed portions and cooking fats in notes, and label photo-based values as estimates.
+Include optional micros for nutrients on a visible label or reasonably estimated from known ingredients and portions. Use only the schema's keys and exact units (including mcg RAE for vitamin A, mcg DFE for folate and mg NE for niacin). Omit unknown nutrients; never invent zero values or infer added sugar from total sugar. Keep micronutrient amounts unchanged when retrying.
 Call checkNutritionConnection before the first log in a conversation to get the meal timezone and current day. Then call logNutritionEntry with food_name, calories (kcal), protein/carbs/fat (grams), notes and a new unique request_id for each meal. Combine the foods in one photo into one meal entry. Never send an image, base64 data, an invented photo URL, a user_id or a secret key as an action argument.
 For food eaten now, omit timestamp so the server uses the current time. For earlier food, use an ISO date-time with the correct timezone offset from the connection check; ask if the intended date is unclear.
 Reuse the same request_id and identical meal values for any retry. Never log the same photo again unless I explicitly ask for another serving. If I ask a general nutrition question or say not to log, answer without saving.

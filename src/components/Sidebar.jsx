@@ -1,47 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
-import { socialSections } from '../lib/socialPlatforms.js';
-import { AGENTS } from '../lib/agentRegistry.js';
+import Modal from './shared/Modal.jsx';
+import { sidebarNavigation, visibleSidebarNavigation } from '../lib/sidebarNavigation.js';
+
+const SidebarVisibility = lazy(() => import('./SidebarVisibility.jsx'));
 
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 400;
 const DEFAULT_WIDTH = 204;
 const WIDTH_KEY = 'ctrlpanel-sidebar-width';
 const FOLDERS_KEY = 'ctrlpanel-sidebar-folders';
-
-// Top-level links (exact icons per AGENTS.md)
-const TOP_LINKS = [
-  { to: '/', label: 'Dashboard', icon: 'ti-layout-dashboard', end: true },
-  { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
-  { to: '/todo', label: 'To Do', icon: 'ti-checkbox' },
-  { to: '/knowledge', label: 'Knowledge Base', icon: 'ti-notebook' },
-  { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
-  { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
-];
-
-// Static grouping folders (fixed sub-pages)
-const STATIC_FOLDERS = [
-  {
-    label: 'Health',
-    icon: 'ti-heart',
-    items: [
-      { label: 'Nutrition', to: '/health/nutrition' },
-      { label: 'Supplements', to: '/health/supplements' },
-      { label: 'Fitness', to: '/health/fitness' },
-    ],
-  },
-  {
-    label: 'Finance',
-    icon: 'ti-coin',
-    items: [
-      { label: 'Net Worth', to: '/finance/networth' },
-      { label: 'Budget', to: '/finance/budget' },
-      { label: 'Investing', to: '/finance/investing' },
-    ],
-  },
-];
 
 function navClass({ isActive }) {
   return `nav-item ${isActive ? 'active' : ''}`;
@@ -140,6 +111,12 @@ function Folder({ folder, collapsed, open, onToggle }) {
 export default function Sidebar({ collapsed = false, drawer = false, open = false, onClose }) {
   const { projects, crmBoards, socials } = useWorkspace();
   const { settings, updateUiPreferences } = useAuth();
+  const [customizing, setCustomizing] = useState(false);
+  const customizeButtonRef = useRef(null);
+  const closeCustomize = useCallback(() => {
+    setCustomizing(false);
+    customizeButtonRef.current?.focus();
+  }, []);
   const [width, setWidth] = useState(() => {
     const saved = parseInt(localStorage.getItem(WIDTH_KEY), 10);
     return Number.isFinite(saved) ? saved : DEFAULT_WIDTH;
@@ -218,40 +195,11 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
   // registry (src/lib/agentRegistry.js); Health + Finance are fixed. `indexTo`
   // is the section's overview page — reached from the header's manage button,
   // never by clicking the folder itself.
-  const folders = [
-    {
-      label: 'CRM',
-      icon: 'ti-users',
-      indexTo: '/crm',
-      emptyLabel: 'No CRM pages yet',
-      items: crmBoards.rows.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
-    },
-    {
-      label: 'Agents',
-      icon: 'ti-robot',
-      indexTo: '/agents',
-      emptyLabel: 'No agents yet',
-      items: AGENTS.map((a) => ({ label: a.name, to: a.to })),
-    },
-    {
-      label: 'Projects',
-      icon: 'ti-folder',
-      indexTo: '/projects',
-      emptyLabel: 'No projects yet',
-      items: projects.rows.map((p) => ({ label: p.name || 'Untitled', to: `/projects/${p.id}` })),
-    },
-    ...STATIC_FOLDERS,
-    {
-      label: 'Socials',
-      icon: 'ti-share',
-      indexTo: '/socials',
-      emptyLabel: 'No accounts yet',
-      items: socialSections(socials).map((section) => ({ label: section.label, to: section.to })),
-    },
-  ];
+  const navigation = sidebarNavigation({ projects: projects.rows, crmBoards: crmBoards.rows, socials, settings });
+  const { links, folders } = visibleSidebarNavigation(navigation, settings?.ui_preferences?.sidebarVisibility);
 
   return (
-    <aside
+    <><aside
       id="app-sidebar"
       className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${drawer ? 'sidebar--drawer' : ''} ${drawer && open ? 'is-open' : ''}`}
       style={collapsed || drawer ? undefined : { width }}
@@ -274,7 +222,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
       <div className="sidebar-divider" />
 
       <nav className="sidebar-nav">
-        {TOP_LINKS.map((link) => (
+        {links.map((link) => (
           <NavLink key={link.to} to={link.to} end={link.end} className={navClass} title={link.label}>
             <i className={`ti ${link.icon}`} />
             {!collapsed && <span>{link.label}</span>}
@@ -285,7 +233,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
 
         {folders.map((folder) => (
           <Folder
-            key={folder.label}
+            key={folder.id}
             folder={folder}
             collapsed={collapsed}
             open={isOpen(folder.label)}
@@ -295,6 +243,10 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
       </nav>
 
       <div className="sidebar-footer">
+        <button type="button" ref={customizeButtonRef} className="nav-item nav-customize" title="Customize sidebar" aria-label="Customize sidebar" onClick={() => setCustomizing(true)}>
+          <i className="ti ti-adjustments" aria-hidden="true" />
+          {!collapsed && <span>Customize sidebar</span>}
+        </button>
         <NavLink to="/settings" className={navClass} title="Settings">
           <i className="ti ti-settings" />
           {!collapsed && <span>Settings</span>}
@@ -312,5 +264,22 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
         />
       )}
     </aside>
+    {customizing && createPortal(
+      <div className="sidebar-visibility-modal" onKeyDown={(e) => {
+        if (e.key !== 'Tab') return;
+        const controls = [...e.currentTarget.querySelectorAll('button, input, a[href]')].filter((el) => !el.matches(':disabled'));
+        const first = controls[0];
+        const last = controls.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }}>
+        <Modal title="Sidebar sections" onClose={closeCustomize}>
+          <Suspense fallback={<div className="body-text" role="status">Loading sidebar choices…</div>}>
+            <SidebarVisibility autoFocus />
+          </Suspense>
+        </Modal>
+      </div>, document.body
+    )}
+    </>
   );
 }

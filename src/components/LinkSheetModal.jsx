@@ -132,7 +132,7 @@ export default function LinkSheetModal({ board, onClose, onLinked }) {
             <label className="field-label" htmlFor="crm-sheet-url">Google Sheets link</label>
             <input id="crm-sheet-url" className="input" autoFocus placeholder="https://docs.google.com/spreadsheets/d/…" value={url} onChange={(e) => setUrl(e.target.value)} disabled={busy} />
           </div>
-          <p className="list-row-meta">Row 1 becomes your columns. Every tab in the spreadsheet is available.</p>
+          <p className="list-row-meta">Native tables define your columns; other tabs use row 1. Every tab in the spreadsheet is available.</p>
           <div className="modal-footer">
             <button className="btn btn--accent" disabled={busy || !url.trim()}>{busy ? 'Connecting…' : 'Connect'}</button>
           </div>

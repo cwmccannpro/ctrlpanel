@@ -226,6 +226,13 @@ async function gapi(url, init = {}, { write = false } = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// The finance module uses the same credential/error handling, with a narrower
+// workbook contract and owner checks before every read or write.
+export async function financeGoogleRequest(spreadsheetId, suffix = '', init = {}) {
+  const id = assertId(spreadsheetId);
+  return gapi(`${sheetsApi()}/${encodeURIComponent(id)}${suffix}`, init, { write: Boolean(init.method && init.method !== 'GET') });
+}
+
 /**
  * Is the connection actually usable? Signs in with the key, then probes the
  * Sheets API with a spreadsheet id that can't exist: 404 means "API enabled and
@@ -296,11 +303,33 @@ export function uniqueHeaders(raw) {
 
 /* ---- Spreadsheet operations ---- */
 
+/** Only a single native table starting in column A defines the CRM layout. */
+function tableLayout(sheet) {
+  const tables = sheet.tables || [];
+  const table = tables.length === 1 ? tables[0] : null;
+  const range = table?.range;
+  const startRow = range?.startRowIndex ?? 0;
+  if (!range || (range.startColumnIndex ?? 0) !== 0 || !Number.isInteger(startRow) || startRow < 0) {
+    return { headerRow: 1, checkboxColumns: [] };
+  }
+  return {
+    headerRow: startRow + 1,
+    checkboxColumns: (table.columnProperties || [])
+      .filter((c) => c.columnType === 'BOOLEAN' && Number.isInteger(c.columnIndex) && c.columnIndex >= 0)
+      .map((c) => c.columnIndex),
+  };
+}
+
+async function sheetLayout(id, title) {
+  const meta = await getSpreadsheet(id);
+  return meta.sheets.find((s) => s.title === title) || { headerRow: 1, checkboxColumns: [] };
+}
+
 /** Spreadsheet title + its tabs, so a board can offer multiple sheets. */
 export async function getSpreadsheet(spreadsheetId) {
   const id = assertId(spreadsheetId);
   const data = await gapi(
-    `${sheetsApi()}/${encodeURIComponent(id)}?fields=properties.title,spreadsheetUrl,sheets.properties(sheetId,title,index,gridProperties)`
+    `${sheetsApi()}/${encodeURIComponent(id)}?fields=properties.title,spreadsheetUrl,sheets(properties(sheetId,title,index,gridProperties),tables(range,columnProperties(columnIndex,columnType)))`
   );
   return {
     id,
@@ -313,13 +342,15 @@ export async function getSpreadsheet(spreadsheetId) {
         index: s.properties.index,
         rows: s.properties.gridProperties?.rowCount || 0,
         cols: s.properties.gridProperties?.columnCount || 0,
+        ...tableLayout(s),
       }))
       .sort((a, b) => a.index - b.index),
   };
 }
 
 /**
- * Read one tab. Row 1 is the header; every later row is `{ row, cells }` where
+ * Read one tab. A native table defines its header; plain tabs use row 1.
+ * Every later row is `{ row, cells }` where
  * `row` is its 1-based sheet row (so edits hit the exact cell) and `cells`
  * aligns with `headers`. Values come as Sheets displays them (dates, currency,
  * percentages), blank rows are dropped, and `truncated` is set when the tab has
@@ -328,7 +359,8 @@ export async function getSpreadsheet(spreadsheetId) {
 export async function readSheet(spreadsheetId, sheetTitle, { maxRows = MAX_ROWS } = {}) {
   const id = assertId(spreadsheetId);
   const title = assertTitle(sheetTitle);
-  const range = `${quoteTitle(title)}!A1:${MAX_COLS_RANGE}${maxRows + 2}`; // header + maxRows + 1 sentinel row
+  const { headerRow, checkboxColumns } = await sheetLayout(id, title);
+  const range = `${quoteTitle(title)}!A${headerRow}:${MAX_COLS_RANGE}${headerRow + maxRows + 1}`; // header + maxRows + 1 sentinel row
   const data = await gapi(
     `${sheetsApi()}/${encodeURIComponent(id)}/values/${encodeURIComponent(range)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`
   );
@@ -343,8 +375,9 @@ export async function readSheet(spreadsheetId, sheetTitle, { maxRows = MAX_ROWS 
   const rows = [];
   kept.forEach((cells, i) => {
     const filled = Array.from({ length: width }, (_, c) => String(cells[c] ?? ''));
-    if (filled.every((v) => v === '')) return; // fully blank rows are noise
-    rows.push({ row: i + 2, cells: filled });
+    // Native tables fill unused checkbox cells with FALSE. These are not leads.
+    if (filled.every((v, c) => v === '' || (checkboxColumns.includes(c) && /^false$/i.test(v)))) return;
+    rows.push({ row: headerRow + i + 1, cells: filled });
   });
   return { headers, rows, truncated, rowLimit: maxRows };
 }
@@ -359,10 +392,15 @@ export async function updateCell(spreadsheetId, sheetTitle, rowNumber, columnInd
   if (!Number.isInteger(columnIndex) || columnIndex < 0 || columnIndex > 701) {
     throw new SheetsError('bad_request', 'Invalid column.', 400);
   }
+  const checkedValue = cellValue(value);
+  const { headerRow } = await sheetLayout(id, title);
+  if (rowNumber <= headerRow) {
+    throw new SheetsError('bad_request', 'Only data rows below the table header can be edited.', 400);
+  }
   const a1 = `${quoteTitle(title)}!${colLetters(columnIndex)}${rowNumber}`;
   await gapi(
     `${sheetsApi()}/${encodeURIComponent(id)}/values/${encodeURIComponent(a1)}?valueInputOption=USER_ENTERED`,
-    { method: 'PUT', body: JSON.stringify({ range: a1, majorDimension: 'ROWS', values: [[cellValue(value)]] }) },
+    { method: 'PUT', body: JSON.stringify({ range: a1, majorDimension: 'ROWS', values: [[checkedValue]] }) },
     { write: true }
   );
   return { ok: true };
@@ -375,10 +413,12 @@ export async function appendRow(spreadsheetId, sheetTitle, values) {
   if (!Array.isArray(values) || !values.length || values.length > 702) {
     throw new SheetsError('bad_request', 'A row needs between 1 and 702 values.', 400);
   }
-  const range = `${quoteTitle(title)}!A1`;
+  const checkedValues = values.map(cellValue);
+  const { headerRow } = await sheetLayout(id, title);
+  const range = `${quoteTitle(title)}!A${headerRow}`;
   const data = await gapi(
     `${sheetsApi()}/${encodeURIComponent(id)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: [values.map(cellValue)] }) },
+    { method: 'POST', body: JSON.stringify({ values: [checkedValues] }) },
     { write: true }
   );
   const updatedRange = data?.updates?.updatedRange || null;
@@ -393,7 +433,11 @@ export async function deleteRows(spreadsheetId, sheetId, rowNumbers = []) {
   if (!Array.isArray(rowNumbers) || rowNumbers.length > 1000) {
     throw new SheetsError('bad_request', 'Delete at most 1000 rows at a time.', 400);
   }
-  const sorted = [...new Set(rowNumbers.map(Number).filter((n) => Number.isInteger(n) && n > 1))].sort((a, b) => b - a);
+  const candidates = [...new Set(rowNumbers.map(Number).filter((n) => Number.isInteger(n) && n > 1))];
+  if (!candidates.length) return { ok: true, deleted: 0 };
+  const meta = await getSpreadsheet(id);
+  const headerRow = meta.sheets.find((s) => s.sheetId === sheetId)?.headerRow || 1;
+  const sorted = candidates.filter((n) => n > headerRow).sort((a, b) => b - a);
   if (!sorted.length) return { ok: true, deleted: 0 };
   const requests = sorted.map((n) => ({
     deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: n - 1, endIndex: n } },
@@ -413,8 +457,19 @@ export async function deleteRows(spreadsheetId, sheetId, rowNumbers = []) {
  * and the Worker (worker/index.js) both call this, so the route surface cannot
  * drift between them. Returns `{ status, json }`, or null for an unknown action.
  */
-export async function handleSheetsRequest(method, action, query = {}, body = {}) {
+export async function handleSheetsRequest(method, action, query = {}, body = {}, { user } = {}) {
   try {
+    const id = method === 'GET' ? query.id : body.id;
+    if (id && ['meta', 'values', 'cell', 'append', 'delete-rows'].includes(action)) {
+      // The generic CRM surface must not bypass Finance's owner checks.
+      const meta = await getSpreadsheet(id);
+      if (meta.sheets.some((s) => s.title === '_CTRLpanel')) {
+        const config = await financeGoogleRequest(id, `/values/${encodeURIComponent("'_CTRLpanel'!A1:B10")}?valueRenderOption=UNFORMATTED_VALUE`);
+        const owner = (config.values || []).find((r) => r[0] === 'owner_email')?.[1];
+        if (!user?.email || String(owner || '').trim().toLowerCase() !== user.email.toLowerCase()) throw new SheetsError('owner', 'This finance workbook belongs to a different account.', 403);
+        if (method !== 'GET') throw new SheetsError('finance_managed', 'Edit this workbook through Finance, which preserves its record IDs and formulas.', 403);
+      }
+    }
     if (method === 'GET') {
       if (action === 'meta') return { status: 200, json: await getSpreadsheet(query.id) };
       if (action === 'values') return { status: 200, json: await readSheet(query.id, query.sheet) };

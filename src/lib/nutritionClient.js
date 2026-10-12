@@ -1,5 +1,5 @@
 import { supabase, insert, update, remove } from './supabase.js';
-import { nutritionEntry, nutritionNumber, NUTRIENTS } from './nutrition.js';
+import { nutritionEntry, nutritionNumber, NUTRIENTS, nutritionMicros } from './nutrition.js';
 import { notifyDataChanged } from './useData.js';
 import { authApi } from './api.js';
 
@@ -29,6 +29,7 @@ export async function saveNutritionMeal(draft, { id, timestamp } = {}) {
     const found = await supabase.from('nutrition_logs').select('*').eq('id', id).maybeSingle();
     if (found.error || !found.data || Object.entries(values).some(([k, v]) => {
       if (NUTRIENTS.some((n) => n.key === k)) return Number(found.data[k]) !== v;
+      if (k === 'micros') return JSON.stringify(nutritionMicros(found.data.micros || {})) !== JSON.stringify(v);
       if (k === 'logged_at') return new Date(found.data[k]).getTime() !== new Date(v).getTime();
       return (found.data[k] || null) !== (v || null);
     })) throw new Error('This meal may already have been saved. Refresh the log before changing it.');
@@ -40,10 +41,12 @@ export async function saveNutritionMeal(draft, { id, timestamp } = {}) {
   return row;
 }
 export const deleteNutritionMeal = async (id) => checkedWrite('nutrition_logs', await remove('nutrition_logs', id));
-export async function saveNutritionGoals(id, draft) {
-  const values = Object.fromEntries(NUTRIENTS.map(({ key }) => [key, nutritionNumber(draft[key], key)]));
-  const row = await checkedWrite('user_goals', id ? await update('user_goals', id, { ...values, updated_at: new Date().toISOString() }) : await insert('user_goals', [values]));
-  if (!row?.id) throw new Error('Goal save was not confirmed. Try again.');
+export async function saveNutritionTarget(key, value) {
+  if (!supabase) throw new Error('Sign in to edit nutrition targets.');
+  const target = nutritionNumber(value, key);
+  const result = await supabase.rpc('set_nutrition_target', { nutrient: key, target });
+  const row = await checkedWrite('user_goals', result);
+  if (!row?.id) throw new Error('Target save was not confirmed. Try again.');
   return row;
 }
 export async function saveNutritionWeight(weight, timestamp) {

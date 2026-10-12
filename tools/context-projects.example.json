@@ -1,0 +1,26 @@
+{
+  "$comment": "Local CTRLpanel context sync config example; copy to tools/context-projects.json. Add a project with: node tools/ctrlpanel-file-sync.mjs --add --name ... --root ... --folder ... --match ...  'files' are relative paths or single-segment * globs (max 3 levels); omit 'files' to use the default context list. 'project' is the CTRLpanel project name to attach notes to (exact, case-insensitive). 'key' must never change once synced.",
+  "globalExclude": [
+    "ONYX_CONTEXT.md",
+    ".env*",
+    "*.local.md",
+    "*.template.md"
+  ],
+  "projects": [
+    {
+      "name": "Example Project",
+      "key": "example-project",
+      "root": "C:\\path\\to\\Example Project",
+      "folder": "Projects/Example Project",
+      "project": "Example Project",
+      "files": [
+        "README.md",
+        "AGENTS.md",
+        "docs/*.md"
+      ],
+      "exclude": [
+        "SECRET_NOTES.md"
+      ]
+    }
+  ]
+}

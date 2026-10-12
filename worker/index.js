@@ -12,8 +12,10 @@
 // ============================================================
 import { streamChatCore, supplementAnalyze, interactionCheck, extractResumeProfile } from '../backend/claude.js';
 import { runOpportunitiesCore } from '../backend/opportunities.js';
+import { runIndustryCore } from '../backend/industry.js';
 import { contextRequest } from '../backend/knowledge.js';
 import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
+import { handleFinanceSheetsRequest } from '../backend/financeSheets.js';
 import { handleNutritionRequest, MAX_NUTRITION_BODY } from '../backend/nutritionApi.js';
 import { handleSocialRequest } from '../backend/socials.js';
 import { getSheetsStatus, handleSheetsRequest } from '../backend/sheets.js';
@@ -99,6 +101,13 @@ export default {
       }
 
       /* ---- Finance ---- */
+      if (pathname.startsWith('/api/finance/sheets/')) {
+        const user = await userFrom(request, url);
+        const token = (request.headers.get('authorization') || '').replace(/^Bearer /, '');
+        const body = method === 'POST' ? await request.json().catch(() => ({})) : {};
+        const result = await handleFinanceSheetsRequest(method, pathname.slice('/api/finance/sheets/'.length), { token, user, body });
+        return result ? json(result.json, result.status) : json({ error: 'Not found' }, 404);
+      }
       if (pathname === '/api/finance/prices' && method === 'GET') {
         const tickers = (url.searchParams.get('tickers') || '').split(',').map((t) => t.trim()).filter(Boolean);
         return json(await getPrices(tickers));
@@ -151,6 +160,21 @@ export default {
           ctx.waitUntil(
             runOpportunitiesCore({ userId: user.id, apiKey: body.apiKey, today: body.today }, write)
               .catch((e) => write({ type: 'error', message: e?.message || 'Opportunities run failed' }))
+              .finally(() => writer.close().catch(() => {}))
+          );
+          return new Response(readable, {
+            headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
+          });
+        }
+        // On-demand Industry Problems run — same NDJSON streaming as above.
+        if (pathname === '/api/agents/industry/run' && method === 'POST') {
+          const { readable, writable } = new TransformStream();
+          const writer = writable.getWriter();
+          const enc = new TextEncoder();
+          const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {});
+          ctx.waitUntil(
+            runIndustryCore({ userId: user.id, apiKey: body.apiKey, today: body.today, industry: body.industry, focus: body.focus }, write)
+              .catch((e) => write({ type: 'error', message: e?.message || 'Industry run failed' }))
               .finally(() => writer.close().catch(() => {}))
           );
           return new Response(readable, {
@@ -240,7 +264,7 @@ export default {
         const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
         // Same dispatcher as Express (backend/routes/sheets.js) so the surfaces match.
         const action = pathname.slice('/api/sheets/'.length);
-        const result = await handleSheetsRequest(method, action, Object.fromEntries(url.searchParams), body);
+        const result = await handleSheetsRequest(method, action, Object.fromEntries(url.searchParams), body, { user });
         if (result) return json(result.json, result.status);
       }
 

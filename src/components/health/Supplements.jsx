@@ -9,7 +9,7 @@ import { api } from '../../lib/api.js';
 import { useAuth } from '../../components/AuthProvider.jsx';
 import { SUPPLEMENT_TIMINGS } from '../../lib/mockData.js';
 
-export default function Supplements() {
+export default function Supplements({ embedded = false }) {
   const { rows: supps, add, patch, remove } = useCrud('supplements');
   const { connectorKey } = useAuth();
   const [taken, setTaken] = useState(new Set());
@@ -76,7 +76,7 @@ export default function Supplements() {
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
-          <h1 className="sr-only">Supplements</h1>
+          {!embedded && <h1 className="sr-only">Supplements</h1>}
           <div className="page-header-sub">{supps.filter((s) => s.enabled).length} active in stack</div>
         </div>
         <button className="btn btn--accent" onClick={() => setEditing({ timing: 'Morning' })}><i className="ti ti-plus" /> Add Supplement</button>
@@ -125,6 +125,7 @@ export default function Supplements() {
         </Card>
       </div>
 
+      <details className="health-details"><summary><i className="ti ti-sparkles" aria-hidden="true" /> Stack insights & interactions <span>Analyze on request</span></summary><div className="health-details-body">
       {/* AI Stack Evaluator */}
       <Card className="card-section" static>
         <div className="card-section-title">
@@ -147,6 +148,8 @@ export default function Supplements() {
         </div>
         {intResult && <div className="ai-result mt-16"><ReactMarkdown>{intResult}</ReactMarkdown></div>}
       </Card>
+
+      </div></details>
 
       {editing && (
         <Modal

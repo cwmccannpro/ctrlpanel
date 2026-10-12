@@ -2,6 +2,7 @@
 // src/main.jsx and the test harness so both render exactly the same pages.
 
 import { lazy } from 'react';
+import { Navigate } from 'react-router-dom';
 
 // Every page is its own chunk: a first visit downloads the shell + the page you open; the
 // rest are fetched on demand (and warmed while idle — see lib/prefetch.js).
@@ -13,15 +14,15 @@ const loaders = {
   Review: () => import('./pages/Review.jsx'),
   Agents: () => import('./pages/agents/Agents.jsx'),
   OpportunitiesAgent: () => import('./pages/agents/OpportunitiesAgent.jsx'),
+  IndustryProblemsAgent: () => import('./pages/agents/IndustryProblemsAgent.jsx'),
   Projects: () => import('./pages/Projects.jsx'),
   ProjectDetail: () => import('./pages/ProjectDetail.jsx'),
   KnowledgeBase: () => import('./pages/KnowledgeBase.jsx'),
   CRM: () => import('./pages/CRM.jsx'),
   Settings: () => import('./pages/Settings.jsx'),
-  Nutrition: () => import('./pages/health/Nutrition.jsx'),
-  Supplements: () => import('./pages/health/Supplements.jsx'),
-  Fitness: () => import('./pages/health/Fitness.jsx'),
+  Health: () => import('./pages/health/Health.jsx'),
   NetWorth: () => import('./pages/finance/NetWorth.jsx'),
+  Finance: () => import('./pages/finance/Finance.jsx'),
   Budget: () => import('./pages/finance/Budget.jsx'),
   Investing: () => import('./pages/finance/Investing.jsx'),
   Socials: () => import('./pages/socials/Socials.jsx'),
@@ -36,15 +37,15 @@ const Habits = lazy(loaders.Habits);
 const Review = lazy(loaders.Review);
 const Agents = lazy(loaders.Agents);
 const OpportunitiesAgent = lazy(loaders.OpportunitiesAgent);
+const IndustryProblemsAgent = lazy(loaders.IndustryProblemsAgent);
 const Projects = lazy(loaders.Projects);
 const ProjectDetail = lazy(loaders.ProjectDetail);
 const KnowledgeBase = lazy(loaders.KnowledgeBase);
 const CRM = lazy(loaders.CRM);
 const Settings = lazy(loaders.Settings);
-const Nutrition = lazy(loaders.Nutrition);
-const Supplements = lazy(loaders.Supplements);
-const Fitness = lazy(loaders.Fitness);
+const Health = lazy(loaders.Health);
 const NetWorth = lazy(loaders.NetWorth);
+const Finance = lazy(loaders.Finance);
 const Budget = lazy(loaders.Budget);
 const Investing = lazy(loaders.Investing);
 const Socials = lazy(loaders.Socials);
@@ -63,14 +64,14 @@ export const pageLoaders = [
   loaders.ProjectDetail,
   loaders.CRM,
   loaders.Settings,
-  loaders.Nutrition,
-  loaders.Supplements,
-  loaders.Fitness,
+  loaders.Health,
   loaders.NetWorth,
+  loaders.Finance,
   loaders.Budget,
   loaders.Investing,
   loaders.Agents,
   loaders.OpportunitiesAgent,
+  loaders.IndustryProblemsAgent,
   loaders.Socials,
   loaders.YouTube,
   loaders.Instagram,
@@ -86,15 +87,20 @@ export const appChildren = [
   { path: 'review', element: <Review /> },
   { path: 'agents', element: <Agents /> },
   { path: 'agents/opportunities', element: <OpportunitiesAgent /> },
+  { path: 'agents/industry-problems', element: <IndustryProblemsAgent /> },
   { path: 'projects', element: <Projects /> },
   { path: 'projects/:id', element: <ProjectDetail /> },
   { path: 'knowledge', element: <KnowledgeBase /> },
   { path: 'crm', element: <CRM /> },
   { path: 'crm/:boardId', element: <CRM /> },
-  { path: 'health/nutrition', element: <Nutrition /> },
-  { path: 'health/supplements', element: <Supplements /> },
-  { path: 'health/fitness', element: <Fitness /> },
+  { path: 'health', element: <Health /> },
+  // Existing links open the combined page at their section; queries are retained.
+  { path: 'health/nutrition', element: <Health /> },
+  { path: 'health/supplements', element: <Health /> },
+  { path: 'health/fitness', element: <Health /> },
   { path: 'finance/networth', element: <NetWorth /> },
+  { path: 'finance', element: <Finance /> },
+  { path: 'finance/debt', element: <Navigate to="/finance" replace /> },
   { path: 'finance/budget', element: <Budget /> },
   { path: 'finance/investing', element: <Investing /> },
   { path: 'socials', element: <Socials /> },

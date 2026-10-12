@@ -65,6 +65,51 @@
 .nutrition-empty { padding-block: 18px; }
 .nutrition-empty > i { color: var(--accent); font-size: 24px; }
 .nutrition-empty p { margin-top: 8px; }
+.nutrition-overview { min-width: 0; container-type: inline-size; }
+.nutrition-macro-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.nutrient-box { position: relative; display: flex; flex-direction: column; gap: 7px; min-width: 0; overflow: hidden; padding: 18px 16px 13px; border: 1px solid var(--border-bright); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; transition: border-color var(--transition), background var(--transition); font-variant-numeric: tabular-nums; }
+.nutrient-box:hover { border-color: var(--accent); background: var(--bg-elevated); }
+.nutrient-box:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.nutrient-box:disabled { cursor: default; }
+.nutrient-track { position: absolute; top: 0; inset-inline: 0; height: 4px; background: var(--border-bright); }
+.nutrient-track > span { display: block; height: 100%; background: var(--accent); transition: width 250ms ease; }
+.nutrient-box-head { display: flex; align-items: center; gap: 5px; justify-content: space-between; font-size: 11px; color: var(--text-secondary); }
+.nutrient-box-head > i { font-size: 12px; opacity: .6; }
+.nutrient-box-value { font-size: 27px; letter-spacing: -.8px; line-height: 1.25; font-weight: 500; overflow-wrap: anywhere; }
+.nutrient-box-value small { color: var(--text-secondary); font-size: 11px; letter-spacing: 0; font-weight: 400; }
+.nutrient-box-target { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.nutrient-box-status { font-size: 10px; color: var(--text-secondary); }
+.nutrient-box--over .nutrient-track > span { background: var(--text-secondary); }
+.nutrient-box--over .nutrient-box-status { font-weight: 600; color: var(--text-primary); }
+.nutrient-box--unknown .nutrient-track { background: repeating-linear-gradient(90deg, var(--border-bright) 0 5px, transparent 5px 8px); }
+.nutrition-micros { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 18px; }
+.nutrition-micros-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.nutrition-micros-head h3 { font-size: 13px; margin: 0 0 4px; font-weight: 500; }
+.nutrition-micro-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.nutrition-micro-grid .nutrient-box { padding: 14px 12px 10px; gap: 5px; }
+.nutrition-micro-grid .nutrient-box-value { font-size: 19px; letter-spacing: -.3px; }
+.nutrition-micro-filter { margin-bottom: 12px; width: fit-content; max-width: 100%; }
+.nutrition-micro-filter > button { padding-inline: 10px; }
+.nutrition-reference { font-size: 11px; line-height: 1.65; color: var(--text-secondary); margin: 12px 0 0; }
+.nutrition-reference a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.nutrition-intake-fields { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.nutrition-intake-fields > summary { cursor: pointer; font-size: 13px; color: var(--text-primary); }
+.nutrition-intake-fields > summary span { font-size: 11px; color: var(--text-secondary); }
+.nutrition-intake-fields > p { margin-block: 12px; }
+.nutrition-overview--compact .nutrition-macro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.nutrition-overview--compact .nutrient-box { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; padding: 12px 0 10px; gap: 4px; }
+.nutrition-overview--compact .nutrient-box:hover { background: var(--accent-dim); }
+.nutrition-overview--compact .nutrient-box-value { font-size: 22px; }
+.nutrition-overview--compact .nutrition-micro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.nutrition-overview--compact .nutrition-micro-grid .nutrient-box-value { font-size: 17px; }
+.nutrition-overview--compact .nutrition-micros-head h3 { font-size: 12px; }
+.nutrition-overview--compact .nutrition-reference { font-size: 10px; }
+@container (max-width: 700px) { .nutrition-micro-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 440px) {
+  .nutrition-macro-grid, .nutrition-micro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nutrient-box { padding-inline: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .nutrient-track > span { transition: none; } }
 @media (max-width: 760px) {
   .nutrition-actions > .btn, .nutrition-toolbar > .btn, .nutrition-settings .btn, .nutrition-meal-row > .btn { min-height: 44px; }
   .nutrition-toolbar > .btn { flex: 1 1 auto; justify-content: center; }

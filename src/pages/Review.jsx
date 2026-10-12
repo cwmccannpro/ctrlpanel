@@ -13,6 +13,7 @@ import { buildReview, delta, reviewNoteTemplate, reviewNoteTitle, rowDay } from 
 import { projectForTask } from '../lib/links.js';
 import { weeklyReviewPrompt } from '../lib/prompts.js';
 import { currency } from '../lib/helpers.js';
+import useFinance from '../lib/useFinance.js';
 import '../styles/review.css';
 
 const shortDay = (key) => {
@@ -60,8 +61,9 @@ export default function Review() {
   const nutrition = useRows('nutrition_logs', []);
   const goals = useRows('user_goals', []);
   const weights = useRows('weight_logs', []);
-  const transactions = useRows('transactions', []);
-  const categories = useRows('expense_categories', []);
+  const finance = useFinance();
+  const transactions = useMemo(() => (finance.data.transactions || []).filter((r) => r.type === 'Expense'), [finance.data.transactions]);
+  const categories = finance.data.budget || [];
   const events = useCalendarEvents();
   const [notes, setNotes] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -73,16 +75,16 @@ export default function Review() {
       .catch(() => setNotes([]));
   useEffect(() => { loadNotes(); }, []);
 
-  const loading = [habits, habitLogs, tasks, boards, nutrition, goals, weights, transactions, categories].some((r) => r.loading) || notes === null;
+  const loading = [habits, habitLogs, tasks, boards, nutrition, goals, weights].some((r) => r.loading) || notes === null;
 
   const review = useMemo(
     () => buildReview({
       today: new Date(),
       habits: habits.rows, habitLogs: habitLogs.rows, tasks: tasks.rows, boards: boards.rows,
-      nutrition: nutrition.rows, goals: goals.rows, weights: weights.rows, transactions: transactions.rows,
-      categories: categories.rows, notes: notes || [], events,
+      nutrition: nutrition.rows, goals: goals.rows, weights: weights.rows, transactions,
+      categories, notes: notes || [], events,
     }),
-    [habits.rows, habitLogs.rows, tasks.rows, boards.rows, nutrition.rows, goals.rows, weights.rows, transactions.rows, categories.rows, notes, events]
+    [habits.rows, habitLogs.rows, tasks.rows, boards.rows, nutrition.rows, goals.rows, weights.rows, transactions, categories, notes, events]
   );
 
   const title = reviewNoteTitle(review);
@@ -132,8 +134,8 @@ export default function Review() {
         <Stat label="Tasks done" value={`${t.dueThisWeek.done}/${t.dueThisWeek.total}`} to="/todo">
           <span className="review-delta review-delta--flat">{t.overdue.length ? `${t.overdue.length} overdue now` : 'nothing overdue'}</span>
         </Stat>
-        <Stat label="Spending" value={s.count ? currency(s.total) : '—'} to="/finance/budget">
-          {s.count ? <Delta current={s.total} previous={s.prevTotal} good="neutral" format={(x) => currency(x)} /> : <span className="review-delta review-delta--flat">nothing logged</span>}
+        <Stat label="Spending" value={!finance.error && finance.connected && s.count ? currency(s.total) : '—'} to="/finance/budget">
+          {finance.error || !finance.connected ? <span className="review-delta review-delta--flat">{finance.loading ? 'reading finance workbook' : finance.error ? 'workbook unavailable' : 'connect finance workbook'}</span> : s.count ? <Delta current={s.total} previous={s.prevTotal} good="neutral" format={(x) => currency(x)} /> : <span className="review-delta review-delta--flat">nothing logged</span>}
         </Stat>
       </div>
 
@@ -187,7 +189,7 @@ export default function Review() {
         <Card className="card-section" static>
           <div className="card-section-title">Money & notes</div>
           <dl className="review-facts">
-            <div><dt>Spending</dt><dd>{s.count ? `${currency(s.total)} across ${s.count} transaction${s.count === 1 ? '' : 's'}${s.weeklyBudget ? ` · weekly budget ${currency(s.weeklyBudget)}` : ''}` : 'Nothing logged this week'}</dd></div>
+            <div><dt>Spending</dt><dd>{finance.error || !finance.connected ? 'Finance workbook not connected or unavailable.' : s.count ? `${currency(s.total)} across ${s.count} transaction${s.count === 1 ? '' : 's'}${s.weeklyBudget ? ` · weekly budget ${currency(s.weeklyBudget)}` : ''}` : 'Nothing logged this week'}</dd></div>
             {s.top.length > 0 && <div><dt>Biggest</dt><dd>{s.top.map((c) => `${c.name} ${currency(c.amount)}`).join(' · ')}</dd></div>}
             <div><dt>Notes written</dt><dd>{nt.count ? nt.titles.join(', ') : 'None this week'}</dd></div>
           </dl>

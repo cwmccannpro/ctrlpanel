@@ -7,7 +7,7 @@ const raw='ctpk_'+'a'.repeat(48), headers=new Headers({authorization:`Bearer ${r
 const note={external_key:'research/decisions',folder:'Research',title:'Decisions',content:'# Context'};
 function fakeClient({owner='user-a',writeError=null}={}) {
   const calls=[];
-  return {calls,from(table){const query={select(){return query;},eq(k,v){calls.push([table,k,v]);return query;},order(){return query;},gt(){return query;},limit(){return Promise.resolve({data:[],error:null});},maybeSingle(){return Promise.resolve({data:owner?{user_id:owner}:null,error:null});}};return query;},async rpc(name,args){calls.push([name,args]);return {data:{id:'note-a',...args},error:writeError};}};
+  return {calls,from(table){const query={select(){return query;},eq(k,v){calls.push([table,k,v]);return query;},order(){return query;},gt(){return query;},limit(){return Promise.resolve({data:table==='projects'?[{id:'11111111-1111-4111-8111-111111111111',name:'Alpha'}]:[],error:null});},maybeSingle(){return Promise.resolve({data:owner?{user_id:owner}:null,error:null});}};return query;},async rpc(name,args){calls.push([name,args]);return {data:{id:'note-a',...args},error:writeError};}};
 }
 test('normalizes folder separators and rejects traversal and invalid bodies',()=>{
   assert.equal(validateContext({...note,folder:'Research\\ Ideas / Drafts'}).folder,'Research/Ideas/Drafts');
@@ -17,6 +17,22 @@ test('save ownership comes from key, never from a supplied user_id',async()=>{
   const client=fakeClient();await contextRequest('POST',new URL('https://example.com/api/knowledge/notes'),headers,{...note,user_id:'victim'},client);
   assert.equal(client.calls.at(-1)[1].p_user,'user-a');
   assert.ok(client.calls[0][2]!==raw);assert.equal(client.calls[0][2].length,64);
+});
+test('project-aware writes validate UUIDs and use the ownership-checking RPC',async()=>{
+  const project='11111111-1111-4111-8111-111111111111';
+  assert.throws(()=>validateContext({...note,project_id:'not-a-project'}),/UUID/);
+  const client=fakeClient();
+  await contextRequest('POST',new URL('https://example.com/api/knowledge/notes'),headers,{...note,project_id:project},client);
+  const call=client.calls.find(c=>c[0]==='save_context_note_v2');
+  assert.equal(call[1].p_project,project);assert.equal(call[1].p_set_project,true);
+});
+test('browser notes can be claimed by a deterministic vault key before saving',async()=>{
+  const noteId='22222222-2222-4222-8222-222222222222';
+  const client=fakeClient();
+  await contextRequest('POST',new URL('https://example.com/api/knowledge/notes'),headers,{...note,note_id:noteId,expected_updated_at:'2026-10-06T12:00:00Z'},client);
+  const claim=client.calls.find(c=>c[0]==='claim_context_note');
+  assert.equal(claim[1].p_note,noteId);assert.equal(claim[1].p_key,note.external_key);
+  assert.ok(client.calls.some(c=>c[0]==='save_context_note_v2'));
 });
 test('revoked keys cannot read notes',async()=>{
   const client=fakeClient({owner:null});
@@ -28,10 +44,16 @@ test('reads always constrain ownership and folder',async()=>{
   assert.ok(client.calls.some(c=>c[0]==='knowledge_notes'&&c[1]==='user_id'&&c[2]==='user-a'));
   assert.ok(client.calls.some(c=>c[1]==='folder'&&c[2]==='Prompts'));
 });
+test('vault clients can request the owners project index',async()=>{
+  const client=fakeClient();
+  const result=await contextRequest('GET',new URL('https://example.com/api/knowledge/notes?include_projects=1'),headers,null,client);
+  assert.equal(result.projects[0].name,'Alpha');
+  assert.ok(client.calls.some(c=>c[0]==='projects'&&c[1]==='user_id'&&c[2]==='user-a'));
+});
 test('stale versions become an actionable conflict without retrying overwrite',async()=>{
   const client=fakeClient({writeError:{code:'40001',message:'Read and merge first'}});
   await assert.rejects(contextRequest('POST',new URL('https://example.com'),headers,note,client),e=>e.status===409);
-  assert.equal(client.calls.filter(c=>c[0]==='save_context_note').length,1);
+  assert.equal(client.calls.filter(c=>c[0]==='save_context_note_v2').length,1);
 });
 test('MCP bridge handshakes, lists tools and reports missing setup as tool error',async()=>{
   const child=spawn(process.execPath,['tools/ctrlpanel-mcp.mjs'],{env:{...process.env,CTRLPANEL_URL:'',CTRLPANEL_CONTEXT_KEY:''}});

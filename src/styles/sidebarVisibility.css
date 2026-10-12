@@ -1,0 +1,17 @@
+.sidebar-visibility { display: flex; flex-direction: column; gap: 12px; }
+.sidebar-visibility-modal .modal-overlay { z-index: 150; }
+.sidebar-visibility-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sidebar-visibility-tools .btn { flex-shrink: 0; }
+.sidebar-visibility fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sidebar-visibility-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 4px; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.sidebar-visibility-row > i { color: var(--text-secondary); width: 18px; text-align: center; flex-shrink: 0; }
+.sidebar-visibility-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sidebar-visibility-row input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.sidebar-visibility-row:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.sidebar-visibility-row--child { padding-left: 32px; color: var(--text-secondary); }
+.sidebar-visibility-row.is-disabled, .sidebar-visibility fieldset:disabled { opacity: .6; }
+.sidebar-visibility-row.is-disabled { cursor: default; }
+.sidebar-visibility-group { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+@media (max-width: 760px), (pointer: coarse) {
+  .sidebar-visibility-row { min-height: 44px; }
+}

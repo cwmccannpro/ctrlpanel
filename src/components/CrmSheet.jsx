@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useId } from 'react';
+import CrmTextPreview from './CrmTextPreview.jsx';
 import Modal from './shared/Modal.jsx';
 import Spinner from './shared/Spinner.jsx';
 import SheetsLogo from './SheetsLogo.jsx';
@@ -97,6 +98,52 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
   const [editing, setEditing] = useState(null); // { row, col, draft }
   const [selected, setSelected] = useState(() => new Map()); // sheet row → signature when selected
   const [adding, setAdding] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const previewId = useId();
+  const previewTimer = useRef(null);
+
+  const keepPreview = () => clearTimeout(previewTimer.current);
+  const hidePreview = () => {
+    keepPreview();
+    previewTimer.current = setTimeout(() => setPreview(null), 150);
+  };
+  const showPreview = (event, row, col) => {
+    const anchor = event.currentTarget;
+    const textElement = anchor.querySelector('.crm-cell-text');
+    if (!textElement || (textElement.scrollHeight <= textElement.clientHeight + 1
+      && textElement.scrollWidth <= textElement.clientWidth + 1)) return;
+    keepPreview();
+    const next = { anchor, row: row.row, col, text: row.cells[col], header: data.headers[col] };
+    if (event.type === 'focus' || event.type === 'click') setPreview(next);
+    else previewTimer.current = setTimeout(() => setPreview(next), 200);
+  };
+
+  useEffect(() => () => clearTimeout(previewTimer.current), []);
+  useEffect(() => {
+    clearTimeout(previewTimer.current);
+    setPreview(null);
+  }, [editing, search, filters, sort, hidden, sheetName, data]);
+  useEffect(() => {
+    if (!preview) return;
+    const dismiss = () => { clearTimeout(previewTimer.current); setPreview(null); };
+    const onKey = (event) => { if (event.key === 'Escape') dismiss(); };
+    const onScroll = (event) => {
+      if (!event.target.closest?.('.crm-text-preview')) dismiss();
+    };
+    const onPointer = (event) => {
+      if (!preview.anchor.contains(event.target) && !event.target.closest('.crm-text-preview')) dismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', dismiss);
+    document.addEventListener('scroll', onScroll, true);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('pointerdown', onPointer);
+    };
+  }, [preview]);
 
   const dataRef = useRef(data);
   dataRef.current = data;
@@ -449,10 +496,16 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
                         <td
                           key={c}
                           className={`crm-cell ${canEdit ? 'is-editable' : ''} ${isEditing ? 'is-editing' : ''}`}
-                          tabIndex={canEdit && !isEditing ? 0 : undefined}
+                          tabIndex={!isEditing && (canEdit || text) ? 0 : undefined}
+                          aria-describedby={preview?.row === r.row && preview?.col === c ? previewId : undefined}
+                          onMouseEnter={(e) => !isEditing && showPreview(e, r, c)}
+                          onMouseLeave={hidePreview}
+                          onFocus={(e) => !isEditing && showPreview(e, r, c)}
+                          onBlur={hidePreview}
                           onDoubleClick={() => !isEditing && startEdit(r, c)}
                           onClick={(e) => {
                             if (touch && !isEditing && !e.target.closest('a,button,input,textarea')) startEdit(r, c);
+                            if (touch && !canEdit) showPreview(e, r, c);
                           }}
                           onKeyDown={(e) => {
                             if (canEdit && !isEditing && e.key === 'Enter' && e.target === e.currentTarget) {
@@ -475,7 +528,9 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
                             />
                           ) : link ? (
                             <>
-                              <a href={link.href} target={link.kind === 'url' ? '_blank' : undefined} rel="noopener noreferrer">{text}</a>
+                              <span className="crm-cell-text">
+                                <a href={link.href} target={link.kind === 'url' ? '_blank' : undefined} rel="noopener noreferrer">{text}</a>
+                              </span>
                               {canEdit && (
                                 <button className="crm-cell-edit" aria-label={`Edit ${data.headers[c]}`} title="Edit" onClick={() => startEdit(r, c)}>
                                   <i className="ti ti-pencil" />
@@ -483,7 +538,7 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
                               )}
                             </>
                           ) : (
-                            text || <span className="crm-blank">—</span>
+                            <span className="crm-cell-text">{text || <span className="crm-blank">—</span>}</span>
                           )}
                         </td>
                       );
@@ -513,6 +568,7 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
         </>
       )}
       {adding && <AddRowModal headers={data.headers} onAdd={addRow} onClose={() => setAdding(false)} />}
+      {preview && <CrmTextPreview id={previewId} preview={preview} onEnter={keepPreview} onLeave={hidePreview} />}
     </>
   );
 }

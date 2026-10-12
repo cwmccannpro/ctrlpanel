@@ -348,3 +348,60 @@ test('handleSheetsRequest routes every action and maps errors to HTTP', async ()
   resetSheetsCache();
   assert.equal((await handleSheetsRequest('GET', 'meta', { id: ID })).status, 503);
 });
+
+/* ---------------- native Google tables (Onyx headers start on row 6) ---------------- */
+
+function nativeTable() {
+  mode.meta = { properties: { title: 'Onyx CRM' }, sheets: [{
+    properties: { sheetId: 0, title: 'Contacts', index: 0 },
+    tables: [{ range: { sheetId: 0, startRowIndex: 5, startColumnIndex: 0 },
+      columnProperties: [{ columnIndex: 2, columnType: 'BOOLEAN' }] }],
+  }] };
+}
+
+test('native tables read their own header and keep real sheet row numbers', async () => {
+  nativeTable();
+  mode.values = [['Business', 'Reviews', 'Do not contact'], ['Ada', 0, false], ['', '', false], ['Bob', 12, false], ['', '', true], ['FALSE', '', false]];
+  const out = await readSheet(ID, 'Contacts');
+  assert.deepEqual(out.headers, ['Business', 'Reviews', 'Do not contact']);
+  assert.deepEqual(out.rows, [
+    { row: 7, cells: ['Ada', '0', 'false'] },
+    { row: 9, cells: ['Bob', '12', 'false'] },
+    { row: 10, cells: ['', '', 'true'] },
+    { row: 11, cells: ['FALSE', '', 'false'] },
+  ]);
+  assert.equal(sheetsCalls().at(-1).path, `${ID}/values/'Contacts'!A6:ZZ${MAX_ROWS + 7}`);
+  mode.values = [['Business', 'Reviews', 'Do not contact'], ['', '', 'FALSE']];
+  assert.deepEqual((await readSheet(ID, 'Contacts')).rows, []);
+});
+
+test('native table header and summary rows cannot be edited or deleted', async () => {
+  nativeTable();
+  await rejects(updateCell(ID, 'Contacts', 6, 0, 'changed header'), 'bad_request');
+  await rejects(updateCell(ID, 'Contacts', 3, 0, 'changed summary'), 'bad_request');
+  assert.equal(sheetsCalls().some((c) => c.method === 'PUT'), false);
+  await updateCell(ID, 'Contacts', 7, 0, 'Ada');
+  assert.equal(sheetsCalls().at(-1).path, `${ID}/values/'Contacts'!A7`);
+  assert.deepEqual(await deleteRows(ID, 0, [3, 6, 7, 9]), { ok: true, deleted: 2 });
+  assert.deepEqual(sheetsCalls().at(-1).body.requests.map((r) => r.deleteDimension.range.startIndex), [8, 6]);
+  const before = sheetsCalls().filter((c) => c.method === 'POST').length;
+  assert.deepEqual(await deleteRows(ID, 0, [2, 6]), { ok: true, deleted: 0 });
+  assert.equal(sheetsCalls().filter((c) => c.method === 'POST').length, before);
+});
+
+test('appending to a native table anchors below the summary area', async () => {
+  nativeTable();
+  await appendRow(ID, 'Contacts', ['Ada', 0, false]);
+  assert.equal(sheetsCalls().at(-1).path, `${ID}/values/'Contacts'!A6:append`);
+});
+
+test('plain tabs retain FALSE values and ambiguous tables keep row 1 behavior', async () => {
+  mode.values = [['Name'], ['FALSE']];
+  assert.equal((await readSheet(ID, 'Contacts')).rows[0].cells[0], 'FALSE');
+  nativeTable();
+  mode.meta.sheets[0].tables.push({ range: { startRowIndex: 20 } });
+  assert.equal((await getSpreadsheet(ID)).sheets[0].headerRow, 1);
+  mode.meta.sheets[0].tables.pop();
+  mode.meta.sheets[0].tables[0].range.startColumnIndex = 1;
+  assert.equal((await getSpreadsheet(ID)).sheets[0].headerRow, 1);
+});

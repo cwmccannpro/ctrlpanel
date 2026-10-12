@@ -1,5 +1,7 @@
 # CTRLpanel
 
+Socials supports multiple YouTube, Instagram and X accounts with content analytics together. See [the connection setup guide](docs/social-connections.md) for provider credentials, callback registration and the required `20261011-social-connections.sql` migration.
+
 A multi-user personal **Life OS** — tasks, projects, CRM, calendar, health,
 finances, habits, and an AI "Master Controller" — in one dark, glass-morphism
 dashboard. Every user registers their own account and gets a fully isolated,
@@ -35,7 +37,10 @@ REST OAuth · Recharts · @dnd-kit · Excalidraw.
 - **Agents** — on-demand AI agents in their own sidebar folder. The
   **Opportunities Agent** searches the web and ranks jobs, programs, events,
   certifications and competitions against your profile (import your resume),
-  interests and locations, and suggests skills to build.
+  interests and locations, and suggests skills to build. The **Industry
+  Problems Agent** maps how an industry works (an interactive mind map) and mines
+  reviews, forums and job posts for narrow problems you could realistically build a
+  solution for, scored on pain, attainability, demand, reach and gap.
 
 ## Quick start
 

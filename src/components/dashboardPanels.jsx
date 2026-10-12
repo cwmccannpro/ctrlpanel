@@ -12,12 +12,15 @@ import { useState, useEffect, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import KnowledgePanel from './KnowledgePanel.jsx';
 import DayPlanPanel from './DayPlanPanel.jsx';
+import TaskQuickAdd from './TaskQuickAdd.jsx';
+import FinancePanel from './FinancePanel.jsx';
 import NutritionPanel from './NutritionPanel.jsx';
+import NutritionMacrosPanel from './NutritionMacrosPanel.jsx';
+import IndustryProblemsPanel from './IndustryProblemsPanel.jsx';
 import InstagramPanel from './InstagramPanel.jsx';
 import XPanel from './XPanel.jsx';
 import '../styles/dashboardOptions.css';
 import '../styles/fitness.css';
-import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps, typeColor } from '../lib/fitnessPlan.js';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -32,6 +35,7 @@ import { useRows, useCrud } from '../lib/useData.js';
 import { useTaskDragSource } from '../lib/useTaskDragSource.js';
 import { finance, youtube } from '../lib/api.js';
 import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS } from '../lib/mockData.js';
+import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps, typeColor } from '../lib/fitnessPlan.js';
 import {
   relativeDay, formatDate, parseLocalDate, currency, percent, compactCurrency, compactNumber, number, lifeStats, channelLabel,
 } from '../lib/helpers.js';
@@ -46,19 +50,6 @@ const PRIORITY_COLOR = { Urgent: '#ef4444', High: '#f59e0b', Medium: '#3b82f6', 
 const byPriority = (a, b) =>
   (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) ||
   String(a.created_at || '').localeCompare(String(b.created_at || ''));
-
-const QUOTES = [
-  { q: 'Discipline equals freedom.', a: 'Jocko Willink' },
-  { q: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', a: 'Aristotle' },
-  { q: 'Take care of your body. It’s the only place you have to live.', a: 'Jim Rohn' },
-  { q: 'Success is the sum of small efforts repeated day in and day out.', a: 'Robert Collier' },
-  { q: 'The body achieves what the mind believes.', a: 'Napoleon Hill' },
-  { q: 'Motivation gets you going, discipline keeps you growing.', a: 'John C. Maxwell' },
-  { q: 'The groundwork for all happiness is good health.', a: 'Leigh Hunt' },
-  { q: 'Fall in love with the process and the results will come.', a: 'Eric Thomas' },
-  { q: 'An investment in knowledge pays the best interest.', a: 'Benjamin Franklin' },
-  { q: 'Fear no man, look up to no man. Watch and learn from everyone.', a: 'David Goggins' },
-];
 
 /* ---------- shared bits ---------- */
 function PanelTitle({ children, to }) {
@@ -84,9 +75,10 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
   const navigate = useNavigate();
   const plan = useTaskDragSource();
   const { user } = useAuth();
-  const { rows: boardRows } = useRows('boards', []);
+  const { todoBoards } = useWorkspace();
+  const boardRows = todoBoards.rows;
   const { rows: taskRows } = useRows('tasks', []);
-  const boards = boardRows.filter((b) => b.user_id === user?.id);
+  const boards = boardRows.filter((b) => b.user_id === user?.id && !String(b.id).startsWith('tmp-'));
   const tasks = taskRows.filter((t) => t.user_id === user?.id);
   const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
   const columns = board?.columns?.length ? board.columns : KANBAN_COLUMNS;
@@ -97,9 +89,10 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
 
   return (
     <>
-      <div className="dash2-panel-head">
+      <div className="dash2-panel-head dash2-panel-head--task">
         <select
           className="dash2-select"
+          aria-label="Task board"
           value={board?.id || ''}
           onChange={(e) => {
             const b = boards.find((x) => x.id === e.target.value);
@@ -112,6 +105,7 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
         </select>
         <select
           className="dash2-select"
+          aria-label="Task category"
           value={column}
           onChange={(e) => onCfg({ board_id: board?.id, column: e.target.value })}
           disabled={!board}
@@ -120,6 +114,7 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
         </select>
         <span className="dash2-count">{items.length}</span>
       </div>
+      {board && <TaskQuickAdd board={board} column={column} />}
       <div className="dash2-tasks">
         {!board ? (
           <Empty>Create a board in To Do to show it here.</Empty>
@@ -214,7 +209,7 @@ function WeightPanel({ cfg = {}, onCfg = () => {} }) {
   return (
     <>
       <div className="dash2-panel-head">
-        <PanelTitle to="/health/nutrition">Weight</PanelTitle>
+        <PanelTitle to="/health#nutrition">Weight</PanelTitle>
         <div className="segmented segmented--xs">
           {[30, 90, 365].map((d) => (
             <button key={d} className={days === d ? 'active' : ''} onClick={() => onCfg({ days: d })}>{d === 365 ? '1y' : `${d}d`}</button>
@@ -253,8 +248,6 @@ function WeightPanel({ cfg = {}, onCfg = () => {} }) {
 
 function SupplementsPanel() {
   const { rows: supplements } = useRows('supplements', []);
-  const doy = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
-  const quote = QUOTES[doy % QUOTES.length];
   const enabled = supplements.filter((s) => s.enabled !== false);
   const groups = SUPPLEMENT_TIMINGS.map((timing) => ({
     timing,
@@ -263,8 +256,7 @@ function SupplementsPanel() {
 
   return (
     <>
-      <p className="dash2-quote">“{quote.q}”<span className="dash2-quote-author">— {quote.a}</span></p>
-      <PanelTitle to="/health/supplements">Today’s Stack</PanelTitle>
+      <PanelTitle to="/health#supplements">Today’s Stack</PanelTitle>
       {enabled.length === 0 ? (
         <Empty>No supplements assigned. Add them under Health → Supplements.</Empty>
       ) : (
@@ -283,6 +275,7 @@ function SupplementsPanel() {
   );
 }
 
+// Today's routine from the weekly plan (Health → Fitness): the split and each exercise's sets × reps.
 function FitnessPanel() {
   const { rows: schedule, loading } = useRows('fitness_schedule', []);
   const byDay = planByDay(schedule);
@@ -293,7 +286,7 @@ function FitnessPanel() {
   return (
     <>
       <div className="dash2-train-head">
-        <PanelTitle to="/health/fitness">Today’s Training · {dayLabel(today)}</PanelTitle>
+        <PanelTitle to="/health#fitness">Today’s Training · {dayLabel(today)}</PanelTitle>
         {plan.planned && !plan.rest && <span className="dash2-fit-badge" style={{ background: color }}><i className="ti ti-barbell" /> {plan.type}</span>}
       </div>
       {loading ? null : !plan.planned ? (
@@ -437,299 +430,6 @@ function LifePanel() {
 /* ============================================================
    Finance
    ============================================================ */
-const PERF_SCALES = ['1M', '3M', '6M', '1Y', 'ALL'];
-const CASH_RANGES = [
-  { id: '3M', months: 3 },
-  { id: '6M', months: 6 },
-  { id: '1Y', months: 12 },
-];
-const MONTHLY_FACTOR = { Monthly: 1, 'Bi-Weekly': 26 / 12, Weekly: 52 / 12, Annual: 1 / 12 };
-const monthlyIncome = (rows) =>
-  rows.reduce((s, i) => s + Number(i.amount || 0) * (MONTHLY_FACTOR[i.frequency] ?? 1), 0);
-
-function NetWorthPanel() {
-  const { rows: accounts } = useRows('accounts', []);
-  const { rows: snapshots } = useRows('net_worth_snapshots', [], 'snapshot_date');
-  // Per-instance: the same panel can sit on the dashboard twice, and a shared
-  // gradient id would make both charts use whichever one rendered first.
-  const gradientId = useId();
-
-  const current = accounts.reduce(
-    (s, a) => s + (a.type === 'Liability' ? -Number(a.balance || 0) : Number(a.balance || 0)),
-    0
-  );
-
-  const series = useMemo(() => {
-    const pts = [...snapshots]
-      .filter((s) => s.snapshot_date)
-      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)))
-      .map((s) => ({ date: s.snapshot_date, value: Number(s.total || 0) }));
-    const today = todayKey();
-    if (!pts.length || pts.at(-1).date !== today) pts.push({ date: today, value: current });
-    return pts;
-  }, [snapshots, current]);
-
-  const first = series[0]?.value ?? 0;
-  const change = current - first;
-  const up = change >= 0;
-  const color = up ? '#10b981' : '#ef4444';
-
-  return (
-    <>
-      <div className="dash2-panel-head" style={{ marginBottom: 8 }}>
-        <PanelTitle to="/finance/networth">Net Worth</PanelTitle>
-      </div>
-      {accounts.length === 0 ? (
-        <Empty>Add accounts under Finance → Net Worth.</Empty>
-      ) : (
-        <>
-          <div className="dash2-invest-value">{currency(current)}</div>
-          {series.length > 1 && (
-            <div className="dash2-invest-row">
-              <span className={up ? 'text-green' : 'text-red'}>
-                {up ? '▲' : '▼'} {currency(Math.abs(change))} ({percent(first ? (change / first) * 100 : 0)})
-              </span>
-              <span className="dash2-invest-sep">·</span>
-              <span className="list-row-meta">since {formatDate(series[0].date)}</span>
-            </div>
-          )}
-          {series.length > 1 ? (
-            <ResponsiveContainer width="100%" height={110}>
-              <AreaChart data={series} margin={{ top: 6, right: 4, left: -34, bottom: 0 }}>
-                <defs>
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <YAxis domain={['auto', 'auto']} hide />
-                <Tooltip contentStyle={TIP} labelFormatter={(d) => formatDate(d)} formatter={(v) => [currency(v), 'Net worth']} />
-                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <Empty>Save snapshots on the Net Worth page to chart it over time.</Empty>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-function CashflowPanel({ cfg = {}, onCfg = () => {} }) {
-  const { rows: income } = useRows('income_sources', []);
-  const { rows: categories } = useRows('expense_categories', []);
-  const { rows: txns } = useRows('transactions', []);
-  const range = CASH_RANGES.some((r) => r.id === cfg.range) ? cfg.range : '6M';
-
-  const months = CASH_RANGES.find((r) => r.id === range)?.months || 6;
-  const perMonthIncome = monthlyIncome(income);
-  const budgeted = categories.reduce((s, c) => s + Number(c.budgeted || 0), 0);
-
-  const data = useMemo(() => {
-    const out = [];
-    const ref = new Date();
-    ref.setDate(1);
-    ref.setHours(0, 0, 0, 0);
-    for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(ref.getFullYear(), ref.getMonth() - i, 1);
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      const spent = txns
-        .filter((t) => {
-          if (!t.date) return false;
-          const td = parseLocalDate(t.date);
-          return td.getFullYear() === y && td.getMonth() === m;
-        })
-        .reduce((s, t) => s + Number(t.amount || 0), 0);
-      const expenses = spent > 0 ? spent : budgeted;
-      out.push({
-        label: d.toLocaleDateString('en-US', { month: 'short' }),
-        income: Math.round(perMonthIncome),
-        expenses: Math.round(expenses),
-        actual: spent > 0,
-        net: Math.round(perMonthIncome - expenses),
-      });
-    }
-    return out;
-  }, [txns, perMonthIncome, budgeted, months]);
-
-  const avg = data.length ? Math.round(data.reduce((s, d) => s + d.net, 0) / data.length) : 0;
-  const positive = avg >= 0;
-  const hasData = income.length > 0 || categories.length > 0 || txns.length > 0;
-
-  return (
-    <>
-      <div className="dash2-panel-head" style={{ marginBottom: 8 }}>
-        <PanelTitle to="/finance/budget">Cashflow</PanelTitle>
-        <div className="segmented segmented--xs">
-          {CASH_RANGES.map((r) => (
-            <button key={r.id} className={range === r.id ? 'active' : ''} onClick={() => onCfg({ range: r.id })}>{r.id}</button>
-          ))}
-        </div>
-      </div>
-      {!hasData ? (
-        <Empty>Add income and expense categories under Finance → Budget.</Empty>
-      ) : (
-        <>
-          <div className={`dash2-invest-value ${positive ? 'text-green' : 'text-red'}`}>
-            {positive ? '+' : '−'}{currency(Math.abs(avg))}
-          </div>
-          <div className="dash2-invest-row">
-            <span className="list-row-meta">monthly {positive ? 'positive' : 'negative'} cashflow</span>
-          </div>
-          <div className="dash2-legend">
-            <span><i className="dash2-swatch" style={{ background: '#10b981' }} /> Income {compactCurrency(perMonthIncome)}</span>
-            <span><i className="dash2-swatch" style={{ background: '#ef4444' }} /> Expenses {compactCurrency(budgeted)}</span>
-          </div>
-          <ResponsiveContainer width="100%" height={110}>
-            <BarChart data={data} margin={{ top: 6, right: 4, left: -20, bottom: 0 }} barGap={2}>
-              <CartesianGrid stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label" stroke="var(--text-secondary)" fontSize={10} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--text-secondary)" fontSize={10} tickFormatter={(v) => compactCurrency(v)} tickLine={false} axisLine={false} width={44} />
-              <Tooltip
-                contentStyle={TIP}
-                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                formatter={(v, n, p) => [currency(v), n === 'income' ? 'Income' : p?.payload?.actual ? 'Spent' : 'Budgeted']}
-              />
-              <Bar dataKey="income" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={18} />
-              <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={18} />
-            </BarChart>
-          </ResponsiveContainer>
-        </>
-      )}
-    </>
-  );
-}
-
-// Spend vs budget per category, this month.
-function BudgetPanel() {
-  const { rows: categories } = useRows('expense_categories', []);
-  const { rows: txns } = useRows('transactions', []);
-  const now = new Date();
-  const spentFor = (id) =>
-    txns
-      .filter((t) => t.category_id === id && t.date && parseLocalDate(t.date).getMonth() === now.getMonth() && parseLocalDate(t.date).getFullYear() === now.getFullYear())
-      .reduce((s, t) => s + Number(t.amount || 0), 0);
-
-  const rows = categories
-    .map((c) => ({ id: c.id, name: c.name, budgeted: Number(c.budgeted || 0), spent: spentFor(c.id) }))
-    .sort((a, b) => (b.spent / (b.budgeted || 1)) - (a.spent / (a.budgeted || 1)))
-    .slice(0, 6);
-
-  return (
-    <>
-      <div className="dash2-panel-head">
-        <PanelTitle to="/finance/budget">Budget · {now.toLocaleDateString('en-US', { month: 'long' })}</PanelTitle>
-      </div>
-      {rows.length === 0 ? (
-        <Empty>Add expense categories under Finance → Budget.</Empty>
-      ) : (
-        rows.map((c) => {
-          const pct = c.budgeted ? Math.min((c.spent / c.budgeted) * 100, 100) : 0;
-          const over = c.budgeted && c.spent > c.budgeted;
-          return (
-            <div className="bar-list-row" key={c.id}>
-              <div className="spread">
-                <span className="list-row-meta">{c.name}</span>
-                <span className={`list-row-meta ${over ? 'text-red' : ''}`}>{currency(c.spent)} / {currency(c.budgeted)}</span>
-              </div>
-              <div className="progress">
-                <div className="progress-fill" style={{ width: `${pct}%`, background: over ? '#ef4444' : pct > 80 ? '#f59e0b' : '#10b981' }} />
-              </div>
-            </div>
-          );
-        })
-      )}
-    </>
-  );
-}
-
-function InvestingPanel({ cfg = {}, onCfg = () => {} }) {
-  const { rows: holdings } = useRows('holdings', []);
-  const [prices, setPrices] = useState({});
-  const [perf, setPerf] = useState([]);
-  const gradientId = useId();
-  const scale = PERF_SCALES.includes(cfg.scale) ? cfg.scale : '3M';
-
-  const tickers = holdings.map((h) => h.ticker).filter(Boolean);
-  const tickerKey = tickers.join(',');
-  useEffect(() => {
-    if (!tickerKey) return;
-    let active = true;
-    const poll = () => finance.prices(tickerKey.split(',')).then((d) => active && setPrices(d)).catch(() => {});
-    poll();
-    const t = setInterval(poll, 15000);
-    return () => { active = false; clearInterval(t); };
-  }, [tickerKey]);
-
-  const enriched = holdings.map((h) => {
-    const q = prices[h.ticker];
-    const price = q?.price ?? h.manual_price ?? h.avg_cost ?? 0;
-    return { value: Number(h.shares || 0) * price, cost: Number(h.shares || 0) * Number(h.avg_cost || 0), dayChange: q?.change ?? 0 };
-  });
-  const totalValue = enriched.reduce((s, h) => s + h.value, 0);
-  const totalCost = enriched.reduce((s, h) => s + h.cost, 0);
-  const totalGain = totalValue - totalCost;
-  const returnPct = totalCost ? (totalGain / totalCost) * 100 : 0;
-  const prevValue = enriched.reduce((s, h) => s + (h.dayChange ? h.value / (1 + h.dayChange / 100) : h.value), 0);
-  const dayGain = totalValue - prevValue;
-  const dayPct = prevValue ? (dayGain / prevValue) * 100 : 0;
-
-  const posKey = holdings.filter((h) => h.ticker && Number(h.shares) > 0).map((h) => `${h.ticker}:${h.shares}`).join(',');
-  useEffect(() => {
-    if (!posKey) { setPerf([]); return; }
-    const list = posKey.split(',').map((p) => { const [ticker, shares] = p.split(':'); return { ticker, shares: Number(shares) }; });
-    let active = true;
-    finance.portfolioHistory(list, scale).then((d) => active && setPerf(d.series || [])).catch(() => active && setPerf([]));
-    return () => { active = false; };
-  }, [posKey, scale]);
-
-  const perfUp = (perf.at(-1)?.value ?? 0) >= (perf[0]?.value ?? 0);
-  const color = perfUp ? '#10b981' : '#ef4444';
-
-  return (
-    <>
-      <div className="dash2-panel-head" style={{ marginBottom: 8 }}>
-        <PanelTitle to="/finance/investing">Portfolio</PanelTitle>
-        <div className="segmented segmented--xs">
-          {PERF_SCALES.map((s) => <button key={s} className={scale === s ? 'active' : ''} onClick={() => onCfg({ scale: s })}>{s}</button>)}
-        </div>
-      </div>
-      {holdings.length === 0 ? (
-        <Empty>Add holdings under Finance → Investing.</Empty>
-      ) : (
-        <>
-          <div className="dash2-invest-value">{currency(totalValue)}</div>
-          <div className="dash2-invest-row">
-            <span className={dayGain >= 0 ? 'text-green' : 'text-red'}>{dayGain >= 0 ? '▲' : '▼'} {currency(Math.abs(dayGain))} ({percent(dayPct)}) today</span>
-            <span className="dash2-invest-sep">·</span>
-            <span className={totalGain >= 0 ? 'text-green' : 'text-red'}>{totalGain >= 0 ? '+' : ''}{currency(totalGain)} ({percent(returnPct)}) total</span>
-          </div>
-          {perf.length > 0 && (
-            <ResponsiveContainer width="100%" height={110}>
-              <AreaChart data={perf} margin={{ top: 6, right: 4, left: -34, bottom: 0 }}>
-                <defs>
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <YAxis domain={['auto', 'auto']} hide />
-                <Tooltip contentStyle={TIP} labelFormatter={() => ''} formatter={(v) => [currency(v), 'Value']} />
-                <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#${gradientId})`} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-/* ============================================================
-   Work
-   ============================================================ */
 function ProjectsPanel() {
   const navigate = useNavigate();
   const { rows: projects } = useRows('projects', []);
@@ -870,7 +570,7 @@ function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
       ) : !status.ready ? (
         <Empty>YouTube not configured on the server.</Empty>
       ) : !first ? (
-        <button className="btn btn--sm btn--accent" onClick={() => youtube.connect()}><i className="ti ti-brand-youtube" /> Connect channel</button>
+        <Link className="btn btn--sm btn--accent" to="/socials"><i className="ti ti-brand-youtube" /> Connect channel</Link>
       ) : (
         <>
           <div className="dash2-yt-title">{channelLabel(first)}</div>
@@ -908,45 +608,34 @@ function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
    ============================================================ */
 function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
   const { user } = useAuth();
-  const { rows: boardRows } = useRows('boards', []);
-  const boards = boardRows.filter((b) => b.user_id === user?.id);
-  const tasks = useCrud('tasks');
-  const [text, setText] = useState('');
+  const { todoBoards } = useWorkspace();
+  const boards = todoBoards.rows.filter((b) => b.user_id === user?.id && !String(b.id).startsWith('tmp-'));
   const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
   const columns = board?.columns?.length ? board.columns : KANBAN_COLUMNS;
-
-  const submit = () => {
-    if (!text.trim() || !board) return;
-    tasks.add({ board_id: board.id, title: text.trim(), column_name: columns[0], priority: 'Medium' });
-    setText('');
-  };
+  const column = columns.includes(cfg.column) ? cfg.column : columns[0];
 
   return (
     <>
-      <div className="dash2-panel-head">
+      <div className="dash2-panel-head dash2-panel-head--wrap">
         <PanelTitle to="/todo">Quick Add</PanelTitle>
-        {boards.length > 1 && (
-          <select className="dash2-select" value={board?.id || ''} onChange={(e) => onCfg({ board_id: e.target.value })}>
-            {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
       </div>
       {!board ? (
         <Empty>Create a board in To Do first.</Empty>
       ) : (
-        <div className="row" style={{ gap: 6 }}>
-          <input
-            className="input"
-            placeholder={`New task in ${columns[0]}…`}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            style={{ flex: 1 }}
-          />
-          <button className="btn btn--accent btn--sm" onClick={submit} disabled={!text.trim()}>
-            <i className="ti ti-plus" />
-          </button>
-        </div>
+        <>
+          <div className="dash2-panel-head dash2-panel-head--task">
+            <select className="dash2-select" aria-label="Quick add board" value={board.id} onChange={(e) => {
+              const next = boards.find((b) => b.id === e.target.value);
+              onCfg({ board_id: next.id, column: (next.columns?.length ? next.columns : KANBAN_COLUMNS)[0] });
+            }}>
+              {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <select className="dash2-select" aria-label="Quick add category" value={column} onChange={(e) => onCfg({ board_id: board.id, column: e.target.value })}>
+              {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <TaskQuickAdd board={board} column={column} />
+        </>
       )}
     </>
   );
@@ -1139,13 +828,16 @@ export const PANELS = [
   { id: 'projects', title: 'Projects', description: 'Active projects, progress, and linked work.', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
   { id: 'crm', title: 'CRM Pipeline', description: 'A snapshot of contacts in your CRM pages.', icon: 'ti-users', group: 'Work', Component: CrmPanel },
   { id: 'opportunities', title: 'Opportunities', description: 'Top job, program, and event matches from your agent.', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },
+  { id: 'industry_problems', title: 'Industry Problems', description: 'Ranked build ideas from your industry research.', icon: 'ti-bulb', group: 'Work', Component: IndustryProblemsPanel },
   // Finance
-  { id: 'networth', title: 'Net Worth', description: 'Account balances and total assets, with optional debt.', icon: 'ti-wallet', group: 'Finance', Component: NetWorthPanel },
-  { id: 'cashflow', title: 'Cashflow', description: 'Income, spending, and what remains this month.', icon: 'ti-arrows-exchange', group: 'Finance', Component: CashflowPanel },
-  { id: 'budget', title: 'Budget Categories', description: 'Category budgets and actual spending.', icon: 'ti-receipt', group: 'Finance', Component: BudgetPanel },
-  { id: 'investing', title: 'Portfolio', description: 'Recorded holdings and portfolio allocation.', icon: 'ti-chart-line', group: 'Finance', Component: InvestingPanel },
+  { id: 'networth', title: 'Assets', description: 'Account balances and total assets.', icon: 'ti-wallet', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="networth" /> },
+  { id: 'cashflow', title: 'Cashflow', description: 'Income, spending, and what remains this month.', icon: 'ti-arrows-exchange', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="cashflow" /> },
+  { id: 'budget', title: 'Spending Plan', description: 'Category budgets and actual spending.', icon: 'ti-receipt', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="budget" /> },
+  { id: 'investing', title: 'Investments', description: 'Recorded holdings and portfolio allocation.', icon: 'ti-chart-line', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="investing" /> },
+  { id: 'finance_reserve', title: 'Cash Reserve', description: 'Cash available and reserve coverage.', icon: 'ti-shield', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="reserve" /> },
   // Health
-  { id: 'nutrition', title: 'Nutrition', description: 'Today’s calories, macros, goals, meals, and photo or text logging.', icon: 'ti-tools-kitchen-2', group: 'Health', Component: NutritionPanel },
+  { id: 'nutrition', title: 'Nutrition · Complete', description: 'Calories, macros, micronutrients, daily limits, editable targets, and recent meals.', icon: 'ti-tools-kitchen-2', group: 'Health', Component: NutritionPanel },
+  { id: 'nutrition_macros', title: 'Nutrition · Macros', description: 'A compact view of calories, protein, carbs, and fat with editable progress targets.', icon: 'ti-chart-bar', group: 'Health', Component: NutritionMacrosPanel },
   { id: 'weight', title: 'Weight', description: 'Recent weigh-ins and your weight trend.', icon: 'ti-scale', group: 'Health', Component: WeightPanel },
   { id: 'supplements', title: 'Supplement Stack', description: 'Your supplements grouped by time of day.', icon: 'ti-pill', group: 'Health', Component: SupplementsPanel },
   { id: 'fitness', title: 'Today’s Training', description: 'Today’s split and exercises, with sets and reps.', icon: 'ti-barbell', group: 'Health', Component: FitnessPanel },

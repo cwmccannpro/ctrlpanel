@@ -6,7 +6,8 @@
 // user's own rows.
 // ============================================================
 import { queryTable, insert, update, remove } from './supabase.js';
-import { gcal } from './api.js';
+import { gcal, financeSheets } from './api.js';
+import { financeSummary, financeAliases } from './financeSheet.js';
 import { saveSessionContext } from './knowledge.js';
 import { dayKey } from './helpers.js';
 
@@ -39,7 +40,7 @@ export const TABLE_META = {
   user_goals: { search: [], order: 'updated_at' },
   supplements: { search: ['name', 'notes'], order: 'created_at' },
   supplement_logs: { search: [], order: 'taken_at' },
-  fitness_schedule: { search: ['day_of_week', 'workout_type'], order: 'day_of_week' },
+  fitness_schedule: { search: ['day_of_week', 'workout_type', 'notes'], order: 'day_of_week' },
   workout_logs: { search: ['workout_type', 'notes'], order: 'completed_at' },
   accounts: { search: ['name', 'type'], order: 'updated_at' },
   net_worth_snapshots: { search: [], order: 'snapshot_date' },
@@ -52,12 +53,13 @@ export const TABLE_META = {
   habits: { search: ['name'], order: 'created_at' },
   habit_logs: { search: [], order: 'log_date' },
   opportunities: { search: ['title', 'org', 'industry', 'location', 'kind'], order: 'score' },
+  industry_problems: { search: ['title', 'problem', 'industry', 'stage', 'who'], order: 'score' },
 };
 
 const isAllowed = (table) => Object.prototype.hasOwnProperty.call(TABLE_META, table);
 // Opportunities are written by the Opportunities Agent run — the model may
 // read them, never write them.
-const READ_ONLY = new Set(['opportunities', 'knowledge_notes']); // Knowledge writes use version-checked save_context.
+const READ_ONLY = new Set(['opportunities', 'industry_problems', 'knowledge_notes']); // Knowledge writes use version-checked save_context.
 const todayISO = () => dayKey(new Date());
 
 /**
@@ -80,10 +82,9 @@ export async function buildSnapshot(userName) {
     }
   };
 
-  const [tasks, contacts, accounts, projects, habits] = await Promise.all([
+  const [tasks, contacts, projects, habits] = await Promise.all([
     safe(() => queryTable('tasks', { order: 'due_date', ascending: true, limit: 40 }), []),
     safe(() => queryTable('crm_contacts', { order: 'created_at', limit: 60 }), []),
-    safe(() => queryTable('accounts', { order: 'updated_at', limit: 40 }), []),
     safe(() => queryTable('projects', { order: 'created_at', limit: 30 }), []),
     safe(() => queryTable('habits', { order: 'created_at', limit: 40 }), []),
   ]);
@@ -114,11 +115,13 @@ export async function buildSnapshot(userName) {
     contacts: contacts.slice(0, 40).map((c) => ({ id: c.id, name: c.business_name, temp: c.lead_temp, service: c.service })),
   };
 
-  const netWorth = accounts.reduce((s, a) => s + (a.type === 'Liability' ? -Number(a.balance || 0) : Number(a.balance || 0)), 0);
-  snap.finance = {
-    net_worth: netWorth,
-    accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: Number(a.balance || 0) })),
-  };
+  try {
+    const workbook = await financeSheets.workbook();
+    if (workbook.connected) {
+      const s = financeSummary(workbook.data);
+      snap.finance = { source: 'google_sheets', total_assets: s.assets, view: 'assets', available_cash: s.cash, planned_income: s.plannedIncome, planned_bills: s.plannedExpenses, planned_surplus: s.plannedSavings, unknown_balances: s.unknownBalances, accounts: (workbook.data.accounts || []).map(({ id, name, type, balance }) => ({ id, name, type, balance })) };
+    } else snap.finance = { source: 'google_sheets', connected: false, note: 'Connect the Finance workbook to see current financial values.' };
+  } catch (e) { snap.finance = { source: 'google_sheets', unavailable: true, error: e.message }; }
 
   snap.projects = projects.map((p) => ({ id: p.id, name: p.name, status: p.status }));
   snap.habits = habits.map((h) => ({ id: h.id, name: h.name }));
@@ -142,14 +145,28 @@ export async function buildSnapshot(userName) {
  */
 export async function executeTool(name, input = {}, { navigate, confirm } = {}) {
   try {
+    if (['query_records', 'create_record', 'update_record', 'delete_record'].includes(name) && Object.hasOwn(financeAliases(), input.table)) {
+      if (name !== 'query_records') return 'Finance is managed in Google Sheets. Open the Finance dashboard to edit values safely; legacy database finance rows are retained as historical data.';
+      const workbook = await financeSheets.workbook();
+      if (!workbook.connected) return 'Connect your finance workbook under Finance → Overview first.';
+      let rows = financeAliases(workbook.data)[input.table];
+      if (input.table === 'dividends') return 'Dividends are not part of this workbook contract. Log them as income transactions.';
+      if (input.search) {
+        const q = String(input.search).toLowerCase();
+        rows = rows.filter((r) => (TABLE_META[input.table]?.search || []).some((key) => String(r[key] || '').toLowerCase().includes(q)));
+      }
+      for (const [key, value] of Object.entries(input.filters || {})) rows = rows.filter((r) => r[key] === value);
+      return JSON.stringify(rows.slice(0, Math.min(Number(input.limit) || 25, 100)));
+    }
     switch (name) {
       case 'save_context': return JSON.stringify({ok:true,note:await saveSessionContext(input)});
       case 'navigate_to': {
         const routes = {
           dashboard: '/', calendar: '/calendar', todo: '/todo', habits: '/habits',
-          agents: '/agents', opportunities: '/agents/opportunities', projects: '/projects', crm: '/crm',
-          nutrition: '/health/nutrition', supplements: '/health/supplements', fitness: '/health/fitness',
+          agents: '/agents', opportunities: '/agents/opportunities', industry: '/agents/industry-problems', projects: '/projects', crm: '/crm',
+          health: '/health', nutrition: '/health#nutrition', supplements: '/health#supplements', fitness: '/health#fitness',
           networth: '/finance/networth', budget: '/finance/budget', investing: '/finance/investing',
+          finance: '/finance', debt: '/finance',
           settings: '/settings', knowledge: '/knowledge',
         };
         const route = routes[String(input.page || '').toLowerCase()];

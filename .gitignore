@@ -10,3 +10,6 @@ yarn-debug.log*
 yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
+
+# Local context-sync project list (contains local paths)
+tools/context-projects.json

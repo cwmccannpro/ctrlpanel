@@ -1,11 +1,12 @@
 // ============================================================
 // Agents folder (Express dev). Same surface in worker/index.js; logic in
-// backend/opportunities.js (run orchestration) and backend/claude.js
+// backend/opportunities.js + backend/industry.js (run orchestration) and backend/claude.js
 // (Claude calls). Both routes need a signed-in CTRLpanel user.
 // ============================================================
 import { Router } from 'express';
 import { verifyUser } from '../google.js';
 import { runOpportunitiesCore } from '../opportunities.js';
+import { runIndustryCore } from '../industry.js';
 import { extractResumeProfile } from '../claude.js';
 
 const router = Router();
@@ -23,6 +24,24 @@ router.post('/opportunities/run', async (req, res) => {
   try {
     const { apiKey, today } = req.body || {};
     await runOpportunitiesCore({ userId: user.id, apiKey, today }, write);
+  } finally {
+    res.end();
+  }
+});
+
+// On-demand Industry Problems run for one industry — NDJSON progress stream (see industry.js).
+router.post('/industry/run', async (req, res) => {
+  const user = await verifyUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders?.();
+  const write = (obj) => {
+    if (!res.writableEnded) res.write(JSON.stringify(obj) + '\n');
+  };
+  try {
+    const { apiKey, today, industry, focus } = req.body || {};
+    await runIndustryCore({ userId: user.id, apiKey, today, industry, focus }, write);
   } finally {
     res.end();
   }

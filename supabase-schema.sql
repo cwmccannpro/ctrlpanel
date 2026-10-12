@@ -229,7 +229,10 @@ create table if not exists fitness_schedule (
   workout_type text,
   notes text
 );
+-- Weekly plan: the exercises for that weekday, [{ id, name, sets, reps, weight, note }].
+alter table fitness_schedule add column if not exists exercises jsonb not null default '[]'::jsonb;
 
+-- Retired: Fitness no longer logs workouts (it only holds the weekly plan). Table kept for history.
 create table if not exists workout_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -545,6 +548,39 @@ do $$ begin
 end $$;
 
 -- ============================================
+-- SOCIALS: Instagram account analytics
+-- One row per connected Instagram professional (Business/Creator) account,
+-- holding the 60-day access token + cached counts. Same pattern as
+-- youtube_channels: RLS enabled with NO policy, so only the service-role
+-- backend can read it — the browser sees metadata + analytics only through
+-- /api/instagram/*.
+-- ============================================
+create table if not exists instagram_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ig_user_id text not null,
+  username text,
+  name text,
+  label text, -- user's own name for the sidebar section (falls back to @username)
+  account_type text,
+  profile_picture_url text,
+  followers_count bigint,
+  follows_count bigint,
+  media_count bigint,
+  access_token text,
+  scope text,
+  expires_at bigint, -- ms epoch; long-lived tokens last 60 days, refreshed on use
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (user_id, ig_user_id)
+);
+create index if not exists instagram_accounts_user on instagram_accounts(user_id);
+
+do $$ begin
+  execute 'alter table instagram_accounts enable row level security';
+end $$;
+
+-- ============================================
 -- GOOGLE SHEETS-BACKED CRM
 -- A CRM board can be linked to a Google Spreadsheet, which then becomes the
 -- source of truth for that board (read live, edits written straight back).
@@ -743,8 +779,189 @@ begin
   end loop;
 end $$;
 
--- Weekly fitness plan: ordered exercises per weekday (safe to re-run).
-alter table fitness_schedule add column if not exists exercises jsonb not null default '[]'::jsonb;
+-- ============================================
+-- PROJECT KNOWLEDGE + MARKDOWN VAULT SYNC
+-- Project-aware external writes verify ownership atomically. Legacy notes are
+-- copied into Knowledge with stable identities; their original project fields
+-- remain intact so this migration is non-destructive and safe to re-run.
+-- ============================================
+-- Claim a browser-created note (which has no external key) for a vault.
+create or replace function public.claim_context_note(
+  p_user uuid,
+  p_note uuid,
+  p_key text,
+  p_expected timestamptz
+)
+returns knowledge_notes
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare existing knowledge_notes; result knowledge_notes;
+begin
+  select * into existing from knowledge_notes where id = p_note and user_id = p_user for update;
+  if not found then
+    raise exception 'Note is unavailable.' using errcode = '42501';
+  end if;
+  if existing.external_key = p_key then
+    return existing;
+  end if;
+  if existing.external_key is not null or p_expected is null or existing.updated_at <> p_expected then
+    raise exception 'Note changed or is already linked.' using errcode = '40001';
+  end if;
+  update knowledge_notes set external_key = p_key where id = p_note returning * into result;
+  return result;
+end $$;
+revoke all on function public.claim_context_note(uuid,uuid,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.claim_context_note(uuid,uuid,text,timestamptz) to service_role;
+
+create or replace function public.save_context_note_v2(
+  p_user uuid,
+  p_key text,
+  p_title text,
+  p_folder text,
+  p_content text,
+  p_project uuid,
+  p_set_project boolean,
+  p_expected timestamptz
+)
+returns knowledge_notes
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare existing knowledge_notes; result knowledge_notes;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_user::text || ':' || p_key, 0));
+  if p_set_project and p_project is not null and not exists (
+    select 1 from projects where id = p_project and user_id = p_user
+  ) then
+    raise exception 'Project is unavailable.' using errcode = '42501';
+  end if;
+  select * into existing from knowledge_notes where user_id = p_user and external_key = p_key for update;
+  if found then
+    if existing.title = p_title and existing.folder = p_folder and existing.content = p_content
+      and (not p_set_project or existing.project_id is not distinct from p_project) then
+      return existing;
+    end if;
+    if p_expected is null or existing.updated_at <> p_expected then
+      raise exception 'Context changed; read the latest note and merge before saving.' using errcode = '40001';
+    end if;
+    update knowledge_notes set
+      title = p_title,
+      folder = p_folder,
+      content = p_content,
+      project_id = case when p_set_project then p_project else project_id end,
+      aliases = case when title <> p_title or folder <> p_folder
+        then array_append(array_append(aliases, title), case when folder = '' then title else folder || '/' || title end)
+        else aliases end
+    where id = existing.id returning * into result;
+  else
+    if p_expected is not null then
+      raise exception 'Note no longer exists; read before saving.' using errcode = '40001';
+    end if;
+    insert into knowledge_notes(user_id,external_key,title,folder,content,project_id)
+    values(p_user,p_key,p_title,p_folder,p_content,case when p_set_project then p_project else null end)
+    returning * into result;
+  end if;
+  return result;
+end $$;
+revoke all on function public.save_context_note_v2(uuid,text,text,text,text,uuid,boolean,timestamptz) from public,anon,authenticated;
+grant execute on function public.save_context_note_v2(uuid,text,text,text,text,uuid,boolean,timestamptz) to service_role;
+
+insert into knowledge_notes(user_id,project_id,external_key,title,content,folder,tags,pinned,created_at,updated_at)
+select p.user_id,p.id,
+  'legacy-project-note/'||p.id::text||'/'||md5(coalesce(item->>'id','')||':'||ordinality::text||':'||coalesce(item->>'title','')),
+  coalesce(nullif(btrim(item->>'title'),''),'Project note'),coalesce(item->>'content',''),
+  'Projects/'||p.name,array['legacy-project-note']::text[],
+  case when lower(coalesce(item->>'pinned','false'))='true' then true else false end,
+  p.created_at,p.created_at
+from projects p
+cross join lateral jsonb_array_elements(coalesce(p.notes_list,'[]'::jsonb)) with ordinality as legacy(item,ordinality)
+on conflict do nothing;
+
+insert into knowledge_notes(user_id,project_id,external_key,title,content,folder,tags,pinned,created_at,updated_at)
+select p.user_id,p.id,'legacy-project-note/'||p.id::text||'/single','Notes',p.notes,
+  'Projects/'||p.name,array['legacy-project-note']::text[],false,p.created_at,p.created_at
+from projects p
+where coalesce(jsonb_array_length(coalesce(p.notes_list,'[]'::jsonb)),0)=0
+  and nullif(btrim(p.notes),'') is not null
+on conflict do nothing;
+
+-- ============================================
+-- INDUSTRY PROBLEMS AGENT (Agents folder)
+-- industry_runs: one row per on-demand run for one industry, written by the
+--   backend with the verified session's user_id; `summary` holds the headline,
+--   where-to-start note and the industry map (stages -> steps -> pains).
+-- industry_problems: ranked finds, unique per user on dedupe_key
+--   (industry_key::title slug). `status` belongs to the user — later runs
+--   never overwrite it. Config lives in agent_configs (agent_key 'industry_problems').
+-- ============================================
+create table if not exists industry_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_at timestamptz default now(),
+  finished_at timestamptz,
+  status text not null default 'running' check (status in ('running','complete','error')),
+  error text,
+  industry text not null,
+  industry_key text not null,
+  focus text not null default '',
+  summary jsonb not null default '{}'::jsonb,
+  found int not null default 0,
+  added int not null default 0,
+  searches int not null default 0,
+  input_tokens int not null default 0,
+  output_tokens int not null default 0,
+  cost_usd numeric(10,4) not null default 0,
+  model text,
+  config_snapshot jsonb not null default '{}'::jsonb
+);
+create index if not exists industry_runs_user on industry_runs(user_id, run_at desc);
+
+create table if not exists industry_problems (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  run_id uuid references industry_runs(id) on delete set null,
+  dedupe_key text not null,
+  industry_key text not null,
+  industry text not null,
+  map_key text,
+  title text not null,
+  problem text not null,
+  who text,
+  stage text,
+  solution text,
+  mvp text,
+  solution_type text check (solution_type in ('web_app','automation','ai_tool','dashboard','mobile','extension','service')),
+  build_weeks int,
+  pricing text,
+  reach text,
+  competition text,
+  evidence jsonb not null default '[]'::jsonb,
+  evidence_verified int not null default 0,
+  scores jsonb not null default '{}'::jsonb,
+  score int not null default 0,
+  risk text,
+  status text not null default 'new' check (status in ('new','saved','exploring','dismissed')),
+  first_seen_at timestamptz default now(),
+  last_seen_at timestamptz default now(),
+  unique (user_id, dedupe_key)
+);
+create index if not exists industry_problems_user_industry on industry_problems(user_id, industry_key, score desc);
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['industry_runs','industry_problems'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists "own rows" on %I', t);
+    execute format(
+      'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
+    );
+  end loop;
+end $$;
 
 -- SOCIAL CONNECTIONS: YouTube, Instagram and X (2026-10-11)
 create table if not exists youtube_channels (
@@ -840,3 +1057,34 @@ begin
     execute format('grant all on table %I to service_role', t);
   end loop;
 end $$;
+-- Existing tables already have owner-only RLS. No new rows or reference data.
+alter table nutrition_logs add column if not exists micros jsonb default '{}'::jsonb;
+alter table user_goals add column if not exists micros jsonb not null default '{}'::jsonb;
+
+-- Patch one nutrient atomically so edits from multiple panels preserve other targets.
+create or replace function public.set_nutrition_target(nutrient text, target numeric)
+returns setof public.user_goals
+language plpgsql security invoker set search_path = public as $$
+declare goal_id uuid;
+begin
+  if auth.uid() is null then raise exception 'Sign in to edit nutrition targets.'; end if;
+  if target is null or target < 0 or target > 100000 or target::text in ('NaN', 'Infinity', '-Infinity') then
+    raise exception 'Invalid nutrition target.';
+  end if;
+  if nutrient not in ('calories','protein','carbs','fat','fiber','vitamin_d','calcium','iron','potassium','magnesium','vitamin_c','vitamin_b12','zinc','sodium','vitamin_a','vitamin_e','vitamin_k','thiamin','riboflavin','niacin','pantothenic_acid','vitamin_b6','biotin','folate','choline','phosphorus','iodine','selenium','copper','manganese','chromium','molybdenum','chloride','saturated_fat','added_sugar','cholesterol') then
+    raise exception 'Unknown nutrient.';
+  end if;
+  -- Also serialize the initial empty-account insert without a new unique index.
+  perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text || ':nutrition-goals', 0));
+  select id into goal_id from user_goals where user_id = auth.uid() order by updated_at desc, id desc limit 1 for update;
+  if goal_id is null then insert into user_goals default values returning id into goal_id; end if;
+  if nutrient in ('calories','protein','carbs','fat') then
+    execute format('update public.user_goals set %I = $1, updated_at = now() where id = $2', nutrient) using target, goal_id;
+  else
+    update user_goals set micros = coalesce(micros, '{}'::jsonb) || jsonb_build_object(nutrient, target), updated_at = now() where id = goal_id;
+  end if;
+  return query select * from user_goals where id = goal_id;
+end;
+$$;
+revoke all on function public.set_nutrition_target(text, numeric) from public;
+grant execute on function public.set_nutrition_target(text, numeric) to authenticated;

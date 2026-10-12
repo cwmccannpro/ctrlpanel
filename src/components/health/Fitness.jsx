@@ -25,7 +25,7 @@ const exerciseFields = [
   { key: 'note', label: 'Cue / note', placeholder: 'Tempo, rest, drop sets…' },
 ];
 
-export default function Fitness() {
+export default function Fitness({ embedded = false }) {
   const schedule = useFitnessPlan();
   const toast = useToast();
   const todayKey = dayKeyFor();
@@ -110,11 +110,10 @@ export default function Fitness() {
 
   return (
     <div className="fade-in fitness">
-      <header className="fitness-page-head">
+      <header className={`fitness-page-head${embedded ? ' fitness-page-head--embedded' : ''}`}>
         <div>
-          <div className="fitness-eyebrow">Health / Fitness</div>
-          <h1>Training plan<span className="fitness-title-dot">.</span></h1>
-          <p>Your week, your routine. A little structure for every session.</p>
+          {!embedded && <><div className="fitness-eyebrow">Health / Fitness</div><h1>Training plan<span className="fitness-title-dot">.</span></h1><p>Your week, your routine. A little structure for every session.</p></>}
+          {embedded && <span className="fitness-eyebrow">Weekly training plan</span>}
         </div>
         <button className="btn btn--ghost" disabled={selected === todayKey || saving} onClick={() => selectDay(todayKey)}><i className="ti ti-calendar" aria-hidden="true" /> Today</button>
       </header>

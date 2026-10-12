@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from './shared/Modal.jsx';
+import NutrientIntakeFields from './NutrientIntakeFields.jsx';
 import { prepareMealPhoto } from '../lib/mealPhoto.js';
 import { analyzeMealDescription, analyzeMealPhoto, saveNutritionMeal } from '../lib/nutritionClient.js';
 import { NUTRIENTS, nutritionDay, nutritionTimestamp } from '../lib/nutrition.js';
@@ -53,7 +54,8 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
           mealDate === nutritionDay(new Date(), timeZone) ? new Date().toISOString() : nutritionTimestamp(mealDate, timeZone);
         savedTime.current = { day: mealDate, timestamp };
       }
-      const draft = { ...estimate, id: meal?.id,
+      // A saved row can carry micros: null; an estimate may omit them. Either saves as "none reported".
+      const draft = { ...estimate, micros: estimate.micros || {}, id: meal?.id,
         notes: [estimate.notes, ...(estimate.assumptions || [])].filter(Boolean).join('\n').slice(0, 3000) };
       const row = await saveNutritionMeal(draft, { id: entryId.current, timestamp: savedTime.current.timestamp });
       onSaved(row);
@@ -75,7 +77,7 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
       </div>
       {mode === 'photo' ? <>
         {photo ? <img className="nutrition-photo-preview" src={photo.dataUrl} alt="Meal photo selected for analysis" /> :
-          <div className="nutrition-photo-empty"><i className="ti ti-camera" aria-hidden="true" /><strong>Take a photo of your meal</strong><p className="body-text">We’ll estimate the calories and macros for you.</p></div>}
+          <div className="nutrition-photo-empty"><i className="ti ti-camera" aria-hidden="true" /><strong>Take a photo of your meal</strong><p className="body-text">We’ll estimate calories, macros, and available micronutrients.</p></div>}
         <div className="nutrition-actions">
           <button className="btn" onClick={() => camera.current?.click()} disabled={Boolean(busy)}><i className="ti ti-camera" aria-hidden="true" /> Take photo</button>
           <button className="btn" onClick={() => gallery.current?.click()} disabled={Boolean(busy)}><i className="ti ti-photo" aria-hidden="true" /> Choose photo</button>
@@ -93,6 +95,7 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
         <span className="field-label">{estimate.confidence ? 'Estimated nutrition' : 'Saved nutrition'}</span>
         <strong>{estimate.meal_name}</strong>
         <div className="nutrition-estimate-macros">{NUTRIENTS.map(({ key, label, unit }) => <div key={key}><span>{label}</span><strong>{Math.round(estimate[key])}<small> {unit}</small></strong></div>)}</div>
+        <NutrientIntakeFields values={estimate.micros || {}} disabled={Boolean(busy)} onChange={(micros) => setEstimate((previous) => ({ ...previous, micros }))} />
         {estimate.assumptions?.length > 0 && <p className="list-row-meta">{estimate.assumptions.join(' ')}</p>}
         {estimate.confidence === 'low' && <p className="list-row-meta">Some ingredients or portions are unclear. Add a detail above to improve the estimate.</p>}
         <p className="list-row-meta">Need a correction? Change the description or photo details, then estimate again.</p>

@@ -3,7 +3,7 @@ import Modal from './shared/Modal.jsx';
 import { queryTable, insert, remove } from '../lib/supabase.js';
 import { CONTEXT_PROMPT } from '../lib/contextPrompt.js';
 
-export default function KnowledgeSync({ onClose, onSaved }) {
+export default function KnowledgeSync({ onClose, onSaved, linkedFiles = 0 }) {
   const [keys,setKeys]=useState([]),[name,setName]=useState('Claude Desktop'),[raw,setRaw]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const refresh=async()=>{const r=await queryTable('knowledge_api_keys',{order:'created_at',limit:100});if(r.error)throw new Error(r.error.message);setKeys(r.data);};
   useEffect(()=>{refresh().catch(e=>setError(e.message));},[]);
@@ -28,8 +28,10 @@ export default function KnowledgeSync({ onClose, onSaved }) {
     }catch(e){setError(e.message);}finally{setBusy(false);}
   };
   return <Modal title="Context sync" onClose={onClose} wide>
-    <p className="body-text">Connect a chat tool on each device. Its key can read and update your Knowledge Base; revoke it here at any time.</p>
+    <p className="body-text">Connect a chat tool or the local Markdown vault watcher on each device. Its key can read and update your Knowledge Base; revoke it here at any time.</p>
+    {linkedFiles > 0 && <div className="field" style={{marginTop:18}}><label className="field-label">Linked context files · {linkedFiles}</label><p className="body-text">Local source files update their linked notes automatically while the computer running the sync is on and online. Edit the source file for lasting changes. Edits here pause that note’s sync to protect your work. Revoke the file-sync key below to disconnect it.</p></div>}
     <div className="field" style={{marginTop:18}}><label className="field-label">API endpoint</label><code>{window.location.origin}/api/knowledge/notes</code><p className="body-text">Use your deployed HTTPS address on both computers. Localhost only reaches this computer.</p></div>
+    <div className="field"><label className="field-label">Markdown vault</label><p className="body-text">Run <code>npm run vault:watch</code> on the computer that stores the vault. Files under <code>Projects/&lt;project name&gt;</code> attach to that project automatically; frontmatter keeps a stable identity across edits.</p></div>
     <div className="row"><input className="input" aria-label="Client name" value={name} onChange={e=>setName(e.target.value)}/><button className="btn" disabled={busy} onClick={create}>Create key</button></div>
     {raw&&<div className="field" style={{marginTop:12}}><label className="field-label">Copy this key now; it is shown only here</label><input className="input" readOnly value={raw} aria-label="New context API key" onFocus={e=>e.target.select()}/></div>}
     {keys.map(k=><div className="list-row" key={k.id}><span className="list-row-title">{k.name}</span><code>{k.key_prefix}…</code><button className="btn btn--ghost" disabled={busy} onClick={async()=>{if(!confirm(`Revoke ${k.name}?`))return;try{const r=await remove('knowledge_api_keys',k.id);if(r.error)throw new Error(r.error.message);await refresh();}catch(e){setError(e.message);}}}>Revoke</button></div>)}
