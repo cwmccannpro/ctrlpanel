@@ -4,7 +4,7 @@
 - **One Health page**: `/health` (`pages/health/Health.jsx`, styles `health.css`) stacks Nutrition → Supplements → Fitness, each
   an `embedded` component in `components/health/`. `/health/nutrition|supplements|fitness` render the same page and scroll to
   that section; links should use `/health#nutrition|#supplements|#fitness` (`?log=photo|text` opens the meal editor). The sidebar
-  Health folder has a single Overview entry. Trends/weight and the supplement stack's AI insights sit in collapsed `<details>`.
+  Health folder has a single Overview entry. Each section is flat — no collapsible sub-sections (trends, weight log and the supplement AI tools are always visible).
 - **Nutrition goes past macros.** `lib/nutrition.js` defines `NUTRIENTS` (calories/protein/carbs/fat) and `MICRO_NUTRIENTS`
   (32 keys with units; starting targets are FDA Daily Values; sodium, saturated fat, added sugar and cholesterol are `limit: true`).
   Meal micros live in `nutrition_logs.micros` jsonb; **a missing key means unreported, never zero** (`micronutrientTotals` returns
@@ -17,7 +17,7 @@
   page and both dashboard panels use `NutritionOverview`, so bars and targets stay identical. Panels: `nutrition` = "Nutrition ·
   Complete" (macros + micros + recent meals) and `nutrition_macros` = "Nutrition · Macros" (`NutritionMacrosPanel`, macros only).
   Existing saved layouts keep the `nutrition` id. Meal estimates (photo/text, `analyzeNutritionMeal`) and the GPT `/api/nutrition/log`
-  contract (optional `micros` object, API contract version 3.0.0) carry micros; the meal editor lets the owner correct them from a label.
+  contract (optional `micros` object, API contract version 3.0.0) carry micros. **Micros are never typed in**: the only sources are the photo/text analysis (shown read-only in the meal editor; changing the input re-analyzes) and the GPT's estimate. There are no manual micronutrient fields, and the Master Controller is blocked from writing `nutrition_logs.micros`. Only *targets* are user-edited.
 - Tests: `tests/nutrients.test.mjs` (micro validation/totals/goals/progress/OpenAPI), `tests/nutrition.test.mjs` (API round trip).
 
 ## Fitness plan + Excalidraw update (2026-10-11)

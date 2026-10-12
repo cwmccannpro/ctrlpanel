@@ -60,6 +60,9 @@ const isAllowed = (table) => Object.prototype.hasOwnProperty.call(TABLE_META, ta
 // Opportunities are written by the Opportunities Agent run — the model may
 // read them, never write them.
 const READ_ONLY = new Set(['opportunities', 'industry_problems', 'knowledge_notes']); // Knowledge writes use version-checked save_context.
+// Meal micronutrients come only from photo/text analysis (or the nutrition GPT), never from chat.
+const MICROS_ERROR = 'Error: meal micronutrients are imported automatically from a meal photo or description and cannot be set here.';
+const writesMealMicros = (table, values) => table === 'nutrition_logs' && values && Object.prototype.hasOwnProperty.call(values, 'micros');
 const todayISO = () => dayKey(new Date());
 
 /**
@@ -204,6 +207,7 @@ export async function executeTool(name, input = {}, { navigate, confirm } = {}) 
         const table = input.table;
         if (!isAllowed(table) || READ_ONLY.has(table)) return `Error: "${table}" is not a writable table.`;
         if (!input.values || typeof input.values !== 'object') return 'Error: values object required.';
+        if (writesMealMicros(table, input.values)) return MICROS_ERROR;
         if (table === 'calendar_events' && (await isGoogleConnected())) {
           const v = input.values;
           if (!v.starts_at) return 'Error: starts_at (ISO timestamp) is required.';
@@ -219,6 +223,7 @@ export async function executeTool(name, input = {}, { navigate, confirm } = {}) 
         const table = input.table;
         if (!isAllowed(table) || READ_ONLY.has(table)) return `Error: "${table}" is not a writable table.`;
         if (!input.id) return 'Error: id required.';
+        if (writesMealMicros(table, input.values)) return MICROS_ERROR;
         if (table === 'calendar_events' && (await isGoogleConnected())) {
           await gcal.update(input.id, input.values || {});
           return `Updated event on your Google Calendar.`;
