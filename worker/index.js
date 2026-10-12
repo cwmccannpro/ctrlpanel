@@ -10,7 +10,9 @@
 // Requires compatibility flag "nodejs_compat" (node:crypto, Buffer, and
 // process.env populated from Worker secrets/vars).
 // ============================================================
-import { streamChatCore, supplementAnalyze, interactionCheck, extractResumeProfile } from '../backend/claude.js';
+import { extractResumeProfile } from '../backend/claude.js';
+import { handleAiRequest } from '../backend/ai.js';
+import { AI_ESTIMATE_USD, aiErrorResponse, reserveAgentRun, withAiLease } from '../backend/aiGuard.js';
 import { runOpportunitiesCore } from '../backend/opportunities.js';
 import { runIndustryCore } from '../backend/industry.js';
 import { contextRequest } from '../backend/knowledge.js';
@@ -74,30 +76,13 @@ export default {
       }
       /* ---- health ---- */
       if (pathname === '/api/health') {
-        return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), ts: Date.now() });
+        return json({ ok: true, service: 'ctrlpanel-worker', ts: Date.now() });
       }
 
-      /* ---- AI ---- */
-      if (pathname === '/api/ai/chat' && method === 'POST') {
-        const body = await request.json().catch(() => ({}));
-        const { readable, writable } = new TransformStream();
-        const writer = writable.getWriter();
-        const enc = new TextEncoder();
-        const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n'));
-        ctx.waitUntil(
-          streamChatCore(body, write)
-            .catch((e) => write({ type: 'error', message: e?.message || 'Claude API error' }))
-            .finally(() => writer.close().catch(() => {}))
-        );
-        return new Response(readable, {
-          headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
-        });
-      }
-      if (pathname === '/api/ai/supplement-analyze' && method === 'POST') {
-        return json(await supplementAnalyze(await request.json().catch(() => ({}))));
-      }
-      if (pathname === '/api/ai/interaction-check' && method === 'POST') {
-        return json(await interactionCheck(await request.json().catch(() => ({}))));
+      /* ---- AI: signed-in users only, with per-user limits (backend/ai.js) ---- */
+      if (pathname.startsWith('/api/ai/')) {
+        const response = await handleAiRequest(request, { waitUntil: (p) => ctx.waitUntil(p) });
+        if (response) return response;
       }
 
       /* ---- Finance ---- */
@@ -153,14 +138,16 @@ export default {
         // On-demand Opportunities run: NDJSON progress stream. Streaming keeps
         // the response alive through a multi-minute web-search run.
         if (pathname === '/api/agents/opportunities/run' && method === 'POST') {
+          let lease;
+          try { lease = await reserveAgentRun({ user, apiKey: body.apiKey }); } catch (e) { const r = aiErrorResponse(e); if (r) return r; throw e; }
           const { readable, writable } = new TransformStream();
           const writer = writable.getWriter();
           const enc = new TextEncoder();
-          const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {});
+          const write = lease.wrap((obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {}));
           ctx.waitUntil(
             runOpportunitiesCore({ userId: user.id, apiKey: body.apiKey, today: body.today }, write)
               .catch((e) => write({ type: 'error', message: e?.message || 'Opportunities run failed' }))
-              .finally(() => writer.close().catch(() => {}))
+              .finally(async () => { await lease.settle(); writer.close().catch(() => {}); })
           );
           return new Response(readable, {
             headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
@@ -168,14 +155,16 @@ export default {
         }
         // On-demand Industry Problems run — same NDJSON streaming as above.
         if (pathname === '/api/agents/industry/run' && method === 'POST') {
+          let lease;
+          try { lease = await reserveAgentRun({ user, apiKey: body.apiKey }); } catch (e) { const r = aiErrorResponse(e); if (r) return r; throw e; }
           const { readable, writable } = new TransformStream();
           const writer = writable.getWriter();
           const enc = new TextEncoder();
-          const write = (obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {});
+          const write = lease.wrap((obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {}));
           ctx.waitUntil(
             runIndustryCore({ userId: user.id, apiKey: body.apiKey, today: body.today, industry: body.industry, focus: body.focus }, write)
               .catch((e) => write({ type: 'error', message: e?.message || 'Industry run failed' }))
-              .finally(() => writer.close().catch(() => {}))
+              .finally(async () => { await lease.settle(); writer.close().catch(() => {}); })
           );
           return new Response(readable, {
             headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
@@ -183,8 +172,10 @@ export default {
         }
         if (pathname === '/api/agents/opportunities/profile' && method === 'POST') {
           try {
-            return json(await extractResumeProfile(body));
+            return json(await withAiLease({ user, apiKey: body.apiKey, estimateUsd: AI_ESTIMATE_USD.resume }, () => extractResumeProfile(body)));
           } catch (e) {
+            const limited = aiErrorResponse(e);
+            if (limited) return limited;
             return json({ error: e?.message || 'Could not read that resume.' }, 400);
           }
         }

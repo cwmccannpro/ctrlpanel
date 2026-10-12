@@ -33,7 +33,6 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     service: 'ctrlpanel-backend',
-    anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
     ts: Date.now(),
   });
 });

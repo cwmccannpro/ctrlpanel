@@ -4,6 +4,7 @@ import Modal from '../components/shared/Modal.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings, saveProfile } from '../lib/supabase.js';
 import NutritionSettings from '../components/NutritionSettings.jsx';
+import AiUsage from '../components/AiUsage.jsx';
 import SidebarVisibility from '../components/SidebarVisibility.jsx';
 import { ACCENT_OPTIONS, getSavedAccent, saveAccent, FONT_SIZES } from '../lib/helpers.js';
 import { THEMES, getSavedTheme, saveTheme } from '../lib/themes.js';
@@ -324,6 +325,8 @@ export default function Settings() {
           );
         })}
       </Card>
+
+      <AiUsage />
 
       <NutritionSettings />
 

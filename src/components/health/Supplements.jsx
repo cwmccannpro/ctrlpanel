@@ -5,7 +5,7 @@ import Badge from '../../components/shared/Badge.jsx';
 import Modal from '../../components/shared/Modal.jsx';
 import Spinner from '../../components/shared/Spinner.jsx';
 import { useCrud } from '../../lib/useData.js';
-import { api } from '../../lib/api.js';
+import { aiApi } from '../../lib/api.js';
 import { useAuth } from '../../components/AuthProvider.jsx';
 import { SUPPLEMENT_TIMINGS } from '../../lib/mockData.js';
 
@@ -49,8 +49,8 @@ export default function Supplements({ embedded = false }) {
     setStackResult(null);
     try {
       const enabled = supps.filter((s) => s.enabled).map(({ name, dose, timing }) => ({ name, dose, timing }));
-      const { result, error } = await api.post('/ai/supplement-analyze', { supplements: enabled, apiKey: connectorKey('anthropic') || undefined });
-      setStackResult(error ? `⚠️ ${error}` : result);
+      const { result } = await aiApi.supplementAnalyze(enabled, connectorKey('anthropic') || undefined);
+      setStackResult(result);
     } catch (e) {
       setStackResult(`⚠️ ${e.message}`);
     } finally {
@@ -63,8 +63,8 @@ export default function Supplements({ embedded = false }) {
     setIntLoading(true);
     setIntResult(null);
     try {
-      const { result, error } = await api.post('/ai/interaction-check', { a: intA, b: intB, apiKey: connectorKey('anthropic') || undefined });
-      setIntResult(error ? `⚠️ ${error}` : result);
+      const { result } = await aiApi.interactionCheck(intA, intB, connectorKey('anthropic') || undefined);
+      setIntResult(result);
     } catch (e) {
       setIntResult(`⚠️ ${e.message}`);
     } finally {

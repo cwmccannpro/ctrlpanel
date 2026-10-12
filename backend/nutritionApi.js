@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeNutritionMeal } from './claude.js';
+import { AI_ESTIMATE_USD, withAiLease } from './aiGuard.js';
 import { nutritionEntry, nutritionTimeZone, nutritionDayRange, nutritionTotals, nutritionGoals, nutritionMicros, micronutrientTotals, micronutrientGoals } from '../src/lib/nutrition.js';
 import { nutritionOpenApi } from '../src/lib/nutritionIntegration.js';
 
@@ -137,7 +138,12 @@ export async function handleNutritionRequest(method, url, headers, body) {
       };
     }
     if (!settings.apiKey && !process.env.ANTHROPIC_API_KEY) throw fail('Add an Anthropic key in Settings → Connectors to estimate meals from a photo or description.', 503);
-    return analyzeNutritionMeal({ ...body, apiKey: settings.apiKey });
+    // Photo/description estimates on the server's key count against the per-user limits.
+    return withAiLease({ user, apiKey: settings.apiKey, estimateUsd: AI_ESTIMATE_USD.nutrition }, async (track) => {
+      const result = await analyzeNutritionMeal({ ...body, apiKey: settings.apiKey });
+      track(result.usage);
+      return result;
+    });
   }
   throw fail('Nutrition endpoint not found.', 404);
 }

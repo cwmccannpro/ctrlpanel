@@ -12,6 +12,8 @@
   //   X_CLIENT_ID, X_CLIENT_SECRET,
   //   X_REDIRECT_URI (https://<your-domain>/api/x/callback),
   //   FRONTEND_URL (https://<your-domain>), ALPHA_VANTAGE_KEY (optional)
+  //   Optional AI limits (see .env.example): AI_DAILY_USD_LIMIT, AI_DAILY_REQUEST_LIMIT,
+  //   AI_BURST_PER_MINUTE, AI_ALLOWED_EMAILS
   //
   // NOTE: VITE_* values are ALSO baked into the frontend at build time from
   // .env — keep .env and the Worker secrets in sync.

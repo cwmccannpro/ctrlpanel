@@ -1,27 +1,28 @@
 import { Router } from 'express';
-import { streamChat, supplementAnalyze, interactionCheck } from '../claude.js';
+import { handleAiRequest } from '../ai.js';
 
+// Same dispatcher as the Worker (backend/ai.js): auth, limits and validation
+// live there. This only adapts Express <-> Request/Response, streaming included.
 const router = Router();
-
-// Streaming Master Controller chat (newline-delimited JSON).
-router.post('/chat', (req, res) => streamChat(res, req.body || {}));
-
-// AI Stack Evaluator (Supplements module).
-router.post('/supplement-analyze', async (req, res) => {
+router.use(async (req, res) => {
   try {
-    res.json(await supplementAnalyze(req.body || {}));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const headers = new Headers();
+    for (const key of ['authorization', 'content-type']) if (req.headers[key]) headers.set(key, req.headers[key]);
+    const request = new Request(`${req.protocol}://${req.get('host')}${req.originalUrl}`, {
+      method: req.method, headers,
+      ...(['GET', 'HEAD'].includes(req.method) ? {} : { body: JSON.stringify(req.body || {}) }),
+    });
+    const result = await handleAiRequest(request);
+    if (!result) return res.status(404).json({ error: 'Not found' });
+    result.headers.forEach((value, key) => res.setHeader(key, value));
+    res.status(result.status);
+    if (!result.body) return res.end();
+    res.flushHeaders?.();
+    for await (const chunk of result.body) res.write(chunk);
+    res.end();
+  } catch {
+    if (res.headersSent) res.end();
+    else res.status(500).json({ error: 'AI request failed.' });
   }
 });
-
-// Quick Interaction Checker (Supplements module).
-router.post('/interaction-check', async (req, res) => {
-  try {
-    res.json(await interactionCheck(req.body || {}));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 export default router;

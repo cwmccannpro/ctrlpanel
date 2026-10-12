@@ -36,14 +36,15 @@ export const api = {
 export async function streamChat({ messages, context, apiKey }, onEvent, signal) {
   const res = await fetch(`${BASE}/ai/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ messages, context, apiKey }),
     signal,
   });
 
   if (!res.ok || !res.body) {
-    const text = await res.text().catch(() => res.statusText);
-    onEvent({ type: 'error', message: `API ${res.status}: ${text}` });
+    // The server explains limits and sign-in problems as { error }.
+    const body = await res.json().catch(() => null);
+    onEvent({ type: 'error', message: body?.error || `API ${res.status}` });
     return;
   }
   await readNdjson(res, onEvent);
@@ -204,6 +205,14 @@ async function streamAgentRun(path, payload, onEvent, signal) {
   }
   await readNdjson(res, onEvent);
 }
+
+// AI helpers other than the streaming chat. Signed-in only; the server limits
+// spend on its own Anthropic key per user (calls with the user's own key aren't counted).
+export const aiApi = {
+  usage: () => authApi.get('/ai/usage'),
+  supplementAnalyze: (supplements, apiKey) => authApi.post('/ai/supplement-analyze', { supplements, apiKey }),
+  interactionCheck: (a, b, apiKey) => authApi.post('/ai/interaction-check', { a, b, apiKey }),
+};
 
 export const agentsApi = {
   runOpportunities: ({ apiKey, today } = {}, onEvent, signal) =>

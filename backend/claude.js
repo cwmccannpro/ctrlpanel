@@ -141,7 +141,8 @@ const NO_KEY_MSG =
 // Transport-agnostic core: `write(obj)` emits one NDJSON event. Used by the
 // Express route locally and the Cloudflare Worker in production, so both
 // runtimes share one implementation.
-export async function streamChatCore({ messages = [], context = {}, apiKey } = {}, write) {
+// `onUsage(usage)` receives the finished turn's token usage (spend accounting, backend/aiGuard.js).
+export async function streamChatCore({ messages = [], context = {}, apiKey } = {}, write, { onUsage } = {}) {
   const anthropic = getClient(apiKey);
   if (!anthropic) {
     write({ type: 'error', message: NO_KEY_MSG });
@@ -169,6 +170,7 @@ export async function streamChatCore({ messages = [], context = {}, apiKey } = {
     // Send the complete assistant message so the frontend can (a) record it in
     // history and (b) execute any tool_use blocks it contains.
     const final = await stream.finalMessage();
+    onUsage?.(final.usage);
     write({ type: 'done', stop_reason: final.stop_reason, assistant: final.content });
   } catch (err) {
     write({ type: 'error', message: err?.message || 'Claude API error' });
@@ -188,7 +190,7 @@ export async function streamChat(res, params = {}) {
 }
 
 // Non-streaming helper used by the supplement/interaction routes.
-async function complete(system, prompt, maxTokens = 1024, apiKey) {
+async function complete(system, prompt, maxTokens = 1024, apiKey, onUsage) {
   const anthropic = getClient(apiKey);
   if (!anthropic) throw new Error(NO_KEY_MSG);
   const msg = await anthropic.messages.create({
@@ -197,21 +199,22 @@ async function complete(system, prompt, maxTokens = 1024, apiKey) {
     system,
     messages: [{ role: 'user', content: prompt }],
   });
+  onUsage?.(msg.usage);
   return msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
 }
 
-export async function supplementAnalyze({ supplements = [], apiKey }) {
+export async function supplementAnalyze({ supplements = [], apiKey }, { onUsage } = {}) {
   const system =
     'You are a supplement and nutrition expert. Analyze the stack for interactions, redundancies, timing optimizations, and insights. Use clear sections with short bullet points. Be precise; do not give medical advice beyond general guidance.';
   const prompt = `Analyze this supplement stack:\n${JSON.stringify(supplements, null, 2)}`;
-  return { result: await complete(system, prompt, 1500, apiKey) };
+  return { result: await complete(system, prompt, 1500, apiKey, onUsage) };
 }
 
-export async function interactionCheck({ a, b, apiKey }) {
+export async function interactionCheck({ a, b, apiKey }, { onUsage } = {}) {
   const system =
     'You are a pharmacology expert. Given two supplements or drugs, describe any known interactions, severity, and timing guidance in a short, clear analysis. Note when to consult a professional.';
   const prompt = `Check the interaction between "${a}" and "${b}".`;
-  return { result: await complete(system, prompt, 1000, apiKey) };
+  return { result: await complete(system, prompt, 1000, apiKey, onUsage) };
 }
 
 // Vision produces a draft only. The browser reviews and saves it with RLS.
