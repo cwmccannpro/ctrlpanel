@@ -13,9 +13,9 @@
 .health-section-number { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; border: 1px solid var(--border-bright); border-radius: var(--radius-sm); padding: 8px; }
 .health-section-head h2 { font-size: 18px; font-weight: 600; letter-spacing: -.4px; margin: 0 0 2px; }
 .health-section-head > i { margin-left: auto; color: var(--text-secondary); font-size: 22px; }
-.fitness-page-head--embedded { margin-bottom: 0; align-items: center; }
 .health-section .fitness { gap: 14px; }
 .health-section .toolbar { flex-wrap: wrap; }
+.health-section .card-section > .nutrition-toolbar { margin-bottom: 8px; }
 .health-section .list-row > div { min-width: 0; }
 @media (max-width: 760px) {
   .health-page { gap: 26px; }

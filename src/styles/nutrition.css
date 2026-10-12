@@ -61,6 +61,9 @@
 .nutrition-estimate-notice > i { color: var(--accent); font-size: 18px; }
 .nutrition-estimate-notice strong { font-size: 13px; color: var(--text-primary); }
 .nutrition-estimate-notice p { margin-top: 5px; }
+.nutrition-history-day + .nutrition-history-day { margin-top: 18px; }
+.nutrition-history-day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border-bright); font-size: 13px; color: var(--text-primary); }
+.nutrition-history-day + .btn { margin-top: 16px; }
 .nutrition-meal-row { display: flex; align-items: center; gap: 6px; padding-block: 12px; border-bottom: 1px solid var(--border); }
 .nutrition-meal-row:last-child { border-bottom: 0; }
 .nutrition-meal-row > div { min-width: 0; flex: 1; }

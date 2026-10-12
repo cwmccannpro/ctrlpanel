@@ -110,18 +110,14 @@ export default function Fitness({ embedded = false }) {
 
   return (
     <div className="fade-in fitness">
-      <header className={`fitness-page-head${embedded ? ' fitness-page-head--embedded' : ''}`}>
-        <div>
-          {!embedded && <><div className="fitness-eyebrow">Health / Fitness</div><h1>Training plan<span className="fitness-title-dot">.</span></h1><p>Your week, your routine. A little structure for every session.</p></>}
-          {embedded && <span className="fitness-eyebrow">Weekly training plan</span>}
-        </div>
+      {!embedded && <header className="fitness-page-head">
+        <div><div className="fitness-eyebrow">Health / Fitness</div><h1>Training plan<span className="fitness-title-dot">.</span></h1><p>Your week, your routine. A little structure for every session.</p></div>
         <button className="btn btn--ghost" disabled={selected === todayKey || saving} onClick={() => selectDay(todayKey)}><i className="ti ti-calendar" aria-hidden="true" /> Today</button>
-      </header>
+      </header>}
 
-      <div className="fitness-week-label">
-        <span className="fitness-eyebrow">Your weekly rhythm</span>
-        {available && <span className="fitness-week-summary">{countLabel(trainingDays, 'training day')}<span>·</span>{countLabel(restDays, 'rest day')}<span>·</span>{countLabel(exerciseCount, 'exercise')}</span>}
-      </div>
+      {available && <div className="fitness-week-label">
+        <span className="fitness-week-summary">{countLabel(trainingDays, 'training day')}<span>·</span>{countLabel(restDays, 'rest day')}<span>·</span>{countLabel(exerciseCount, 'exercise')}</span>
+      </div>}
       <div className="fitness-week" role="tablist" aria-label="Training week">
         {PLAN_DAYS.map((day, index) => {
           const saved = dayPlan(byDay[day.key]);

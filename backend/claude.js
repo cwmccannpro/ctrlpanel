@@ -64,7 +64,7 @@ const TOOLS = [
   },
   {
     name: 'navigate_to',
-      description: 'Navigate the app to a page: dashboard, calendar, todo, knowledge, habits, agents (Agents overview), opportunities (Opportunities Agent), industry (Industry Problems Agent), projects, crm, nutrition, supplements, fitness, networth, budget, investing, settings.',
+      description: 'Navigate the app to a page: dashboard, calendar, todo, knowledge, habits, agents (Agents overview), opportunities (Opportunities Agent), industry (Industry Problems Agent), projects, crm, nutrition, supplements, fitness, weight, networth, budget, investing, settings.',
     input_schema: { type: 'object', properties: { page: { type: 'string' } }, required: ['page'] },
   },
   {

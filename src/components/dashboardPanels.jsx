@@ -209,7 +209,7 @@ function WeightPanel({ cfg = {}, onCfg = () => {} }) {
   return (
     <>
       <div className="dash2-panel-head">
-        <PanelTitle to="/health#nutrition">Weight</PanelTitle>
+        <PanelTitle to="/health#weight">Weight</PanelTitle>
         <div className="segmented segmented--xs">
           {[30, 90, 365].map((d) => (
             <button key={d} className={days === d ? 'active' : ''} onClick={() => onCfg({ days: d })}>{d === 365 ? '1y' : `${d}d`}</button>
@@ -217,7 +217,7 @@ function WeightPanel({ cfg = {}, onCfg = () => {} }) {
         </div>
       </div>
       {data.length === 0 ? (
-        <Empty>Log your weight under Health → Nutrition.</Empty>
+        <Empty>Log your weight under Health → Weight.</Empty>
       ) : (
         <>
           <div className="dash2-invest-value">{latest.toFixed(1)} <span style={{ fontSize: 13 }}>lbs</span></div>

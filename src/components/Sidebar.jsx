@@ -149,7 +149,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
   }, [savedFolders]);
 
   // Folders default to open; only an explicit `false` collapses one.
-  const isOpen = (label) => openFolders[label] ?? !['Health', 'Socials'].includes(label);
+  const isOpen = (label) => openFolders[label] ?? label !== 'Socials';
   const toggleFolder = (label) => {
     const next = { ...openFolders, [label]: !isOpen(label) };
     setOpenFolders(next);
@@ -192,7 +192,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
   }, [updateUiPreferences, width]);
 
   // CRM, Projects + Socials are dynamic per-user; Agents come from the agent
-  // registry (src/lib/agentRegistry.js); Health + Finance are fixed. `indexTo`
+  // registry (src/lib/agentRegistry.js); Finance is fixed, and Health is a plain top-level link. `indexTo`
   // is the section's overview page — reached from the header's manage button,
   // never by clicking the folder itself.
   const navigation = sidebarNavigation({ projects: projects.rows, crmBoards: crmBoards.rows, socials, settings });
