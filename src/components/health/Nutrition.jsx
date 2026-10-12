@@ -94,7 +94,6 @@ export default function Nutrition({ embedded = false }) {
           <button className="btn btn--ghost btn--icon" onClick={() => { setError(''); setDeleting({ type: 'meal', id: m.id, name: m.meal_name }); }} aria-label={`Delete ${m.meal_name || 'meal'}`}><i className="ti ti-trash" aria-hidden="true" /></button>
         </div>)}
       </Card>
-    <details className="health-details"><summary><i className="ti ti-chart-line" aria-hidden="true" /> Trends & weight <span>Meal history and weigh-ins</span></summary><div className="health-details-body">
     <Card className="card-section" static>
       <div className="card-section-title">Trends</div>
       {!history.length ? <p className="body-text">Log meals and weight to build your trend chart.</p> : <ResponsiveContainer width="100%" height={260}><LineChart data={history} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
@@ -111,7 +110,6 @@ export default function Nutrition({ embedded = false }) {
       {error && !deleting && <p className="body-text text-red" role="alert">{error}</p>}
       {[...weights.rows].reverse().slice(0, 6).map((w) => <div className="list-row" key={w.id}><span className="list-row-time">{formatDate(nutritionDay(w.logged_at, timeZone))}</span><span className="list-row-title">{w.weight} lb</span><button className="btn btn--ghost btn--icon" onClick={() => { setError(''); setDeleting({ type: 'weight', id: w.id, name: `${w.weight} lb` }); }} aria-label={`Delete weight ${w.weight} lb`}><i className="ti ti-trash" aria-hidden="true" /></button></div>)}
     </Card>
-    </div></details>
     {editor && <NutritionMealEditor meal={editor.meal} photoMode={editor.photo} date={date} timeZone={timeZone} onClose={() => setEditor(null)} onSaved={(row) => { setEditor(null); setDate(nutritionDay(row.logged_at, timeZone)); toast('Meal saved to CTRLpanel'); }} />}
     {deleting && <Modal title="Delete log entry?" onClose={() => !busy && setDeleting(null)} footer={<><button className="btn btn--ghost" onClick={() => setDeleting(null)} disabled={busy}>Cancel</button><button className="btn btn--danger" onClick={remove} disabled={busy}>{busy ? 'Deleting…' : 'Delete'}</button></>}><p className="body-text">Delete “{deleting.name}” from your log?</p>{error && <p className="body-text text-red" role="alert">{error}</p>}</Modal>}
   </div>;

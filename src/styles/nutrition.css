@@ -44,6 +44,11 @@
 .nutrition-estimate-macros span { display: block; font-size: 11px; color: var(--text-secondary); }
 .nutrition-estimate-macros strong { display: block; margin-top: 5px; color: var(--text-primary); font-size: 22px; font-weight: 500; }
 .nutrition-estimate-macros small { font-size: 12px; color: var(--text-secondary); }
+.nutrition-estimate-micros { margin-bottom: 14px; }
+.nutrition-estimate-micros > ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; }
+.nutrition-estimate-micros li { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; padding-bottom: 5px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.nutrition-estimate-micros li strong { color: var(--text-primary); font-weight: 500; white-space: nowrap; }
+.nutrition-estimate-micros small { font-size: 10px; color: var(--text-secondary); }
 .nutrition-analysis-cost { margin-top: 12px; font-size: 11px; color: var(--text-secondary); }
 .nutrition-meal-date summary { cursor: pointer; padding-block: 10px; font-size: 12px; color: var(--text-secondary); }
 .nutrition-meal-date > .input { max-width: 210px; }
@@ -92,10 +97,6 @@
 .nutrition-micro-filter > button { padding-inline: 10px; }
 .nutrition-reference { font-size: 11px; line-height: 1.65; color: var(--text-secondary); margin: 12px 0 0; }
 .nutrition-reference a { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
-.nutrition-intake-fields { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
-.nutrition-intake-fields > summary { cursor: pointer; font-size: 13px; color: var(--text-primary); }
-.nutrition-intake-fields > summary span { font-size: 11px; color: var(--text-secondary); }
-.nutrition-intake-fields > p { margin-block: 12px; }
 .nutrition-overview--compact .nutrition-macro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .nutrition-overview--compact .nutrient-box { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; padding: 12px 0 10px; gap: 4px; }
 .nutrition-overview--compact .nutrient-box:hover { background: var(--accent-dim); }

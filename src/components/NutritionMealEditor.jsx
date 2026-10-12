@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from './shared/Modal.jsx';
-import NutrientIntakeFields from './NutrientIntakeFields.jsx';
 import { prepareMealPhoto } from '../lib/mealPhoto.js';
 import { analyzeMealDescription, analyzeMealPhoto, saveNutritionMeal } from '../lib/nutritionClient.js';
-import { NUTRIENTS, nutritionDay, nutritionTimestamp } from '../lib/nutrition.js';
+import { NUTRIENTS, MICRO_NUTRIENTS, formatNutrient, nutritionDay, nutritionTimestamp } from '../lib/nutrition.js';
 
 export default function NutritionMealEditor({ meal, photoMode = false, date, timeZone, onClose, onSaved }) {
   const [mode, setMode] = useState(photoMode ? 'photo' : 'text');
@@ -62,6 +61,7 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
     } catch (e) { if (active.current) setError(e.message); }
     finally { saving.current = false; if (active.current) setBusy(''); }
   };
+  const imported = MICRO_NUTRIENTS.filter(({ key }) => estimate?.micros?.[key] != null);
   const canAnalyze = mode === 'photo' ? Boolean(photo) : Boolean(description.trim());
 
   return <Modal className="nutrition-meal-modal" title={meal ? 'Edit meal' : 'Log a meal'} onClose={close}
@@ -95,7 +95,11 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
         <span className="field-label">{estimate.confidence ? 'Estimated nutrition' : 'Saved nutrition'}</span>
         <strong>{estimate.meal_name}</strong>
         <div className="nutrition-estimate-macros">{NUTRIENTS.map(({ key, label, unit }) => <div key={key}><span>{label}</span><strong>{Math.round(estimate[key])}<small> {unit}</small></strong></div>)}</div>
-        <NutrientIntakeFields values={estimate.micros || {}} disabled={Boolean(busy)} onChange={(micros) => setEstimate((previous) => ({ ...previous, micros }))} />
+        <div className="nutrition-estimate-micros" aria-label="Micronutrients imported from this meal">
+          <span className="field-label">Micronutrients · {imported.length} imported automatically</span>
+          {imported.length ? <ul>{imported.map(({ key, label, unit }) => <li key={key}><span>{label}</span><strong>{formatNutrient(estimate.micros[key])}<small> {unit}</small></strong></li>)}</ul>
+            : <p className="list-row-meta">No micronutrients could be estimated for this meal.</p>}
+        </div>
         {estimate.assumptions?.length > 0 && <p className="list-row-meta">{estimate.assumptions.join(' ')}</p>}
         {estimate.confidence === 'low' && <p className="list-row-meta">Some ingredients or portions are unclear. Add a detail above to improve the estimate.</p>}
         <p className="list-row-meta">Need a correction? Change the description or photo details, then estimate again.</p>

@@ -125,7 +125,6 @@ export default function Supplements({ embedded = false }) {
         </Card>
       </div>
 
-      <details className="health-details"><summary><i className="ti ti-sparkles" aria-hidden="true" /> Stack insights & interactions <span>Analyze on request</span></summary><div className="health-details-body">
       {/* AI Stack Evaluator */}
       <Card className="card-section" static>
         <div className="card-section-title">
@@ -149,7 +148,6 @@ export default function Supplements({ embedded = false }) {
         {intResult && <div className="ai-result mt-16"><ReactMarkdown>{intResult}</ReactMarkdown></div>}
       </Card>
 
-      </div></details>
 
       {editing && (
         <Modal
