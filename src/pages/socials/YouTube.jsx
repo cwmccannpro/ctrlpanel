@@ -5,17 +5,19 @@
 // is hardcoded to a single channel; analytics are pulled on request (on load,
 // range change, or Refresh).
 // ============================================================
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import Card from '../../components/shared/Card.jsx';
 import Spinner from '../../components/shared/Spinner.jsx';
+import SocialContentList from '../../components/SocialContentList.jsx';
+import YouTubePublications from '../../components/YouTubePublications.jsx';
 import { useAuth } from '../../components/AuthProvider.jsx';
 import { useWorkspace } from '../../components/WorkspaceProvider.jsx';
 import { youtube } from '../../lib/api.js';
-import { channelLabel, number, compactNumber } from '../../lib/helpers.js';
+import { channelLabel, number, compactNumber, parseLocalDate } from '../../lib/helpers.js';
 
 const RANGES = [
   { id: '7d', label: '7d' },
@@ -25,7 +27,8 @@ const RANGES = [
 ];
 const TIP = { background: 'var(--bg-elevated)', border: '1px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
 const axis = { stroke: 'var(--text-secondary)', fontSize: 11, tickLine: false, axisLine: false };
-const fmtDay = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// Series dates are plain YYYY-MM-DD — parse as local days, not UTC (which names the day before in the US).
+const fmtDay = (d) => parseLocalDate(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export default function YouTube() {
   const { id } = useParams();
@@ -33,7 +36,9 @@ export default function YouTube() {
   const { socials } = useWorkspace();
   const { settings, updateUiPreferences } = useAuth();
   const [range, setRange] = useState('28d');
-  const [data, setData] = useState(null);
+  const [response, setData] = useState(null);
+  const request = useRef(0);
+  const data = response?.id === id && response.range === range ? response.data : null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const preferences = settings?.ui_preferences?.youtube || {};
@@ -45,21 +50,23 @@ export default function YouTube() {
   // Pull analytics on request (channel / range change).
   const loadAnalytics = useCallback(async (channelId, r) => {
     if (!channelId) return;
+    const pending = ++request.current;
     setLoading(true);
     setError('');
     setData(null);
     try {
-      setData(await youtube.analytics(channelId, r));
+      const next = await youtube.analytics(channelId, r);
+      if (pending === request.current) setData({ id: channelId, range: r, data: next });
     } catch (e) {
-      setError(e.message || 'Could not load analytics.');
-      setData(null);
+      if (pending === request.current) { setError(e.message || 'Could not load analytics.'); setData(null); }
     } finally {
-      setLoading(false);
+      if (pending === request.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (id) loadAnalytics(id, range);
+    return () => { request.current++; };
   }, [id, range, loadAnalytics]);
 
   const channel = socials.channels.find((c) => c.id === id);
@@ -146,12 +153,12 @@ export default function YouTube() {
             </div>
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <div className="segmented">
+            <div className="segmented" aria-label="Channel analytics range">
               {RANGES.map((r) => (
-                <button key={r.id} className={range === r.id ? 'active' : ''} onClick={() => selectRange(r.id)}>{r.label}</button>
+                <button key={r.id} className={range === r.id ? 'active' : ''} aria-pressed={range === r.id} onClick={() => selectRange(r.id)}>{r.label}</button>
               ))}
             </div>
-            <button className="btn btn--ghost btn--icon" title="Disconnect" onClick={disconnect} disabled={loading}>
+            <button className="btn btn--ghost btn--icon" title="Disconnect" aria-label="Disconnect channel" onClick={disconnect} disabled={loading}>
               <i className="ti ti-plug-off" />
             </button>
           </div>
@@ -160,11 +167,11 @@ export default function YouTube() {
 
       {error ? (
         <Card className="card-section" static>
-          <p className="body-text" style={{ color: 'var(--accent)' }}><i className="ti ti-alert-triangle" /> {error}</p>
+          <p className="body-text" style={{ color: 'var(--accent)' }} role="alert"><i className="ti ti-alert-triangle" /> {error}</p>
           <p className="list-row-meta mt-16">If this is the first connect, make sure the YouTube Data API v3 and YouTube Analytics API are enabled in Google Cloud and the read-only scopes were granted.</p>
         </Card>
       ) : loading && !data ? (
-        <div className="placeholder" style={{ minHeight: 200 }}><Spinner large /></div>
+          <div className="placeholder" style={{ minHeight: 200 }} role="status" aria-label="Loading YouTube analytics"><Spinner large /></div>
       ) : totals ? (
         <>
           <div className="grid grid-3">
@@ -172,6 +179,12 @@ export default function YouTube() {
             <Card className="stat-card"><div className="stat-card-head"><span className="section-label">Watch time</span><i className="ti ti-clock" /></div><div className="stat-card-value">{number(totals.watchHours)}<span style={{ fontSize: 14 }}> hrs</span></div><div className="stat-card-meta">last {range}</div></Card>
             <Card className="stat-card"><div className="stat-card-head"><span className="section-label">Net subscribers</span><i className="ti ti-users" /></div><div className={`stat-card-value ${totals.netSubs >= 0 ? 'text-green' : 'text-red'}`}>{totals.netSubs >= 0 ? '+' : ''}{number(totals.netSubs)}</div><div className="stat-card-meta">last {range}</div></Card>
           </div>
+
+          <YouTubePublications posts={data.latestPosts} notes={data.latestNotes} status={data.latestStatus} />
+
+          <Card className="card-section" static><div className="card-section-title">Top videos · {range}</div>
+            <SocialContentList platform="youtube" posts={data.posts || []} emptyMessage="No video performance returned for this date range." />
+          </Card>
 
           <Card className="card-section" static>
             <div className="card-section-title">Views per day</div>
@@ -206,6 +219,10 @@ export default function YouTube() {
           </Card>
         </>
       ) : null}
+      {data && <>
+        {!totals && <YouTubePublications posts={data.latestPosts} notes={data.latestNotes} status={data.latestStatus} />}
+        {data.notes?.map(note => <p className="list-row-meta" role="status" key={note}>{note}</p>)}
+      </>}
     </div>
   );
 }

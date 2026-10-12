@@ -199,6 +199,6 @@ export const PAGES = [
   { label: 'Net Worth', to: '/finance/networth', icon: 'ti-coin', keywords: 'finance accounts assets' },
   { label: 'Budget', to: '/finance/budget', icon: 'ti-coin', keywords: 'finance spending income' },
   { label: 'Investing', to: '/finance/investing', icon: 'ti-coin', keywords: 'finance portfolio stocks holdings' },
-  { label: 'Socials', to: '/socials', icon: 'ti-share', keywords: 'youtube channels' },
+  { label: 'Socials', to: '/socials', icon: 'ti-share', keywords: 'youtube instagram x accounts channels analytics' },
   { label: 'Settings', to: '/settings', icon: 'ti-settings', keywords: 'accent profile connectors api keys' },
 ];

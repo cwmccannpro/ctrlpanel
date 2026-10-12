@@ -41,11 +41,12 @@ function requireAdmin() {
   return client;
 }
 
-function redirectUri() {
+export function youtubeRedirectUri() {
   if (process.env.YOUTUBE_REDIRECT_URI) return process.env.YOUTUBE_REDIRECT_URI;
   const cal = process.env.GOOGLE_REDIRECT_URI || '';
   return cal.includes('/calendar/') ? cal.replace('/calendar/', '/youtube/') : cal.replace('/callback', '/youtube/callback');
 }
+const redirectUri = youtubeRedirectUri;
 
 export function youtubeReady() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && redirectUri() && admin());
@@ -79,7 +80,7 @@ export function youtubeAuthUrl(state) {
     response_type: 'code',
     scope: SCOPES,
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account consent',
     include_granted_scopes: 'true',
     state,
   });
@@ -111,6 +112,7 @@ async function refreshRow(row) {
   };
   const { error } = await requireAdmin().from('youtube_channels').update(patch).eq('id', row.id);
   if (error) throw new Error(`Could not save refreshed YouTube access: ${error.message}`);
+  Object.assign(row, patch);
   return t.access_token;
 }
 
@@ -237,6 +239,72 @@ export async function disconnectYoutubeChannel(userId, id) {
 
 const RANGE_DAYS = { '7d': 7, '28d': 28, '90d': 90, '365d': 365 };
 const iso = (d) => d.toISOString().slice(0, 10);
+const metric = value => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+
+// Uploads, rather than the top-video report, keep newly published videos visible
+// even when YouTube hasn't processed their analytics yet. All metrics here are
+// lifetime; the channel's selected range only affects its charts and top videos.
+async function latestPublications(row, uploadsPlaylist, end) {
+  const notes = [];
+  if (!uploadsPlaylist) {
+    const channel = await yapi(row, `${DATA_API}/channels?part=contentDetails&id=${encodeURIComponent(row.channel_id)}`);
+    uploadsPlaylist = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylist) throw new Error('Uploads playlist unavailable.');
+  }
+  const uploads = await yapi(row, `${DATA_API}/playlistItems?${new URLSearchParams({
+    part: 'snippet,contentDetails', playlistId: uploadsPlaylist, maxResults: '12',
+  })}`);
+  const items = [...new Map((uploads.items || []).filter(item => item.contentDetails?.videoId)
+    .map(item => [item.contentDetails.videoId, item])).values()];
+  if (!items.length) return { posts: [], notes, status: 'ready' };
+
+  let videos = new Map();
+  try {
+    const details = await yapi(row, `${DATA_API}/videos?${new URLSearchParams({
+      part: 'snippet,statistics', id: items.map(item => item.contentDetails.videoId).join(','),
+    })}`);
+    videos = new Map((details.items || []).filter(video => video.snippet?.channelId === row.channel_id)
+      .map(video => [video.id, video]));
+  } catch { notes.push('Publication totals could not be loaded. Refresh to try again.'); }
+
+  const posts = items.map(item => {
+    const id = item.contentDetails.videoId;
+    const video = videos.get(id);
+    const snippet = video?.snippet || item.snippet;
+    return {
+      id, caption: snippet?.title || 'Video', type: 'Video',
+      timestamp: video?.snippet?.publishedAt || item.contentDetails.videoPublishedAt || null,
+      thumbnail: snippet?.thumbnails?.medium?.url || snippet?.thumbnails?.default?.url || null,
+      permalink: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+      views: metric(video?.statistics?.viewCount), likes: metric(video?.statistics?.likeCount),
+      comments: metric(video?.statistics?.commentCount), watchHours: null, shares: null, averageViewDuration: null,
+    };
+  }).filter(post => !post.timestamp || (Number.isFinite(Date.parse(post.timestamp)) && Date.parse(post.timestamp) <= end.getTime()))
+    .sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
+
+  // One bounded report for all recent uploads, covering their entire published
+  // lifetime. Missing rows remain unknown, including analytics still processing.
+  const dates = posts.map(post => post.timestamp?.slice(0, 10)).filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date || ''));
+  if (posts.length && dates.length) {
+    try {
+      const report = await yapi(row, `${ANALYTICS_API}?${new URLSearchParams({
+        ids: `channel==${row.channel_id}`, startDate: dates.sort()[0], endDate: iso(end),
+        dimensions: 'video', filters: `video==${posts.map(post => post.id).join(',')}`,
+        metrics: 'views,estimatedMinutesWatched,likes,comments,shares,averageViewDuration',
+      })}`);
+      const reports = new Map((report.rows || []).map(values => [values[0], values]));
+      for (const post of posts) {
+        const values = reports.get(post.id);
+        if (!values) continue;
+        const minutes = metric(values[2]);
+        post.watchHours = minutes == null ? null : Number((minutes / 60).toFixed(1));
+        post.shares = metric(values[5]);
+        post.averageViewDuration = metric(values[6]);
+      }
+    } catch { notes.push('Publication watch time and shares could not be loaded. Available views, likes and comments are still shown.'); }
+  }
+  return { posts, notes, status: 'ready' };
+}
 
 /** Analytics for one connected channel over a range. */
 export async function getYoutubeAnalytics(userId, id, range = '28d') {
@@ -253,13 +321,16 @@ export async function getYoutubeAnalytics(userId, id, range = '28d') {
   const days = RANGE_DAYS[range] || 28;
   const end = new Date();
   const start = new Date(end.getTime() - (days - 1) * 86400000);
+  const notes = [];
+  let uploadsPlaylist;
 
   // Refresh live channel stats (subscribers etc.).
   let subscribers = Number(row.subscriber_count || 0);
   let totalViews = Number(row.view_count || 0);
   let videoCount = Number(row.video_count || 0);
   try {
-    const stat = await yapi(row, `${DATA_API}/channels?part=statistics&id=${encodeURIComponent(row.channel_id)}`);
+    const stat = await yapi(row, `${DATA_API}/channels?part=statistics,contentDetails&id=${encodeURIComponent(row.channel_id)}`);
+    uploadsPlaylist = stat.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
     const s = stat.items?.[0]?.statistics;
     if (s) {
       subscribers = Number(s.subscriberCount || subscribers);
@@ -283,7 +354,7 @@ export async function getYoutubeAnalytics(userId, id, range = '28d') {
     sort: 'day',
   });
   let series = [];
-  let totals = { views: 0, watchHours: 0, netSubs: 0 };
+  let totals = null;
   try {
     const rep = await yapi(row, `${ANALYTICS_API}?${q}`);
     const rows = rep.rows || [];
@@ -306,14 +377,41 @@ export async function getYoutubeAnalytics(userId, id, range = '28d') {
       watchHours: Number((watchMinutes / 60).toFixed(1)),
       netSubs: rows.reduce((sum, r) => sum + Number(r[3] || 0) - Number(r[4] || 0), 0),
     };
-  } catch (e) {
-    throw new Error(e.message);
+  } catch {
+    notes.push('Channel analytics could not be loaded. Refresh or reconnect this channel after checking its YouTube Analytics permissions.');
   }
+
+  let latest = { posts: [], notes: [], status: 'unavailable' };
+  try { latest = await latestPublications(row, uploadsPlaylist, end); }
+  catch { latest.notes.push('Latest publications could not be loaded. Refresh or reconnect this channel after checking its YouTube Data permissions.'); }
+  let posts = [];
+  try {
+    const top = new URLSearchParams({ ids: `channel==${row.channel_id}`, startDate: iso(start), endDate: iso(end),
+      dimensions: 'video', metrics: 'views,estimatedMinutesWatched,likes,comments,shares', sort: '-views', maxResults: '12' });
+    const report = await yapi(row, `${ANALYTICS_API}?${top}`);
+    const videoRows = report.rows || [];
+    let snippets = new Map();
+    if (videoRows.length) {
+      try {
+        const videos = await yapi(row, `${DATA_API}/videos?part=snippet&id=${videoRows.map(r => encodeURIComponent(r[0])).join(',')}`);
+        snippets = new Map((videos.items || []).map(v => [v.id, v.snippet]));
+      } catch { notes.push('Some video titles could not be loaded.'); }
+    }
+    posts = videoRows.map(r => ({ id: r[0], caption: snippets.get(r[0])?.title || 'Video',
+      thumbnail: snippets.get(r[0])?.thumbnails?.medium?.url || null,
+      timestamp: snippets.get(r[0])?.publishedAt || null, permalink: `https://www.youtube.com/watch?v=${r[0]}`,
+      views: Number(r[1]), watchHours: Number((Number(r[2]) / 60).toFixed(1)), likes: Number(r[3]), comments: Number(r[4]), shares: Number(r[5]), type: 'Video' }));
+  } catch { notes.push('Top video analytics could not be loaded. Channel analytics are still available.'); }
 
   return {
     channel: { id: row.id, channel_id: row.channel_id, title: row.title, label: row.label || null, thumbnail: row.thumbnail, subscribers, totalViews, videoCount },
     range,
     totals,
     series,
+    posts,
+    latestPosts: latest.posts,
+    latestNotes: latest.notes,
+    latestStatus: latest.status,
+    notes,
   };
 }

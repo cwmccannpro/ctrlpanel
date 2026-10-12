@@ -10,6 +10,14 @@
   (Today's Training) renders today's routine + tomorrow's split. The `workouts` panel and workout logging UI are retired;
   `workout_logs` is kept for history and the Weekly Review no longer shows a workouts stat.
 
+## Social connectivity update (2026-10-11)
+- Socials supports YouTube, Instagram and X accounts, plus a combined content-performance view.
+- All social API routes now share `backend/socials.js` through `backend/routes/socials.js` and Worker; connect is a bearer-authenticated POST returning a provider URL and setting a browser-bound HttpOnly cookie. Never put a Supabase session token in social OAuth URLs.
+- X uses `backend/x.js`, OAuth 2.0 S256 PKCE, read-only scopes + offline access, and the service-role-only `x_accounts` table. Apply `migrations/20261011-social-connections.sql` (also appended to the schema).
+- X metrics are lifetime totals for posts published in the selected range. Load only on request because X API reads use credits; do not auto-poll X content. YouTube now returns top-video performance, and Instagram supports a 28-day overview range.
+- YouTube also returns `latestPosts` (12 newest uploads from the channel's uploads playlist, newest first) with lifetime public counts and watch metrics, independent of the channel date range. `latestStatus` and `latestNotes` distinguish empty content from failed reads; missing/pending metrics remain null. `YouTubePublications` renders the channel list and a six-video overview preview. Channel Analytics failures preserve available publications and return null totals, never fabricated zero performance.
+- Setup checks expose only missing credential names, callback URLs and storage status. Credentials remain server environment/Worker secrets. See `docs/social-connections.md` and `tools/social-setup-check.mjs`. Tests: `socialConnections.test.mjs`, `instagram.test.mjs`, `socialPlatforms.test.mjs`.
+
 > Read this file at the start of EVERY session before writing code.
 > **`supabase-schema.sql` is the single source of truth for the database.**
 > This doc describes architecture and conventions; when in doubt about a

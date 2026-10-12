@@ -4,7 +4,7 @@ import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useToast } from './Toaster.jsx';
 import { useMasterController } from './MasterController.jsx';
 import { AGENTS } from '../lib/agentRegistry.js';
-import { channelLabel } from '../lib/helpers.js';
+import { PLATFORMS, socialSections } from '../lib/socialPlatforms.js';
 import { insert, remove, queryTable } from '../lib/supabase.js';
 import { saveNote } from '../lib/knowledge.js';
 import { notifyDataChanged } from '../lib/useData.js';
@@ -229,7 +229,7 @@ function Palette({ onClose, modKey, cacheRef }) {
       .filter((b) => !String(b.id).startsWith('tmp-'))
       .forEach((b) => list.push(nav(`crm:${b.id}`, 'CRM', b.name || 'Untitled', `/crm/${b.id}`, 'ti-users', 'CRM page')));
     AGENTS.forEach((a) => list.push(nav(`agent:${a.key}`, 'Agents', a.name, a.to, a.icon, 'Agent', a.description)));
-    socials.channels.forEach((c) => list.push(nav(`channel:${c.id}`, 'Socials', channelLabel(c), `/socials/youtube/${c.id}`, 'ti-brand-youtube', 'YouTube channel')));
+    socialSections(socials).forEach((s) => list.push(nav(`social:${s.key}`, 'Socials', s.label, s.to, PLATFORMS[s.platform].icon, `${PLATFORMS[s.platform].name} ${PLATFORMS[s.platform].noun}`)));
 
     remote.notes.forEach((n) => {
       const proj = projects.rows.find((p) => p.id === n.project_id);
@@ -263,7 +263,7 @@ function Palette({ onClose, modKey, cacheRef }) {
     return list;
     // toggleHabit closes over remote.logs / today only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects.rows, realBoards, crmBoards.rows, socials.channels, remote, navigate, mc.send]);
+  }, [projects.rows, realBoards, crmBoards.rows, socials.channels, socials.instagram.accounts, socials.x.accounts, remote, navigate, mc.send]);
 
   const trimmed = query.trim();
   const capture = useMemo(() => parseCapture(trimmed), [trimmed]);

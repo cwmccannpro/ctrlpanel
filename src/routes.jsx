@@ -26,6 +26,8 @@ const loaders = {
   Investing: () => import('./pages/finance/Investing.jsx'),
   Socials: () => import('./pages/socials/Socials.jsx'),
   YouTube: () => import('./pages/socials/YouTube.jsx'),
+  Instagram: () => import('./pages/socials/Instagram.jsx'),
+  X: () => import('./pages/socials/X.jsx'),
 };
 const Dashboard = lazy(loaders.Dashboard);
 const Calendar = lazy(loaders.Calendar);
@@ -47,6 +49,8 @@ const Budget = lazy(loaders.Budget);
 const Investing = lazy(loaders.Investing);
 const Socials = lazy(loaders.Socials);
 const YouTube = lazy(loaders.YouTube);
+const Instagram = lazy(loaders.Instagram);
+const X = lazy(loaders.X);
 
 // Order = prefetch order (most-visited first). Dashboard loads with the first render.
 export const pageLoaders = [
@@ -69,6 +73,8 @@ export const pageLoaders = [
   loaders.OpportunitiesAgent,
   loaders.Socials,
   loaders.YouTube,
+  loaders.Instagram,
+  loaders.X,
 ];
 
 export const appChildren = [
@@ -95,6 +101,10 @@ export const appChildren = [
   // Kept so older links (and the OAuth callback) still land on the overview.
   { path: 'socials/youtube', element: <Socials /> },
   { path: 'socials/youtube/:id', element: <YouTube /> },
+  { path: 'socials/instagram', element: <Socials /> },
+  { path: 'socials/instagram/:id', element: <Instagram /> },
+  { path: 'socials/x', element: <Socials /> },
+  { path: 'socials/x/:id', element: <X /> },
   { path: 'settings', element: <Settings /> },
   { path: '*', element: <Dashboard /> },
 ];

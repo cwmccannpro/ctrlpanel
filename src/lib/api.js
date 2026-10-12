@@ -134,14 +134,35 @@ async function gfetch(path, options = {}) {
 export const youtube = {
   status: () => authApi.get('/youtube/status'),
   connect: async () => {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token || '';
-    window.location.href = `${BASE}/youtube/connect?token=${encodeURIComponent(token)}`;
+    const { url } = await authApi.post('/youtube/connect');
+    window.location.assign(url);
   },
   analytics: (id, range) => authApi.get(`/youtube/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
   rename: (id, label) => authApi.post('/youtube/rename', { id, label }),
   disconnect: (id) => authApi.post('/youtube/disconnect', { id }),
 };
+
+// Instagram analytics — same shape as `youtube`: OAuth and the 60-day token
+// live server-side; the browser only sees account metadata + analytics.
+export const instagram = {
+  status: () => authApi.get('/instagram/status'),
+  connect: async () => {
+    const { url } = await authApi.post('/instagram/connect');
+    window.location.assign(url);
+  },
+  analytics: (id, range) => authApi.get(`/instagram/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
+  rename: (id, label) => authApi.post('/instagram/rename', { id, label }),
+  disconnect: (id) => authApi.post('/instagram/disconnect', { id }),
+};
+
+export const x = {
+  status: () => authApi.get('/x/status'),
+  connect: async () => { const { url } = await authApi.post('/x/connect'); window.location.assign(url); },
+  analytics: (id, range) => authApi.get(`/x/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
+  rename: (id, label) => authApi.post('/x/rename', { id, label }),
+  disconnect: id => authApi.post('/x/disconnect', { id }),
+};
+export const socialApi = { youtube, instagram, x };
 
 // Google Sheets-backed CRM. The server authenticates with a service account,
 // so there's no user OAuth — the user shares their spreadsheet with the

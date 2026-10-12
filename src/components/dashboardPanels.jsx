@@ -13,6 +13,8 @@ import { useNavigate } from 'react-router-dom';
 import KnowledgePanel from './KnowledgePanel.jsx';
 import DayPlanPanel from './DayPlanPanel.jsx';
 import NutritionPanel from './NutritionPanel.jsx';
+import InstagramPanel from './InstagramPanel.jsx';
+import XPanel from './XPanel.jsx';
 import '../styles/dashboardOptions.css';
 import '../styles/fitness.css';
 import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps, typeColor } from '../lib/fitnessPlan.js';
@@ -890,7 +892,7 @@ function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
                 </ResponsiveContainer>
               )}
             </>
-          ) : err ? (
+          ) : err || data ? (
             <Empty>Couldn’t load analytics. Open YouTube to retry.</Empty>
           ) : (
             <Empty>Loading analytics…</Empty>
@@ -1153,6 +1155,8 @@ export const PANELS = [
   { id: 'life', title: 'Life Progress', description: 'Weeks of life and progress toward your life expectancy.', icon: 'ti-hourglass', group: 'Habits', Component: LifePanel },
   // Socials
   { id: 'youtube', title: 'YouTube', description: 'Channel subscribers, views, and watch hours.', icon: 'ti-brand-youtube', group: 'Socials', Component: YouTubePanel },
+  { id: 'instagram', title: 'Instagram', description: 'Account followers, views, reach, and engagement.', icon: 'ti-brand-instagram', group: 'Socials', Component: InstagramPanel },
+  { id: 'x', title: 'X', description: 'Account followers and content analytics loaded on request.', icon: 'ti-brand-x', group: 'Socials', Component: XPanel },
 ];
 
 export const PANELS_BY_ID = Object.fromEntries(PANELS.map((p) => [p.id, p]));

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
-import { channelLabel } from '../lib/helpers.js';
+import { socialSections } from '../lib/socialPlatforms.js';
 import { AGENTS } from '../lib/agentRegistry.js';
 
 const MIN_WIDTH = 120;
@@ -245,8 +245,8 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
       label: 'Socials',
       icon: 'ti-share',
       indexTo: '/socials',
-      emptyLabel: 'No channels yet',
-      items: socials.channels.map((c) => ({ label: channelLabel(c), to: `/socials/youtube/${c.id}` })),
+      emptyLabel: 'No accounts yet',
+      items: socialSections(socials).map((section) => ({ label: section.label, to: section.to })),
     },
   ];
 

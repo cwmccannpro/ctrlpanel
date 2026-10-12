@@ -13,6 +13,8 @@ import financeRoutes from './routes/finance.js';
 import nutritionRoutes from './routes/nutrition.js';
 import agentsRoutes from './routes/agents.js';
 import youtubeRoutes from './routes/youtube.js';
+import instagramRoutes from './routes/instagram.js';
+import socialRoutes from './routes/socials.js';
 import sheetsRoutes from './routes/sheets.js';
 import knowledgeRoutes from './routes/knowledge.js';
 
@@ -43,6 +45,8 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/nutrition', nutritionRoutes); // external API-key logging
 app.use('/api/agents', agentsRoutes); // Agents folder (Opportunities Agent runs, per-user session)
 app.use('/api/youtube', youtubeRoutes); // YouTube channel analytics (per-user OAuth)
+app.use('/api/instagram', instagramRoutes); // Instagram account analytics (per-user OAuth)
+app.use('/api/x', socialRoutes); // X accounts + content analytics
 app.use('/api/sheets', sheetsRoutes); // Google Sheets-backed CRM (service account)
 
 const PORT = process.env.PORT || 3001;
