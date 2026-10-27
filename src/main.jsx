@@ -29,6 +29,7 @@ import NetWorth from './pages/finance/NetWorth.jsx';
 import Budget from './pages/finance/Budget.jsx';
 import Investing from './pages/finance/Investing.jsx';
 import YouTube from './pages/socials/YouTube.jsx';
+import Room from './pages/room/Room.jsx';
 
 // Apply saved theme + display preferences on start.
 loadAccent();
@@ -66,6 +67,7 @@ const router = createBrowserRouter([
       { path: 'todo', element: <ToDo /> },
       { path: 'todo/:boardId', element: <ToDo /> },
       { path: 'habits', element: <Habits /> },
+      { path: 'room', element: <Room /> },
       { path: 'reports', element: <Reports /> },
       { path: 'reports/:sourceId', element: <ReportSourceDetail /> },
       { path: 'projects', element: <Projects /> },

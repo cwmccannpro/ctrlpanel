@@ -68,3 +68,11 @@ AGENTS.md          Ground-truth context for AI coding agents
 - `google_tokens` has RLS enabled with **no** policy: OAuth tokens are readable
   only by the backend via `SUPABASE_SERVICE_ROLE_KEY` and never reach the client.
 - Secrets live in `.env` (gitignored) locally and Wrangler secrets in production.
+
+## Room Control
+
+The **Room** sidebar section integrates the existing Mac Room Control engine
+with CTRLpanel's own interface. See [setup and verification](docs/room-control.md)
+and the additive [database migration](docs/room-control.sql). The Mac continues
+to run Bluetooth, schedules, and alarm audio; an outbound bridge connects it to
+the signed-in account. No Room Control front-end assets are reused.

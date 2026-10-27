@@ -1,5 +1,9 @@
 .env
 .env.local
+work/
+__pycache__/
+*.pyc
+*room-connection.json
 node_modules/
 dist/
 dist-ssr/
