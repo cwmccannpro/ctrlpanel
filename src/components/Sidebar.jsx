@@ -14,7 +14,6 @@ const TOP_LINKS = [
   { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
   { to: '/todo', label: 'To Do', icon: 'ti-checkbox' },
   { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
-  { to: '/room', label: 'Room', icon: 'ti-bulb' },
 ];
 
 // Static grouping folders (fixed sub-pages)

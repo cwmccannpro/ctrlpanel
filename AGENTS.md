@@ -34,8 +34,7 @@
 3. **Two keys, two worlds.**
    - Frontend: `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (safe, RLS-scoped).
    - Backend only: `SUPABASE_SERVICE_ROLE_KEY` — bypasses RLS. Used exclusively
-   for private backend tables such as `room_connections` / `room_commands` and
-   `google_tokens` (which has RLS enabled with NO policy, so the browser
+     for `google_tokens` (which has RLS enabled with NO policy, so the browser
      can never read OAuth tokens) and for headless writers like the inbound PDF
      report ingester (`reports` rows + the `reports` storage bucket).
 4. **All DB access goes through `src/lib`**: `supabase.js` (client + auth +
@@ -65,8 +64,6 @@
   `google_tokens` (service-role only)
 - Socials: `youtube_channels` (service-role only; per-user OAuth tokens + cached
   channel stats, exposed to the owner only through `/api/youtube/*`)
-- Room: `room_connections`, `room_commands` (service-role only; one paired Mac
-  per account, hashed bridge key, last-command snapshot, expiring command queue).
 - Health: `nutrition_logs` (+ `notes`), `weight_logs`, `water_logs`,
   `user_goals` (+ `water`), `supplements`, `supplement_logs`,
   `fitness_schedule`, `workout_logs`
@@ -89,13 +86,6 @@
   RLS loop. The whole file must always be safe to re-run.
 
 ## Feature Map (what exists — do not rebuild)
-- **Room** (`/room`): native CTRLpanel lighting, scenes, routines, speaker alarm,
-  discovery/assignment and activity. Existing local Room Control on the Mac
-  owns Bluetooth, schedules and audio. `room-bridge/bridge.py` polls outbound
-  through the shared `backend/room.js` handler (Express + Worker). Never expose
-  the local controller publicly, import its UI, seed devices, replay uncertain
-  physical commands, or expose bridge keys after pairing. See
-  `docs/room-control.md`; `docs/room-control.sql` is the additive migration.
 - **Dashboard**: customizable widget board — drag to reorder (@dnd-kit), corner-
   drag to resize (col/row spans, 6-col grid), Add Widget picker; layout saved to
   `user_settings.dashboard_widgets`. Widget registry: `src/components/dashboardWidgets.jsx`
@@ -185,9 +175,6 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 .edit-row .toolbar .segmented .switch` etc. before inventing new ones.
 
 ## API Surface (`/api/*` — identical in Express and the Worker)
-- `/api/room/status|connection|commands|commands/:id` — session authenticated;
-  `/api/room/bridge/sync` — hashed per-Mac bearer key; no session or arbitrary
-  URL proxying. Shared allowlist and atomic DB claims constrain hardware actions.
 - `GET  /api/health`
 - `POST /api/ai/chat` (NDJSON stream) · `POST /api/ai/supplement-analyze` · `POST /api/ai/interaction-check`
 - `GET  /api/finance/prices?tickers=A,B`

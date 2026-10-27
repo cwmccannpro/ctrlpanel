@@ -12,7 +12,6 @@
 // ============================================================
 import { streamChatCore, supplementAnalyze, interactionCheck } from '../backend/claude.js';
 import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
-import { handleRoomRequest } from '../backend/room.js';
 import {
   createBoardShare,
   acceptInvite,
@@ -80,13 +79,6 @@ export default {
     const method = request.method;
 
     try {
-      if (pathname.startsWith('/api/room/')) {
-        const token = (request.headers.get('authorization') || '').replace(/^Bearer /, '');
-        const body = method === 'GET' ? {} : await request.json().catch(() => ({}));
-        const result = await handleRoomRequest(method, pathname.slice('/api/room'.length), token, body);
-        return new Response(JSON.stringify(result.body), { status: result.status || 200,
-          headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-      }
       /* ---- health ---- */
       if (pathname === '/api/health') {
         return json({ ok: true, service: 'ctrlpanel-worker', anthropic: Boolean(process.env.ANTHROPIC_API_KEY), email: Boolean(process.env.RESEND_API_KEY), ts: Date.now() });
