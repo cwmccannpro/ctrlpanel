@@ -37,9 +37,27 @@ def relay(origin, key, action, body=None):
 def expired(command):
     return datetime.fromisoformat(command['expires_at'].replace('Z', '+00:00')) <= datetime.now(timezone.utc)
 
-async def send_light(device, patch, previous):
+class DiscoveryCache:
+    """Remember only installed radios; do not collect other nearby devices."""
+    def __init__(self, devices):
+        self.allowed = {d['address'].upper() for d in devices}
+        self.seen = {}
+
+    def remember(self, device, advertisement):
+        address = device.address.upper()
+        if address in self.allowed:
+            self.seen[address] = (device, time.monotonic())
+
+    def get(self, address):
+        device, seen_at = self.seen.get(address.upper(), (None, 0))
+        return device if time.monotonic() - seen_at < 120 else None
+
+
+async def send_light(device, patch, previous, discovery=None):
     address = device['address'].upper()
-    found = await BleakScanner.find_device_by_address(address, timeout=6)
+    found = discovery.get(address) if discovery else None
+    if found is None:
+        found = await BleakScanner.find_device_by_address(address, timeout=8)
     if found is None:
         raise RuntimeError('Not in Bluetooth range. Close the phone app and move the adapter closer.')
     async with BleakClient(found, timeout=10, winrt={'use_cached_services': False}) as client:
@@ -54,7 +72,7 @@ async def send_light(device, patch, previous):
             await client.write_gatt_char(char, packet, response=response)
             await asyncio.sleep(.15)
 
-async def execute(command, server_devices, states, config, api):
+async def execute(command, server_devices, states, config, api, discovery=None):
     installed = {d['id']: d for d in config['devices']}
     configured = {d['id']: d for d in server_devices}
     results = []
@@ -69,7 +87,7 @@ async def execute(command, server_devices, states, config, api):
             remote = configured.get(target)
             if not device or not remote or any(device.get(k) != remote.get(k) for k in ('address', 'profile')):
                 raise RuntimeError('This light is not in the desktop allowlist.')
-            await asyncio.wait_for(send_light(device, command['patch'], states.get(target, {})), timeout=20)
+            await asyncio.wait_for(send_light(device, command['patch'], states.get(target, {}), discovery), timeout=20)
             result['ok'] = True
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
@@ -112,6 +130,9 @@ async def main():
         return await asyncio.to_thread(relay, origin, key, action, body)
     task = None
     delay = 3
+    discovery = DiscoveryCache(config['devices'])
+    scanner = BleakScanner(detection_callback=discovery.remember)
+    await scanner.start()
     logging.info('Room bridge started; %d allowed lights', len(config['devices']))
     try:
         while True:
@@ -127,7 +148,7 @@ async def main():
                 if response.get('command'):
                     if task:
                         raise RuntimeError('Another command is already executing')
-                    task = asyncio.create_task(execute(response['command'], response['devices'], response.get('last_sent', {}), config, api))
+                    task = asyncio.create_task(execute(response['command'], response['devices'], response.get('last_sent', {}), config, api, discovery))
                 delay = 3
             except urllib.error.HTTPError as exc:
                 if exc.code in (401, 403):
@@ -145,6 +166,7 @@ async def main():
         if task:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+        await scanner.stop()
         lock.close()
 
 if __name__ == '__main__':
