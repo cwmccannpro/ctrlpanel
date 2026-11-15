@@ -1,9 +1,11 @@
 """Outbound HTTPS room bridge. Requires Python 3.12+ and bleak (Windows).
 
-Credential arrives from room-run.ps1 after Windows DPAPI decryption. It is never
+Credential is decrypted with Windows DPAPI in this process. It is never
 printed or passed on a command line. Only explicitly installed MACs are allowed.
 """
 import asyncio
+import ctypes
+from ctypes import wintypes
 from datetime import datetime, timezone
 import json
 import logging
@@ -36,6 +38,27 @@ def relay(origin, key, action, body=None):
 
 def expired(command):
     return datetime.fromisoformat(command['expires_at'].replace('Z', '+00:00')) <= datetime.now(timezone.utc)
+
+def load_credential():
+    """Read PowerShell ConvertFrom-SecureString's DPAPI hex, same Windows user."""
+    class Blob(ctypes.Structure):
+        _fields_ = [('size', wintypes.DWORD), ('data', ctypes.POINTER(ctypes.c_ubyte))]
+    encrypted = bytes.fromhex((LOCAL / 'credential.dpapi').read_text(encoding='utf-8-sig').strip())
+    buffer = (ctypes.c_ubyte * len(encrypted)).from_buffer_copy(encrypted)
+    source, output = Blob(len(encrypted), buffer), Blob()
+    crypt = ctypes.WinDLL('crypt32', use_last_error=True)
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    crypt.CryptUnprotectData.argtypes = [ctypes.POINTER(Blob), ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(Blob)]
+    crypt.CryptUnprotectData.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    if not crypt.CryptUnprotectData(ctypes.byref(source), None, None, None, None, 1, ctypes.byref(output)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        return ctypes.string_at(output.data, output.size).decode('utf-16-le')
+    finally:
+        ctypes.memset(output.data, 0, output.size)
+        kernel.LocalFree(output.data)
 
 class DiscoveryCache:
     """Remember only installed radios; do not collect other nearby devices."""
@@ -112,7 +135,7 @@ async def execute(command, server_devices, states, config, api, discovery=None):
     logging.warning('Receipt expired; device state is uncertain.')
 
 async def main():
-    key = os.environ.pop('ROOM_BRIDGE_KEY', '')
+    key = load_credential()
     if not key.startswith('ctrb_') or len(key) != 69:
         raise RuntimeError('Run room-install.ps1 to install a desktop credential.')
     config = json.loads((LOCAL / 'config.json').read_text(encoding='utf-8-sig'))
