@@ -1,0 +1,35 @@
+/* Optional panels sit directly on the dashboard's existing column surfaces. */
+.dash2-panel-head--wrap { flex-wrap: wrap; }
+.dash2-panel-head--wrap .dash2-panel-title { margin: 0; }
+.dash2-panel-head--wrap > .btn { margin-left: auto; }
+.dash2-panel-note { margin: 8px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.dash2-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.dash2-panel-setting { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-block: 12px; color: var(--text-secondary); font-size: 11px; }
+.dash2-panel-setting .dash2-select { max-width: 100%; min-width: 0; text-transform: none; }
+.dash2-inline-action { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.dash2-nutrition-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block: 16px; }
+.dash2-nutrition-label { color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.dash2-nutrition-value { margin-top: 4px; color: var(--text-primary); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dash2-nutrition-value > span { font-size: 11px; font-weight: 400; color: var(--text-secondary); }
+.dash2-nutrition-track { height: 4px; margin-block: 8px 5px; border-radius: 4px; background: var(--border-bright); overflow: hidden; }
+.dash2-nutrition-track > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.dash2-nutrition-meals .list-row { gap: 8px; }
+.dash2-nutrition-meals .list-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dash2-nutrition-meals .list-row-meta { white-space: nowrap; }
+.dash2-idea-row { align-items: flex-start; gap: 10px; }
+.dash2-idea-score { color: var(--accent); min-width: 24px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash2-idea-row .list-row-title { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.dash2-idea-row small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 11px; }
+.dash2-instagram-range { margin-bottom: 14px; }
+.dash2-picker-modal { display: flex; flex-direction: column; overflow: hidden; }
+.dash2-picker-modal .modal-header { flex-shrink: 0; }
+.dash2-picker-modal .modal-body { overflow-y: auto; min-height: 0; }
+.dash2-picker-modal .dash2-pick { min-height: 78px; align-items: flex-start; padding-right: 19px; }
+.dash2-picker-modal .dash2-pick-copy { min-width: 0; white-space: normal; }
+.dash2-pick-copy strong { display: block; font-size: 12.5px; font-weight: 500; line-height: 1.4; }
+.dash2-pick-copy small { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.dash2-picker-modal .section-label { color: var(--text-secondary); }
+@media (max-width: 760px) {
+  .dash2-panel-actions .btn, .dash2-panel-setting .dash2-select, .dash2-panel-head--wrap .btn { min-height: 44px; }
+  .dash2-instagram-range > button, .dash2-picker-modal .segmented > button { min-height: 44px; }
+}

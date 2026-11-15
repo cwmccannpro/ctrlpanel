@@ -1,0 +1,93 @@
+/* ============================================================
+   CTRLpanel — Themes
+   A theme only overrides surface / border / text tokens (+ a couple of tints);
+   the accent stays the user's own pick. Crimson is the default and is defined
+   in globals.css :root. Applied via <html data-theme="…"> (see lib/themes.js).
+   Every theme must define the full token set — tests/themes.test.mjs checks it.
+   ============================================================ */
+
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+  --bg-base: #070a12;
+  --bg-surface: #0d121c;
+  --bg-elevated: #131a27;
+  --border: #1a2232;
+  --border-bright: #263149;
+  --text-primary: #e7ecf6;
+  --text-secondary: #7384a3;
+  --text-muted: #566685;
+  --tint: rgba(150, 180, 255, 0.03);
+  --glass: rgba(13, 18, 28, 0.7);
+}
+
+:root[data-theme='graphite'] {
+  color-scheme: dark;
+  --bg-base: #0b0b0d;
+  --bg-surface: #131316;
+  --bg-elevated: #1a1a1e;
+  --border: #222226;
+  --border-bright: #303036;
+  --text-primary: #ededf0;
+  --text-secondary: #8c8c96;
+  --text-muted: #66666f;
+  --tint: rgba(255, 255, 255, 0.025);
+  --glass: rgba(19, 19, 22, 0.7);
+}
+
+:root[data-theme='forest'] {
+  color-scheme: dark;
+  --bg-base: #070b09;
+  --bg-surface: #0d1411;
+  --bg-elevated: #131c18;
+  --border: #19241f;
+  --border-bright: #25342c;
+  --text-primary: #e6f0ea;
+  --text-secondary: #6e8c7b;
+  --text-muted: #4f6f5c;
+  --tint: rgba(150, 255, 190, 0.025);
+  --glass: rgba(13, 20, 17, 0.7);
+}
+
+:root[data-theme='amoled'] {
+  color-scheme: dark;
+  --bg-base: #000000;
+  --bg-surface: #080808;
+  --bg-elevated: #101010;
+  --border: #181818;
+  --border-bright: #262626;
+  --text-primary: #f2f2f2;
+  --text-secondary: #8a8a8a;
+  --text-muted: #626262;
+  --tint: rgba(255, 255, 255, 0.025);
+  --glass: rgba(8, 8, 8, 0.7);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg-base: #f4f1ec;
+  --bg-surface: #ffffff;
+  --bg-elevated: #faf8f4;
+  --border: #e8e2d9;
+  --border-bright: #d6cdc0;
+  --text-primary: #1d1816;
+  --text-secondary: #6a5e5a;
+  --text-muted: #8c807a;
+  /* Semantic colors need more contrast on a light surface. */
+  --green: #059669;
+  --amber: #b45309;
+  --red: #dc2626;
+  --blue: #2563eb;
+  --tint: rgba(0, 0, 0, 0.03);
+  --glass: rgba(255, 255, 255, 0.75);
+}
+
+/* Light surfaces need softer shadows than the dark themes' deep ones. */
+:root[data-theme='light'] .modal,
+:root[data-theme='light'] .cmdk,
+:root[data-theme='light'] .toast {
+  box-shadow: 0 18px 50px rgba(40, 30, 20, 0.18);
+}
+:root[data-theme='light'] .modal-overlay,
+:root[data-theme='light'] .cmdk-overlay {
+  background: rgba(40, 30, 20, 0.28);
+}

@@ -1,0 +1,38 @@
+{
+  // CTRLpanel — Cloudflare deployment (single Worker: API + static SPA)
+  //
+  // Deploy:   npm run build && npx wrangler deploy
+  // Secrets:  npx wrangler secret put <NAME>   for each of:
+  //   VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+  //   ANTHROPIC_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  //   GOOGLE_REDIRECT_URI (https://<your-domain>/api/calendar/callback),
+  //   YOUTUBE_REDIRECT_URI (https://<your-domain>/api/youtube/callback),
+  //   INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET,
+  //   INSTAGRAM_REDIRECT_URI (https://<your-domain>/api/instagram/callback),
+  //   X_CLIENT_ID, X_CLIENT_SECRET,
+  //   X_REDIRECT_URI (https://<your-domain>/api/x/callback),
+  //   FRONTEND_URL (https://<your-domain>), ALPHA_VANTAGE_KEY (optional)
+  //   Optional AI limits (see .env.example): AI_DAILY_USD_LIMIT, AI_DAILY_REQUEST_LIMIT,
+  //   AI_BURST_PER_MINUTE, AI_ALLOWED_EMAILS
+  //
+  // NOTE: VITE_* values are ALSO baked into the frontend at build time from
+  // .env — keep .env and the Worker secrets in sync.
+  "name": "ctrlpanel",
+  "compatibility_date": "2026-07-08",
+  "compatibility_flags": ["nodejs_compat"],
+  // Preserve dashboard-set variables across wrangler deploys
+  "keep_vars": true,
+  "vars": {
+    "FRONTEND_URL": "https://ctrlpanel.cwmccann.pro",
+    "YOUTUBE_REDIRECT_URI": "https://ctrlpanel.cwmccann.pro/api/youtube/callback",
+    "INSTAGRAM_REDIRECT_URI": "https://ctrlpanel.cwmccann.pro/api/instagram/callback",
+    "X_REDIRECT_URI": "https://ctrlpanel.cwmccann.pro/api/x/callback"
+  },
+  "main": "worker/index.js",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+}

@@ -1,0 +1,332 @@
+# Generated action schema. Replace the server address with your deployed origin,
+# or copy the ready-to-use schema from Settings > Nutrition. Auth: API Key > Bearer.
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CTRLpanel Nutrition",
+    "version": "2.0.0",
+    "description": "Log meal estimates and read daily totals in your private CTRLpanel."
+  },
+  "servers": [
+    {
+      "url": "https://ctrlpanel.cwmccann.pro"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/nutrition/check": {
+      "get": {
+        "operationId": "checkNutritionConnection",
+        "summary": "Check connection and read today’s totals",
+        "description": "Checks the nutrition key and returns the current day, meal timezone, totals and goals. Does not create a meal.",
+        "responses": {
+          "200": {
+            "description": "Connected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or revoked key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Nutrition service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nutrition/log": {
+      "post": {
+        "operationId": "logNutritionEntry",
+        "summary": "Log one meal or food item",
+        "x-openai-isConsequential": false,
+        "description": "Saves one meal with calories and macros. Returns its id, local-day totals and goals. Reuse request_id when retrying the same meal to avoid duplicates.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NutritionEntry"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Meal saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid meal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or revoked key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "request_id already used for another meal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Nutrition service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "NutritionEntry": {
+        "type": "object",
+        "required": [
+          "food_name",
+          "calories",
+          "protein",
+          "carbs",
+          "fat",
+          "request_id"
+        ],
+        "properties": {
+          "food_name": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Name of the whole meal or food item."
+          },
+          "calories": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50000,
+            "description": "Calories in kcal."
+          },
+          "protein": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Protein in g."
+          },
+          "carbs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Carbs in g."
+          },
+          "fat": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Fat in g."
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 3000,
+            "description": "Portions, ingredients, and assumptions. Label photo values as estimates."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When eaten, including timezone offset. Omit for now."
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 120,
+            "description": "Unique id for this meal, reused unchanged on retries. A different meal needs a new id."
+          }
+        }
+      },
+      "Totals": {
+        "type": "object",
+        "properties": {
+          "calories": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 50000,
+            "description": "Calories in kcal."
+          },
+          "protein": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Protein in g."
+          },
+          "carbs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Carbs in g."
+          },
+          "fat": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Fat in g."
+          }
+        }
+      },
+      "DayResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "day": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "day_totals": {
+            "$ref": "#/components/schemas/Totals"
+          },
+          "goals": {
+            "$ref": "#/components/schemas/Totals"
+          }
+        }
+      },
+      "LogResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "day": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "entry": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "meal_name": {
+                "type": "string"
+              },
+              "calories": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 50000,
+                "description": "Calories in kcal."
+              },
+              "protein": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000,
+                "description": "Protein in g."
+              },
+              "carbs": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000,
+                "description": "Carbs in g."
+              },
+              "fat": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000,
+                "description": "Fat in g."
+              },
+              "logged_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "day_totals": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Totals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "goals": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Totals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
