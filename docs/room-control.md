@@ -68,7 +68,10 @@ profile; encrypted ELK-* variants need separate verification before enrollment.
    `powershell -File tools/room-install.ps1 -Python "C:\path\to\python.exe"`
    and paste the key into the secure prompt. It is shown once. The installer
    installs Bleak, protects local files, registers **CTRLpanel Room Bridge** as a
-   hidden, non-admin task at this user's Windows logon, and starts it.
+   hidden, non-admin task at this user's Windows logon, and starts it. The task
+   owns `pythonw.exe` directly, so stopping it also stops Bluetooth work. The
+   process decrypts the DPAPI credential itself; no key is passed in arguments
+   or inherited environment variables. Discovery caches only enrolled radios.
 5. Confirm “Desktop connected” in Room Control and test each light. The bridge's
    rotating local log is `.room-local/bridge.log` (no credentials).
 
@@ -90,7 +93,8 @@ Discovery never automatically controls an unknown nearby device.
 - Exactly one setting per command: `power:boolean`, `brightness:1..100`,
   `color:#rrggbb`, or `temperature:2700..6500`. No raw BLE writes or addresses in
   browser commands. `target` is a configured ID or `all`.
-- Run `npm test`, `npm run build`, and `python tests/room_protocol_test.py`.
+- Run `npm test`, `npm run build`, `python tests/room_protocol_test.py`, and
+  `python tests/room_bridge_test.py` (Windows, with Bleak installed).
 - Database integration checks covered ownership, invalid keys, single claim,
   partial receipts and revocation in a rolled-back transaction.
 - `.room-local/preview.html` is an isolated, nondeployed UI fixture used for
