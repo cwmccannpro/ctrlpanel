@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 $roomRoot = Split-Path $PSScriptRoot -Parent
 $roomLocal = Join-Path $roomRoot '.room-local'
 $roomConfig = Get-Content -LiteralPath (Join-Path $roomLocal 'config.json') -Raw | ConvertFrom-Json
-$roomSecure = Get-Content -LiteralPath (Join-Path $roomLocal 'credential.dpapi') -Raw | ConvertTo-SecureString
+$roomEncrypted = (Get-Content -LiteralPath (Join-Path $roomLocal 'credential.dpapi') -Raw).Trim()
+$roomSecure = ConvertTo-SecureString $roomEncrypted
 $roomPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($roomSecure)
 try {
     $env:ROOM_BRIDGE_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($roomPointer)
