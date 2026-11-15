@@ -29,7 +29,8 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def relay(origin, key, action, body=None):
     request = urllib.request.Request(origin + '/api/room/bridge/' + action,
         data=json.dumps(body or {}).encode(), method='POST',
-        headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+        headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
+                 'User-Agent': 'CTRLpanel-RoomBridge/1.0'})
     with urllib.request.build_opener(NoRedirect).open(request, timeout=12) as response:
         return json.loads(response.read(65536))
 
@@ -130,7 +131,7 @@ async def main():
                 delay = 3
             except urllib.error.HTTPError as exc:
                 if exc.code in (401, 403):
-                    logging.error('Desktop credential revoked or invalid. Reinstall the key to reconnect.')
+                    logging.error('Relay access denied (HTTP %s). Check the desktop key and host access rules.', exc.code)
                     return
                 logging.warning('Relay unavailable (HTTP %s)', exc.code)
                 delay = min(30, delay*2)
