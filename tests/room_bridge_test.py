@@ -5,7 +5,7 @@ import pathlib
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -37,5 +37,29 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual(req.get_header('User-agent'), 'CTRLpanel-RoomBridge/1.0')
             self.assertEqual(req.get_header('Authorization'), 'Bearer test')
         with self.assertRaises(RuntimeError): bridge.NoRedirect().redirect_request(None)
+
+class TransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_discovery_pauses_for_write_and_resumes(self):
+        scanner = types.SimpleNamespace(stop=AsyncMock(), start=AsyncMock())
+        radio = types.SimpleNamespace(scanner=scanner, get=lambda address: object())
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.services = types.SimpleNamespace(get_characteristic=lambda uuid: types.SimpleNamespace(properties=['write']))
+        device = {'address': 'AA:BB:CC:DD:EE:FF', 'profile': 'lednetwf-v5'}
+        with patch.object(bridge, 'BleakClient', return_value=client), patch.object(bridge.asyncio, 'sleep', new=AsyncMock()):
+            await bridge.send_light(device, {'power': True}, {}, radio)
+        scanner.stop.assert_awaited_once()
+        scanner.start.assert_awaited_once()
+        client.write_gatt_char.assert_awaited_once()
+
+    async def test_failed_connection_resumes_discovery_without_replaying(self):
+        scanner = types.SimpleNamespace(stop=AsyncMock(), start=AsyncMock())
+        radio = types.SimpleNamespace(scanner=scanner, get=lambda address: object())
+        client = AsyncMock()
+        client.__aenter__.side_effect = RuntimeError('unreachable')
+        with patch.object(bridge, 'BleakClient', return_value=client), self.assertRaisesRegex(RuntimeError, 'unreachable'):
+            await bridge.send_light({'address':'AA:BB:CC:DD:EE:FF','profile':'lednetwf-v5'}, {'power': True}, {}, radio)
+        scanner.start.assert_awaited_once()
+        client.write_gatt_char.assert_not_awaited()
 
 if __name__ == '__main__': unittest.main()

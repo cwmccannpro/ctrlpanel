@@ -77,23 +77,32 @@ class DiscoveryCache:
 
 
 async def send_light(device, patch, previous, discovery=None):
-    address = device['address'].upper()
-    found = discovery.get(address) if discovery else None
-    if found is None:
-        found = await BleakScanner.find_device_by_address(address, timeout=8)
-    if found is None:
-        raise RuntimeError('Not in Bluetooth range. Close the phone app and move the adapter closer.')
-    async with BleakClient(found, timeout=10, winrt={'use_cached_services': False}) as client:
-        characteristic, packets = frames(device['profile'], patch, previous, int(time.monotonic()) % 256)
-        char = client.services.get_characteristic(characteristic)
-        if char is None:
-            raise RuntimeError('Expected light service is unavailable; protocol needs checking.')
-        response = 'write' in char.properties
-        if not response and 'write-without-response' not in char.properties:
-            raise RuntimeError('Light characteristic is not writable.')
-        for packet in packets:
-            await client.write_gatt_char(char, packet, response=response)
-            await asyncio.sleep(.15)
+    # Windows radios can starve GATT discovery while actively scanning. Cache
+    # advertisements while idle, then pause discovery for the connection/write.
+    scanner = getattr(discovery, 'scanner', None)
+    if scanner:
+        await scanner.stop()
+    try:
+        address = device['address'].upper()
+        found = discovery.get(address) if discovery else None
+        if found is None:
+            found = await BleakScanner.find_device_by_address(address, timeout=8)
+        if found is None:
+            raise RuntimeError('Not in Bluetooth range. Close the phone app and move the adapter closer.')
+        async with BleakClient(found, timeout=10, winrt={'use_cached_services': False}) as client:
+            characteristic, packets = frames(device['profile'], patch, previous, int(time.monotonic()) % 256)
+            char = client.services.get_characteristic(characteristic)
+            if char is None:
+                raise RuntimeError('Expected light service is unavailable; protocol needs checking.')
+            response = 'write' in char.properties
+            if not response and 'write-without-response' not in char.properties:
+                raise RuntimeError('Light characteristic is not writable.')
+            for packet in packets:
+                await client.write_gatt_char(char, packet, response=response)
+                await asyncio.sleep(.15)
+    finally:
+        if scanner:
+            await scanner.start()
 
 async def execute(command, server_devices, states, config, api, discovery=None):
     installed = {d['id']: d for d in config['devices']}
@@ -155,6 +164,7 @@ async def main():
     delay = 3
     discovery = DiscoveryCache(config['devices'])
     scanner = BleakScanner(detection_callback=discovery.remember)
+    discovery.scanner = scanner
     await scanner.start()
     logging.info('Room bridge started; %d allowed lights', len(config['devices']))
     try:
