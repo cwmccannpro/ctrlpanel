@@ -23,7 +23,7 @@ export default function FinanceConnection({ finance, initialUrl = '', onClose })
       <ol className="fin-setup-steps">
         <li>Use the Accounts, Income, Budget, Transactions, Holdings, History and Goals tabs from the finance template.</li>
         <li>In the workbook’s <strong>_CTRLpanel</strong> tab, set <strong>owner_email</strong> to <strong>{user?.email}</strong>.</li>
-        <li>{status?.ready ? <>Share the workbook as an <strong>Editor</strong> with <code className="fin-service-email">{status.serviceEmail}</code></> : status ? 'Configure a Google Sheets service account on the server before connecting.' : 'Checking the Google Sheets connection…'}</li>
+        <li>{status?.ready ? <>Share the workbook as an <strong>Editor</strong> with <code className="fin-service-email">{status.serviceEmail}</code></> : status ? status.configError || 'Configure a Google Sheets service account on the server before connecting.' : error ? 'Google Sheets connection status is unavailable.' : 'Checking the Google Sheets connection…'}</li>
       </ol>
       <label className="field"><span className="field-label">Google Sheets link</span><input className="input" type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…" autoFocus /></label>
       <p className="fin-caption">Row 1 defines the fields. Permanent IDs keep edits safe when you sort rows or move columns. Existing CTRLpanel finance records are retained.</p>

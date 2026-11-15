@@ -21,7 +21,7 @@ export default function XPanel({ cfg = {}, onCfg = () => {} }) {
   };
   const show = value => value == null ? '—' : compactNumber(value);
   const path = id ? `/socials/x/${id}` : '/socials';
-  const current = result?.id === id && result.range === range ? result : null;
+  const current = result && result.id === id && result.range === range ? result : null;
   return <>
     <div className="dash2-panel-head"><Link className="dash2-panel-title dash2-link" to={path}>X</Link></div>
     {!socials.loaded ? <p className="dash2-panel-note">Loading accounts…</p> : !account ? <><p className="dash2-panel-note">Connect your X account in Socials.</p><Link className="btn btn--sm" to="/socials">Open Socials</Link></> : <>

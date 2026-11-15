@@ -22,7 +22,7 @@ export default function InstagramPanel({ cfg = {}, onCfg = () => {} }) {
       .catch(() => active && setResponse({ id: accountId, range, error: true }));
     return () => { active = false; };
   }, [accountId, range, revision]);
-  const current = response?.id === accountId && response.range === range ? response : null;
+  const current = response && response.id === accountId && response.range === range ? response : null;
   const data = current?.data;
   const show = (value) => value == null ? '—' : compactNumber(value);
   const path = accountId ? `/socials/instagram/${accountId}` : '/socials';

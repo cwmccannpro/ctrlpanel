@@ -19,6 +19,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Modal from '../components/shared/Modal.jsx';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
 import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT, LAYOUTS } from '../components/dashboardPanels.jsx';
@@ -43,7 +44,7 @@ function defaultColumns(layout = DEFAULT_LAYOUT) {
   return layout.map((ids) => ids.filter((id) => PANELS_BY_ID[id]).map((id) => makeItem(id)));
 }
 
-const idsOf = (cols) => JSON.stringify(cols.map((col) => (Array.isArray(col) ? col.map((it) => it.id) : [])));
+const idsOf = (cols) => JSON.stringify(cols.map((col) => (Array.isArray(col) ? col.map((it) => it?.id) : [])));
 // A saved layout nobody has customized: no panel has a height or settings.
 const untouched = (cols) =>
   cols.every((col) => Array.isArray(col) && col.every((it) => !(Number(it.h) > 0) && !Object.keys(it.cfg || {}).length));
@@ -203,7 +204,14 @@ function Column({ index, count, width, items, editing, onRemove, onHeight, onCfg
               onRemove={() => onRemove(item.uid)}
               onHeight={(h, persist) => onHeight(item.uid, h, persist)}
             >
-              <C cfg={item.cfg} onCfg={(patch) => onCfg(item.uid, patch)} />
+              <ErrorBoundary fallback={(retry) => (
+                <div className="dash2-panel-note" role="alert">
+                  {def.title} couldn’t load.{' '}
+                  <button className="btn btn--sm" onClick={retry}>Try again</button>
+                </div>
+              )}>
+                <C cfg={item.cfg} onCfg={(patch) => onCfg(item.uid, patch)} />
+              </ErrorBoundary>
             </PanelShell>
           );
         })}

@@ -16,7 +16,8 @@ async function refresh(s) {
   emit(s, { loading: true });
   s.pending = financeSheets.workbook().then((data) => {
     s.at = Date.now();
-    emit(s, { ...data, data: data.data || {}, error: null, loading: false });
+    s.state = { ...data, data: data.data || {}, error: null, loading: false };
+    s.listeners.forEach((listener) => listener());
     return data;
   }).catch((error) => { emit(s, { error, loading: false }); throw error; }).finally(() => { s.pending = null; });
   return s.pending;
@@ -35,10 +36,15 @@ export default function useFinance() {
     if (Date.now() - s.at > 30000 || (s.state.includeDebt !== undefined && s.state.includeDebt !== includeDebt)) load();
     const focus = () => { if (Date.now() - s.at > 15000) load(); };
     window.addEventListener('focus', focus);
+    document.addEventListener('visibilitychange', focus);
     const timer = setInterval(load, 60000);
     // Clear another account's cache on identity changes.
     for (const key of stores.keys()) if (key !== id) stores.delete(key);
-    return () => { clearInterval(timer); window.removeEventListener('focus', focus); };
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', focus);
+      document.removeEventListener('visibilitychange', focus);
+    };
   }, [id, s, includeDebt]);
   const reload = () => refresh(s);
   const mutate = async (fn) => {

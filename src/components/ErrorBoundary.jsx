@@ -53,7 +53,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('[CTRLpanel] a page crashed:', error, info?.componentStack);
+    console.error('[CTRLpanel] a component crashed:', error, info?.componentStack);
     if (isChunkLoadError(error)) tryAutoReload();
   }
 
@@ -63,7 +63,9 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (!this.state.error) return this.props.children;
-    return <ErrorPanel error={this.state.error} onRetry={() => this.setState({ error: null })} />;
+    const retry = () => this.setState({ error: null });
+    if (this.props.fallback) return this.props.fallback(retry);
+    return <ErrorPanel error={this.state.error} onRetry={retry} />;
   }
 }
 
