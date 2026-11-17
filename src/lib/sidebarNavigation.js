@@ -2,6 +2,7 @@ import { AGENTS } from './agentRegistry.js';
 import { socialSections } from './socialPlatforms.js';
 
 // Stable route/folder IDs keep visibility choices intact after a rename.
+// `dock: true` links render at the bottom of the sidebar, just above the footer.
 export const TOP_LINKS = [
   { to: '/', label: 'Dashboard', icon: 'ti-layout-dashboard', end: true },
   { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
@@ -9,9 +10,9 @@ export const TOP_LINKS = [
   { to: '/knowledge', label: 'Knowledge Base', icon: 'ti-notebook' },
   { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
   { to: '/health', label: 'Health', icon: 'ti-heart' },
-  { to: '/room', label: 'Room Control', icon: 'ti-bulb' },
   { to: '/finance', label: 'Finance', icon: 'ti-coin' },
   { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
+  { to: '/room', label: 'Room Control', icon: 'ti-bulb', dock: true },
 ];
 
 export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {}) {

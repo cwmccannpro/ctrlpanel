@@ -250,6 +250,10 @@
   flex: 1;
   padding: 4px 0;
 }
+/* Room Control + Drive: docked at the bottom, just above the footer's divider. */
+.sidebar-dock {
+  padding: 4px 0 2px;
+}
 .sidebar-footer {
   padding: 4px 0 12px;
   border-top: 0.5px solid var(--border);

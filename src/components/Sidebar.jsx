@@ -196,7 +196,9 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
   // is the section's overview page — reached from the header's manage button,
   // never by clicking the folder itself.
   const navigation = sidebarNavigation({ projects: projects.rows, crmBoards: crmBoards.rows, socials, settings });
-  const { links, folders } = visibleSidebarNavigation(navigation, settings?.ui_preferences?.sidebarVisibility);
+  const { links: allLinks, folders } = visibleSidebarNavigation(navigation, settings?.ui_preferences?.sidebarVisibility);
+  const links = allLinks.filter((link) => !link.dock);
+  const docked = allLinks.filter((link) => link.dock);
 
   return (
     <><aside
@@ -241,6 +243,17 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
           />
         ))}
       </nav>
+
+      {docked.length > 0 && (
+        <nav className="sidebar-dock" aria-label="Devices">
+          {docked.map((link) => (
+            <NavLink key={link.to} to={link.to} end={link.end} className={navClass} title={link.label}>
+              <i className={`ti ${link.icon}`} />
+              {!collapsed && <span>{link.label}</span>}
+            </NavLink>
+          ))}
+        </nav>
+      )}
 
       <div className="sidebar-footer">
         <button type="button" ref={customizeButtonRef} className="nav-item nav-customize" title="Customize sidebar" aria-label="Customize sidebar" onClick={() => setCustomizing(true)}>
