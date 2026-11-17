@@ -184,6 +184,7 @@ export function rankItems(items, query) {
 
 /** Pages reachable from anywhere. Dynamic items (projects, boards…) are added by the palette. */
 export const PAGES = [
+  { label: 'CTRLpanel Drive', to: '/drive', icon: 'ti-car', keywords: 'android tablet car landscape infotainment maps spotify' },
   { label: 'Room Control', to: '/room', icon: 'ti-bulb', keywords: 'lights bulbs bluetooth brightness color room' },
   { label: 'Dashboard', to: '/', icon: 'ti-layout-dashboard', keywords: 'home overview today' },
   { label: 'Calendar', to: '/calendar', icon: 'ti-calendar', keywords: 'schedule events agenda' },

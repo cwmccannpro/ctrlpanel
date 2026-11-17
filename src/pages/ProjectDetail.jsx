@@ -3,10 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Card from '../components/shared/Card.jsx';
 import Badge from '../components/shared/Badge.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
-import Modal from '../components/shared/Modal.jsx';
 import ServiceLinks from '../components/ServiceLinks.jsx';
 import KnowledgeBase from './KnowledgeBase.jsx';
-import KanbanBoard, { DEFAULT_COLUMNS } from '../components/KanbanBoard.jsx';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
 import { useRows, useCrud } from '../lib/useData.js';
 import { useCalendarEvents } from '../lib/useCalendarEvents.js';
@@ -18,7 +16,7 @@ import { formatDate } from '../lib/helpers.js';
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
 
 const STATUSES = ['Active', 'Paused', 'Complete'];
-const TABS = ['Project Dashboard', 'Board', 'Knowledge', 'Excalidraw', 'Files & Links', 'People'];
+const TABS = ['Project Dashboard', 'Knowledge', 'Excalidraw', 'Files & Links', 'People'];
 const statusVariant = { Active: 'green', Paused: 'warm', Complete: 'accent' };
 
 function Rollup({ icon, title, onClick, children }) {
@@ -43,7 +41,6 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState('Project Dashboard');
   const [knowledgeDirty, setKnowledgeDirty] = useState(false);
   const [newLink, setNewLink] = useState({ title: '', url: '', type: 'link' });
-  const [boardSettings, setBoardSettings] = useState(false);
 
   const project = projects.rows.find((p) => p.id === id);
 
@@ -88,15 +85,6 @@ export default function ProjectDetail() {
   };
 
   /* ---- Derived data shared by Dashboard + tabs ---- */
-  const linkedTodoBoard = project.todo_board_id ? todoBoards.rows.find((b) => b.id === project.todo_board_id) : null;
-  const projectTasks = project.todo_board_id ? tasks.filter((t) => t.board_id === project.todo_board_id) : [];
-  const taskCounts = projectTasks.reduce((acc, t) => {
-    const col = t.column_name || '—';
-    acc[col] = (acc[col] || 0) + 1;
-    return acc;
-  }, {});
-  const blockedCount = projectTasks.filter((t) => /block/i.test(t.column_name || '')).length;
-
   const entries = project.files || [];
   const recentEntries = [...entries]
     .sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''))
@@ -178,24 +166,7 @@ export default function ProjectDetail() {
 
             {/* Roll-ups — live, read-only, click through to their tab */}
             <div className="grid grid-3">
-              <Rollup icon="ti-layout-kanban" title="Board" onClick={() => setTab('Board')}>
-                {!project.todo_board_id ? (
-                  <p className="body-text">Not linked to a To Do board.</p>
-                ) : (
-                  <>
-                    {projectTasks.length === 0 && <p className="body-text">No cards yet.</p>}
-                    {Object.entries(taskCounts).map(([col, n]) => (
-                      <div className="spread" key={col} style={{ padding: '3px 0' }}>
-                        <span className="body-text">{col}</span>
-                        <span className="kanban-col-count">{n}</span>
-                      </div>
-                    ))}
-                    {blockedCount > 0 && <Badge variant="urgent" className="mt-16">{blockedCount} blocked</Badge>}
-                  </>
-                )}
-              </Rollup>
-
-              <Rollup icon="ti-alarm" title="Coming up" onClick={() => setTab('Board')}>
+              <Rollup icon="ti-alarm" title="Coming up" onClick={() => navigate(project.todo_board_id ? `/todo/${project.todo_board_id}` : '/todo')}>
                 {!project.todo_board_id ? (
                   <p className="body-text">Link a To Do board to see deadlines here.</p>
                 ) : digest.overdue.length + digest.dueSoon.length + digest.events.length === 0 ? (
@@ -277,68 +248,6 @@ export default function ProjectDetail() {
           <Suspense fallback={<div className="placeholder" style={{ minHeight: 300 }}><Spinner large /></div>}>
             <ExcalidrawBoard initialScene={project.excalidraw || null} onPersist={persistScene} />
           </Suspense>
-        )}
-
-        {/* ============ 3. BOARD ============ */}
-        {tab === 'Board' && (
-          <div>
-            {/* Board settings (linked To Do board) live behind the gear in the
-                top-right so the cards get the full width. */}
-            {!project.todo_board_id ? (
-              <div>
-                <div className="spread" style={{ marginBottom: 12 }}>
-                  <span className="section-label">Board</span>
-                  <button className="btn btn--ghost btn--icon" title="Board settings" onClick={() => setBoardSettings(true)}>
-                    <i className="ti ti-settings" />
-                  </button>
-                </div>
-                <p className="body-text">Link this project to a To Do board — open <strong>Board settings</strong> (gear) — to add and edit cards here. Everything stays in sync with the To Do module.</p>
-              </div>
-            ) : (
-              <KanbanBoard
-                columns={linkedTodoBoard?.columns?.length ? linkedTodoBoard.columns : DEFAULT_COLUMNS}
-                tasks={projectTasks}
-                boardId={project.todo_board_id}
-                onColumns={(next) => todoBoards.patch(project.todo_board_id, { columns: next })}
-                addTask={(payload) => tasksCrud.add(payload)}
-                patchTask={(id, patch) => tasksCrud.patch(id, patch)}
-                removeTask={(id) => tasksCrud.remove(id)}
-                headerRight={
-                  <button className="btn btn--ghost btn--icon" title="Board settings" onClick={() => setBoardSettings(true)}>
-                    <i className="ti ti-settings" />
-                  </button>
-                }
-              />
-            )}
-
-            {boardSettings && (
-              <Modal
-                title="Board settings"
-                onClose={() => setBoardSettings(false)}
-                footer={<button className="btn btn--accent" onClick={() => setBoardSettings(false)}>Done</button>}
-              >
-                <div className="field">
-                  <label className="field-label">Linked To Do board</label>
-                  <div className="row">
-                    <select
-                      className="select"
-                      value={project.todo_board_id || ''}
-                      onChange={(e) => patch({ todo_board_id: e.target.value || null })}
-                    >
-                      <option value="">— Not linked —</option>
-                      {todoBoards.rows.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                    {project.todo_board_id && (
-                      <button className="btn btn--icon" title="Open in To Do" onClick={() => navigate(`/todo/${project.todo_board_id}`)}>
-                        <i className="ti ti-external-link" />
-                      </button>
-                    )}
-                  </div>
-                  <p className="list-row-meta mt-16">Cards on this board are shared with the To Do module — editing here or there stays in sync.</p>
-                </div>
-              </Modal>
-            )}
-          </div>
         )}
 
         {/* ============ 5. FILES & LINKS ============ */}

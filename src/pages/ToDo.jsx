@@ -13,7 +13,7 @@ import Modal from '../components/shared/Modal.jsx';
 import { useCrud } from '../lib/useData.js';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
 import { projectForBoard } from '../lib/links.js';
-import { canDropInColumn, columnsOf } from '../lib/boards.js';
+import { canDropInColumn, columnsOf, primaryBoard } from '../lib/boards.js';
 import { useToast } from '../components/Toaster.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { relativeDay } from '../lib/helpers.js';
@@ -97,8 +97,10 @@ export default function ToDo() {
     [tasks.rows, user?.id]
   );
 
-  // The base route (or a removed board) opens the first saved board.
-  const board = ownedBoards.find((b) => b.id === boardIdParam) || ownedBoards[0] || null;
+  // The base route (or a removed board) opens your main board — the same one the dashboard shows.
+  const board = ownedBoards.find((b) => b.id === boardIdParam)
+    || primaryBoard(ownedBoards, { tasks: ownedTasks, projects: projects.rows })
+    || ownedBoards[0] || null;
   const boardId = board?.id || null;
   useEffect(() => {
     if (!boards.loading && boardId && boardIdParam !== boardId) {

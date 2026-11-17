@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
 
-export default function Login() {
+export default function Login({ afterSignIn = '/' }) {
   const { signIn, configured } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -18,7 +18,7 @@ export default function Login() {
     const { error } = await signIn({ email, password });
     setLoading(false);
     if (error) setError(error.message);
-    else navigate('/');
+    else navigate(afterSignIn);
   };
 
   return (

@@ -7,6 +7,7 @@ import { Navigate } from 'react-router-dom';
 // Every page is its own chunk: a first visit downloads the shell + the page you open; the
 // rest are fetched on demand (and warmed while idle — see lib/prefetch.js).
 const loaders = {
+  Drive: () => import('./pages/Drive.jsx'),
   RoomControl: () => import('./pages/RoomControl.jsx'),
   Dashboard: () => import('./pages/Dashboard.jsx'),
   Calendar: () => import('./pages/Calendar.jsx'),
@@ -29,6 +30,7 @@ const loaders = {
   X: () => import('./pages/socials/X.jsx'),
 };
 const Dashboard = lazy(loaders.Dashboard);
+const Drive = lazy(loaders.Drive);
 const RoomControl = lazy(loaders.RoomControl);
 const Calendar = lazy(loaders.Calendar);
 const ToDo = lazy(loaders.ToDo);
@@ -51,6 +53,7 @@ const X = lazy(loaders.X);
 
 // Order = prefetch order (most-visited first). Dashboard loads with the first render.
 export const pageLoaders = [
+  loaders.Drive,
   loaders.RoomControl,
   loaders.ToDo,
   loaders.Calendar,
@@ -73,6 +76,7 @@ export const pageLoaders = [
 ];
 
 export const appChildren = [
+  { path: 'drive', element: <Drive /> },
   { path: 'room', element: <RoomControl /> },
   { index: true, element: <Dashboard /> },
   { path: 'calendar', element: <Calendar /> },

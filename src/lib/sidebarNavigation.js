@@ -13,6 +13,7 @@ export const TOP_LINKS = [
   { to: '/finance', label: 'Finance', icon: 'ti-coin' },
   { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
   { to: '/room', label: 'Room Control', icon: 'ti-bulb', dock: true },
+  { to: '/drive', label: 'Drive', icon: 'ti-car', dock: true },
 ];
 
 export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {}) {

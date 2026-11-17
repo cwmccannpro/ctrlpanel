@@ -50,13 +50,14 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
   useEffect(() => { setNavOpen(false); }, [pathname, isMobile]);
-  useEffect(() => prefetchPages(pageLoaders), []);
+  useEffect(() => pathname === '/drive' || window.CTRLDrive ? undefined : prefetchPages(pageLoaders), [pathname]);
   useEffect(() => {
     if (!navOpen) return undefined;
     const onKey = (e) => e.key === 'Escape' && setNavOpen(false);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [navOpen]);
+  if (pathname === '/drive') return <ToastProvider><ErrorBoundary resetKey={pathname}><Suspense fallback={<PageLoading />}><Outlet /></Suspense></ErrorBoundary></ToastProvider>;
   return (
     <WorkspaceProvider>
       <ToastProvider>

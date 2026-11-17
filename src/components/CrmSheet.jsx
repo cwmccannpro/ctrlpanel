@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, useId } from 'react';
 import CrmTextPreview from './CrmTextPreview.jsx';
-import Modal from './shared/Modal.jsx';
+import CrmSheetTabs from './CrmSheetTabs.jsx';
 import Spinner from './shared/Spinner.jsx';
 import SheetsLogo from './SheetsLogo.jsx';
 import { useToast } from './Toaster.jsx';
@@ -8,11 +8,9 @@ import { useMediaQuery } from '../lib/useMediaQuery.js';
 import { sheets } from '../lib/api.js';
 import {
   PAGE_SIZE, cellLink, distinctValues, filterRows, rowSignature, sortRows, staleSelection,
-  withAppended, withCell, withoutRows,
+  withCell, withoutRows,
 } from '../lib/sheetsTable.js';
-import {
-  getAccess, getCachedMeta, getCachedSheet, setAccess, setCachedMeta, setCachedSheet,
-} from '../lib/sheetsCache.js';
+import { getAccess, getCachedSheet, setAccess, setCachedSheet } from '../lib/sheetsCache.js';
 
 const EMPTY = { headers: [], rows: [], truncated: false, rowLimit: 0 };
 const FOCUS_REFRESH_MS = 20000; // returning to the tab re-reads, at most this often
@@ -37,52 +35,15 @@ function SheetProblem({ error, onRetry, onSetup }) {
   );
 }
 
-function AddRowModal({ headers, onAdd, onClose }) {
-  const [values, setValues] = useState(() => headers.map(() => ''));
-  const [busy, setBusy] = useState(false);
-  const empty = values.every((v) => !v.trim());
-  const submit = async (e) => {
-    e.preventDefault();
-    if (busy || empty) return;
-    setBusy(true);
-    const ok = await onAdd(values);
-    setBusy(false);
-    if (ok) onClose();
-  };
-  return (
-    <Modal title="Add a row" onClose={busy ? () => {} : onClose} wide={headers.length > 6}>
-      <form onSubmit={submit}>
-        <div className="crm-addrow-grid">
-          {headers.map((h, i) => (
-            <label className="field" key={i}>
-              <span className="field-label">{h}</span>
-              <input
-                className="input"
-                autoFocus={i === 0}
-                value={values[i]}
-                disabled={busy}
-                onChange={(e) => setValues((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
-              />
-            </label>
-          ))}
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn btn--accent" disabled={busy || empty}>{busy ? 'Adding…' : 'Add row'}</button>
-        </div>
-      </form>
-    </Modal>
-  );
+export default function CrmSheet({ board, onSetup }) {
+  return <CrmSheetTabs board={board} onSetup={onSetup} Problem={SheetProblem} Table={SheetTable} />;
 }
 
-export default function CrmSheet({ board, onSheetChange, onSetup }) {
+function SheetTable({ board, tab, onSetup, onRefreshMeta }) {
   const id = board.spreadsheet_id;
+  const { title: sheetName, sheetId } = tab;
   const toast = useToast();
-  const initialTab = board.sheet_name || '';
-  const initialData = initialTab ? getCachedSheet(id, initialTab) : null;
-
-  const [meta, setMeta] = useState(() => getCachedMeta(id));
-  const [sheetName, setSheetName] = useState(initialTab);
+  const [initialData] = useState(() => getCachedSheet(id, sheetName));
   const [data, setData] = useState(initialData || EMPTY);
   const [phase, setPhase] = useState(initialData ? 'ready' : 'loading'); // loading | ready | error
   const [syncing, setSyncing] = useState(false);
@@ -97,7 +58,6 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
   const [shown, setShown] = useState(PAGE_SIZE);
   const [editing, setEditing] = useState(null); // { row, col, draft }
   const [selected, setSelected] = useState(() => new Map()); // sheet row → signature when selected
-  const [adding, setAdding] = useState(false);
   const [preview, setPreview] = useState(null);
   const previewId = useId();
   const previewTimer = useRef(null);
@@ -147,8 +107,6 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
 
   const dataRef = useRef(data);
   dataRef.current = data;
-  const sheetRef = useRef(sheetName);
-  sheetRef.current = sheetName;
   const lastSync = useRef(0);
   const refreshTimer = useRef(null);
   const cancelEdit = useRef(false);
@@ -178,24 +136,10 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
     setSyncing(true);
     (async () => {
       try {
-        const metaPromise = sheets.meta(id);
-        // With a known tab, read its values in parallel with the tab list.
-        const valuesPromise = sheetName ? sheets.values(id, sheetName).then((v) => ({ v }), (e) => ({ e })) : null;
-        const m = await metaPromise;
+        const next = await sheets.values(id, sheetName);
         if (!alive) return;
-        setMeta(m);
-        setCachedMeta(id, m);
-        const tab = m.sheets.some((s) => s.title === sheetName) ? sheetName : m.sheets[0]?.title;
-        if (!tab) throw Object.assign(new Error('This spreadsheet has no tabs.'), { code: 'empty' });
-        if (tab !== sheetName) {
-          setSheetName(tab); // the saved tab is gone: this effect re-runs for the first one
-          return;
-        }
-        const res = valuesPromise ? await valuesPromise : { v: await sheets.values(id, tab) };
-        if (!alive) return;
-        if (res.e) throw res.e;
-        setCachedSheet(id, tab, res.v);
-        setData(res.v);
+        setCachedSheet(id, sheetName, next);
+        setData(next);
         setPhase('ready');
         lastSync.current = Date.now();
       } catch (e) {
@@ -223,11 +167,12 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
   useEffect(() => {
     const onFocus = () => {
       if (document.visibilityState === 'hidden' || Date.now() - lastSync.current < FOCUS_REFRESH_MS) return;
+      onRefreshMeta();
       refresh();
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [refresh]);
+  }, [onRefreshMeta, refresh]);
 
   /* ---- Derived view ---- */
   const filtered = useMemo(
@@ -237,18 +182,17 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
   const page = filtered.slice(0, shown);
   const visibleCols = useMemo(() => data.headers.map((_, i) => i).filter((i) => !hidden.includes(i)), [data.headers, hidden]);
   const activeFilters = Object.keys(filters).length;
-  const sheetId = meta?.sheets.find((s) => s.title === sheetName)?.sheetId;
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit${sheetId != null ? `#gid=${sheetId}` : ''}`;
 
   /* ---- Writes ---- */
   // Local edits update the cache in the same step, so leaving and returning shows them.
   const mutateRows = useCallback((fn) => {
-    setData((d) => {
-      const next = { ...d, rows: fn(d.rows) };
-      setCachedSheet(id, sheetRef.current, next);
-      return next;
-    });
-  }, [id]);
+    const current = getCachedSheet(id, sheetName) ?? dataRef.current;
+    const next = { ...current, rows: fn(current.rows) };
+    dataRef.current = next;
+    setCachedSheet(id, sheetName, next);
+    setData(next);
+  }, [id, sheetName]);
   const markAccess = (value) => {
     setAccessState(value);
     setAccess(id, value);
@@ -299,20 +243,6 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
     }
   };
 
-  const addRow = async (values) => {
-    try {
-      const out = await sheets.append(id, sheetName, values);
-      markAccess('edit');
-      mutateRows((rows) => withAppended(rows, values, out.row));
-      refreshSoon();
-      toast('Row added to the sheet');
-      return true;
-    } catch (e) {
-      writeFailed(e);
-      return false;
-    }
-  };
-
   const toggleRow = (r) =>
     setSelected((prev) => {
       const next = new Map(prev);
@@ -349,29 +279,17 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
     }
   };
 
-  const pickSheet = async (name) => {
-    setSheetName(name);
-    setSearch('');
-    setFilters({});
-    setHidden([]);
-    setSort({ col: null, dir: 'asc' });
-    setSelected(new Map());
-    setEditing(null);
-    try { await onSheetChange?.(name); }
-    catch (e) { toast({ tone: 'error', message: e.message || 'Could not save the selected tab.' }); }
+  const refreshSheet = () => {
+    onRefreshMeta();
+    refresh();
   };
 
   /* ---- Render ---- */
-  if (phase === 'error') return <SheetProblem error={error} onRetry={refresh} onSetup={onSetup} />;
+  if (phase === 'error') return <SheetProblem error={error} onRetry={refreshSheet} onSetup={onSetup} />;
 
   return (
     <>
       <div className="toolbar crm-view-toolbar">
-        {meta?.sheets.length > 1 && (
-          <select className="select" aria-label="Sheet tab" value={sheetName} onChange={(e) => pickSheet(e.target.value)}>
-            {meta.sheets.map((s) => <option key={s.sheetId} value={s.title}>{s.title}</option>)}
-          </select>
-        )}
         <div className="search-input">
           <i className="ti ti-search" />
           <input className="input" aria-label="Search sheet" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -396,16 +314,13 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
             ))}
           </div>
         </details>
-        <button className="btn btn--ghost btn--icon" title="Refresh from Google Sheets" aria-label="Refresh sheet" disabled={syncing} onClick={refresh}>
+        <button className="btn btn--ghost btn--icon" title="Refresh from Google Sheets" aria-label="Refresh sheet" disabled={syncing} onClick={refreshSheet}>
           {syncing ? <Spinner /> : <i className="ti ti-refresh" />}
         </button>
         {access === 'view' && (
           <span className="crm-chip" title="Share the sheet with the service account as an Editor to edit here.">
             <i className="ti ti-eye" /> View only
           </span>
-        )}
-        {canEdit && data.headers.length > 0 && (
-          <button className="btn" onClick={() => setAdding(true)}><i className="ti ti-plus" /> Add row</button>
         )}
         <a className="btn btn--ghost crm-open-sheet" href={sheetUrl} target="_blank" rel="noopener noreferrer" title="Open in Google Sheets">
           <SheetsLogo /> Open in Sheets <i className="ti ti-external-link" />
@@ -549,7 +464,7 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
             </table>
             {!filtered.length && (
               <div className="crm-empty">
-                <p>{data.rows.length ? 'No rows match your search or filters.' : 'No rows yet. Add one here or in Google Sheets.'}</p>
+                <p>{data.rows.length ? 'No rows match your search or filters.' : 'No rows yet. Add leads in Google Sheets.'}</p>
                 {data.rows.length > 0 && <button className="btn btn--ghost" onClick={() => { setSearch(''); setFilters({}); }}>Clear search and filters</button>}
               </div>
             )}
@@ -567,7 +482,6 @@ export default function CrmSheet({ board, onSheetChange, onSetup }) {
           </div>
         </>
       )}
-      {adding && <AddRowModal headers={data.headers} onAdd={addRow} onClose={() => setAdding(false)} />}
       {preview && <CrmTextPreview id={previewId} preview={preview} onEnter={keepPreview} onLeave={hidePreview} />}
     </>
   );

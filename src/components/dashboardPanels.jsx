@@ -16,6 +16,7 @@ import TaskQuickAdd from './TaskQuickAdd.jsx';
 import FinancePanel from './FinancePanel.jsx';
 import NutritionPanel from './NutritionPanel.jsx';
 import RoomControlPanel from './RoomControlPanel.jsx';
+import DrivePanel from './DrivePanel.jsx';
 import NutritionMacrosPanel from './NutritionMacrosPanel.jsx';
 import IndustryProblemsPanel from './IndustryProblemsPanel.jsx';
 import InstagramPanel from './InstagramPanel.jsx';
@@ -42,6 +43,7 @@ import {
 } from '../lib/helpers.js';
 import { RANGES, computeTrend, recentDays, dayKey, currentStreak } from '../lib/habits.js';
 import { parseCapture, taskRowFromCapture, doneColumn, readCaptureBoard, writeCaptureBoard } from '../lib/commandPalette.js';
+import { primaryBoard } from '../lib/boards.js';
 
 const todayKey = () => dayKey(new Date());
 const TIP = { background: 'var(--bg-elevated)', border: '0.5px solid var(--border-bright)', borderRadius: 8, fontSize: 12 };
@@ -72,43 +74,53 @@ function PlannedMark({ at }) {
 /* ============================================================
    Tasks
    ============================================================ */
-function BoardPanel({ cfg = {}, onCfg = () => {} }) {
-  const navigate = useNavigate();
-  const plan = useTaskDragSource();
+// The one task board every dashboard panel reads from (see lib/boards.js).
+function usePrimaryBoard() {
   const { user } = useAuth();
-  const { todoBoards } = useWorkspace();
-  const boardRows = todoBoards.rows;
+  const { todoBoards, projects } = useWorkspace();
   const { rows: taskRows } = useRows('tasks', []);
-  const boards = boardRows.filter((b) => b.user_id === user?.id && !String(b.id).startsWith('tmp-'));
-  const tasks = taskRows.filter((t) => t.user_id === user?.id);
-  const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
+  const tasks = useMemo(() => taskRows.filter((t) => t.user_id === user?.id), [taskRows, user?.id]);
+  const board = useMemo(
+    () => primaryBoard(todoBoards.rows.filter((b) => b.user_id === user?.id), { tasks, projects: projects.rows }),
+    [todoBoards.rows, user?.id, tasks, projects.rows]
+  );
   const columns = board?.columns?.length ? board.columns : KANBAN_COLUMNS;
+  return { board, columns, tasks: board ? tasks.filter((t) => t.board_id === board.id) : [] };
+}
+
+const isDoneTask = (t, board) => {
+  const col = t.column_name || '';
+  return /^done$/i.test(col.trim()) || col === doneColumn(board);
+};
+
+function TaskRow({ t, board, meta, plan }) {
+  const navigate = useNavigate();
+  return (
+    <div className={`dash2-task ${plan.rowClass(t)}`} onClick={() => navigate(board ? `/todo/${board.id}` : '/todo')} title={`${t.title}
+Drag onto the Day Plan to give it a time`} {...plan.dragProps(t)}>
+      <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
+      <span className="dash2-task-title">{t.title}</span>
+      <PlannedMark at={plan.plannedAt(t)} />
+      {meta && <span className="dash2-task-meta">{meta}</span>}
+    </div>
+  );
+}
+
+// One column of the task board, with quick add.
+function BoardPanel({ cfg = {}, onCfg = () => {} }) {
+  const plan = useTaskDragSource();
+  const { board, columns, tasks } = usePrimaryBoard();
   const column = columns.includes(cfg.column) ? cfg.column : columns[0];
-  const items = board
-    ? tasks.filter((t) => t.board_id === board.id && (t.column_name || columns[0]) === column).sort(byPriority)
-    : [];
+  const items = tasks.filter((t) => (t.column_name || columns[0]) === column).sort(byPriority);
 
   return (
     <>
       <div className="dash2-panel-head dash2-panel-head--task">
         <select
           className="dash2-select"
-          aria-label="Task board"
-          value={board?.id || ''}
-          onChange={(e) => {
-            const b = boards.find((x) => x.id === e.target.value);
-            const cols = b?.columns?.length ? b.columns : KANBAN_COLUMNS;
-            onCfg({ board_id: e.target.value, column: cols[0] });
-          }}
-        >
-          {boards.length === 0 && <option value="">No boards</option>}
-          {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-        <select
-          className="dash2-select"
-          aria-label="Task category"
+          aria-label="Task column"
           value={column}
-          onChange={(e) => onCfg({ board_id: board?.id, column: e.target.value })}
+          onChange={(e) => onCfg({ column: e.target.value })}
           disabled={!board}
         >
           {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -122,13 +134,41 @@ function BoardPanel({ cfg = {}, onCfg = () => {} }) {
         ) : items.length === 0 ? (
           <Empty>Nothing in {column}.</Empty>
         ) : (
+          items.map((t) => <TaskRow key={t.id} t={t} board={board} plan={plan} meta={t.due_date && relativeDay(t.due_date)} />)
+        )}
+      </div>
+    </>
+  );
+}
+
+// Every open Urgent / High task on the board, whatever column it sits in.
+function HighPriorityPanel() {
+  const plan = useTaskDragSource();
+  const { board, tasks } = usePrimaryBoard();
+  const items = tasks
+    .filter((t) => (t.priority === 'Urgent' || t.priority === 'High') && !isDoneTask(t, board))
+    .sort((a, b) => byPriority(a, b) || String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+
+  return (
+    <>
+      <div className="dash2-panel-head">
+        <PanelTitle to={board ? `/todo/${board.id}` : '/todo'}>High Priority</PanelTitle>
+        <span className="dash2-count">{items.length}</span>
+      </div>
+      <div className="dash2-tasks">
+        {!board ? (
+          <Empty>Create a board in To Do to show it here.</Empty>
+        ) : items.length === 0 ? (
+          <Empty>No high-priority tasks open.</Empty>
+        ) : (
           items.map((t) => (
-            <div className={`dash2-task ${plan.rowClass(t)}`} key={t.id} onClick={() => navigate(`/todo/${board.id}`)} title={`${t.title}\nDrag onto the Day Plan to give it a time`} {...plan.dragProps(t)}>
-              <span className="dash2-dot" style={{ background: PRIORITY_COLOR[t.priority] || 'var(--text-secondary)' }} />
-              <span className="dash2-task-title">{t.title}</span>
-              <PlannedMark at={plan.plannedAt(t)} />
-              {t.due_date && <span className="dash2-task-meta">{relativeDay(t.due_date)}</span>}
-            </div>
+            <TaskRow
+              key={t.id}
+              t={t}
+              board={board}
+              plan={plan}
+              meta={[t.column_name, t.due_date && relativeDay(t.due_date)].filter(Boolean).join(' · ')}
+            />
           ))
         )}
       </div>
@@ -608,11 +648,7 @@ function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
    Capture
    ============================================================ */
 function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
-  const { user } = useAuth();
-  const { todoBoards } = useWorkspace();
-  const boards = todoBoards.rows.filter((b) => b.user_id === user?.id && !String(b.id).startsWith('tmp-'));
-  const board = boards.find((b) => b.id === cfg.board_id) || boards[0] || null;
-  const columns = board?.columns?.length ? board.columns : KANBAN_COLUMNS;
+  const { board, columns } = usePrimaryBoard();
   const column = columns.includes(cfg.column) ? cfg.column : columns[0];
 
   return (
@@ -625,13 +661,7 @@ function QuickAddPanel({ cfg = {}, onCfg = () => {} }) {
       ) : (
         <>
           <div className="dash2-panel-head dash2-panel-head--task">
-            <select className="dash2-select" aria-label="Quick add board" value={board.id} onChange={(e) => {
-              const next = boards.find((b) => b.id === e.target.value);
-              onCfg({ board_id: next.id, column: (next.columns?.length ? next.columns : KANBAN_COLUMNS)[0] });
-            }}>
-              {boards.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-            <select className="dash2-select" aria-label="Quick add category" value={column} onChange={(e) => onCfg({ board_id: board.id, column: e.target.value })}>
+            <select className="dash2-select" aria-label="Quick add column" value={column} onChange={(e) => onCfg({ column: e.target.value })}>
               {columns.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
@@ -817,13 +847,15 @@ function TodayHabitsPanel() {
    Registry
    ============================================================ */
 export const PANELS = [
+  { id: 'drive', title: 'CTRLpanel Drive', description: 'Open the landscape tablet dashboard with your synced center display.', icon: 'ti-car', group: 'Home', Component: DrivePanel },
   { id: 'room_control', title: 'Room Control', description: 'Room lights, desktop connection, and all-on / all-off controls.', icon: 'ti-bulb', group: 'Home', Component: RoomControlPanel },
   // Today
   { id: 'today_tasks', title: 'Today', description: 'Tasks due today, overdue work, and your next priorities.', icon: 'ti-sun', group: 'Today', Component: TodayTasksPanel },
   { id: 'today_habits', title: 'Habits Today', description: 'Tick off today’s habits and see what remains.', icon: 'ti-circle-check', group: 'Today', Component: TodayHabitsPanel },
   { id: 'knowledge', title: 'Knowledge Base', description: 'Pinned notes and recently updated context.', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
   // Tasks & work
-  { id: 'board', title: 'Task Board Column', description: 'View a board category and quickly add tasks in place.', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
+  { id: 'board', title: 'Task Board Column', description: 'One column of your task board, with quick add.', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
+  { id: 'high_priority', title: 'High Priority Tasks', description: 'Every open urgent and high-priority task on your board.', icon: 'ti-flag', group: 'Work', Component: HighPriorityPanel },
   { id: 'upcoming_tasks', title: 'Due Soon', description: 'Upcoming deadlines across all your task boards.', icon: 'ti-alarm', group: 'Work', Component: UpcomingTasksPanel },
   { id: 'quick_add', title: 'Quick Add', description: 'Capture a task without leaving the dashboard.', icon: 'ti-plus', group: 'Work', Component: QuickAddPanel },
   { id: 'schedule', title: 'Day Plan', description: 'Calendar events and draggable task time blocks.', icon: 'ti-timeline-event', group: 'Work', Component: DayPlanPanel },

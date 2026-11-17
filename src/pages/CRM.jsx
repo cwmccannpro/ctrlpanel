@@ -81,7 +81,7 @@ export default function CRM() {
       </div>
       {error && <p className="body-text crm-error" role="alert">{error}</p>}
       {crmBoards.loading && !board ? <p className="body-text">Loading CRM pages…</p>
-        : board?.spreadsheet_id ? <CrmSheet key={`${board.id}:${board.spreadsheet_id}:${linkNonce}`} board={board} onSheetChange={(name) => saveBoard({ sheet_name: name })} onSetup={() => setLinking(true)} />
+        : board?.spreadsheet_id ? <CrmSheet key={`${board.id}:${board.spreadsheet_id}:${linkNonce}`} board={board} onSetup={() => setLinking(true)} />
         : board ? (
           <div className="crm-empty">
             <SheetsLogo />

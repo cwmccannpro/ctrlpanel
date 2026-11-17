@@ -26,3 +26,21 @@ export function canDropInColumn(task, boards = [], defaults, column) {
   const board = boards.find((b) => b.id === task?.board_id);
   return columnsOf(board, defaults).includes(column);
 }
+
+/**
+ * The one board the dashboard and the bare /todo route use: the board most projects
+ * link to, then the one holding the most open tasks, then the newest. Ignores
+ * unsaved (tmp-) rows. Returns null when there are no boards.
+ */
+export function primaryBoard(boards = [], { tasks = [], projects = [] } = {}) {
+  const saved = boards.filter((b) => b && !String(b.id).startsWith('tmp-'));
+  if (saved.length <= 1) return saved[0] || null;
+  const links = (b) => projects.filter((p) => p.todo_board_id === b.id).length;
+  const open = (b) => tasks.filter((t) => t.board_id === b.id && !/^done$/i.test(String(t.column_name || '').trim())).length;
+  const score = (b) => [links(b), open(b), String(b.created_at || '')];
+  return [...saved].sort((a, b) => {
+    const [la, oa, ca] = score(a);
+    const [lb, ob, cb] = score(b);
+    return lb - la || ob - oa || cb.localeCompare(ca);
+  })[0];
+}

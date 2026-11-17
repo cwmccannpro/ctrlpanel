@@ -1,4 +1,4 @@
-.crm-page-toolbar .select, .crm-view-toolbar .select { width:auto; max-width:100%; }
+.crm-page-toolbar .select { width:auto; max-width:100%; }
 .crm-page-toolbar { margin-bottom:16px; }
 .crm-page-menu { display:flex; flex-direction:column; min-width:180px; }
 .crm-page-menu .btn { justify-content:flex-start; }
@@ -10,6 +10,25 @@
 .crm-page-list .list-row { gap:14px; color:var(--text-primary); text-decoration:none; }
 .crm-page-list .list-row-meta { margin-left:auto; }
 .crm-sheets-logo { flex-shrink:0; vertical-align:middle; }
+.crm-sheet-navigation { min-width:0; display:grid; gap:10px; margin-bottom:16px; }
+.crm-sheet-tabstrip { display:flex; align-items:end; gap:4px; min-width:0; padding:4px 0 0; overflow-x:auto; border-bottom:1px solid var(--border); scroll-padding-inline:4px; }
+.crm-sheet-tab { display:flex; align-items:center; flex:0 0 auto; min-width:0; max-width:min(235px, 78vw); padding-right:4px; border:1px solid transparent; border-bottom:0; border-radius:var(--radius-md) var(--radius-md) 0 0; color:var(--text-secondary); }
+.crm-sheet-tab:hover { background:var(--tint); }
+.crm-sheet-tab.is-active { background:var(--bg-elevated); border-color:var(--border); color:var(--text-primary); }
+.crm-sheet-tab > button { border:0; background:none; color:inherit; cursor:pointer; font:inherit; }
+.crm-sheet-tab > [role="tab"] { display:flex; align-items:center; gap:8px; min-width:0; min-height:36px; padding:0 8px 0 12px; text-align:left; font-size:13px; }
+.crm-sheet-tab.is-active > [role="tab"] > i { color:var(--accent); }
+.crm-sheet-tab > [role="tab"] > span, .crm-sheet-pin > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crm-sheet-tab > .crm-sheet-close { display:grid; place-items:center; flex:none; width:28px; height:28px; padding:0; border-radius:var(--radius-sm); color:var(--text-secondary); }
+.crm-sheet-tab > .crm-sheet-close:hover { background:var(--tint); color:var(--text-primary); }
+.crm-sheet-tab > button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.crm-sheet-picker { display:flex; align-items:center; gap:6px; min-width:0; }
+.crm-sheet-picker .select { width:auto; max-width:calc(100% - 48px); }
+.crm-sheet-picker button[aria-pressed="true"] { color:var(--accent); background:var(--accent-dim); }
+.crm-sheet-pins { display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-width:0; }
+.crm-sheet-pin-label { color:var(--text-secondary); font-size:12px; margin-right:4px; }
+.crm-sheet-pin { max-width:min(235px, 100%); }
+.crm-sheet-pin[aria-current="true"] { color:var(--accent); border-color:var(--accent); }
 .crm-open-sheet { margin-left:auto; }
 .crm-filters { display:flex; flex-wrap:wrap; gap:12px; padding:16px 0; border-top:1px solid var(--border); margin-bottom:16px; align-items:end; }
 .crm-filters .field { flex:1 1 160px; max-width:240px; margin:0; }
@@ -58,8 +77,6 @@ tr.is-selected td { background:var(--accent-dim); }
 .crm-notice { margin-bottom:12px; color:var(--amber); }
 .crm-problem > i { font-size:28px; color:var(--text-secondary); }
 .crm-problem p { max-width:520px; color:var(--text-primary); }
-.crm-addrow-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px 14px; }
-.crm-addrow-grid .field { margin:0; }
 
 /* ---- Connect / setup modal ---- */
 .crm-steps { margin:14px 0 4px 18px; display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.5; color:var(--text-primary); }
