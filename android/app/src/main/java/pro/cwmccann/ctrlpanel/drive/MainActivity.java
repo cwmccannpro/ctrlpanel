@@ -96,7 +96,7 @@ public class MainActivity extends Activity {
         if (command.startsWith("{")) { handleRequest(command); return; }
         switch (command) {
             case "state": publish(); break;
-            case "permissions": open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); break;
+            case "permissions": openNotificationAccess(); break;
             case "location": location.enable(); break;
             case "voiceMaps": startVoice("maps"); break;
             case "voiceMusic": startVoice("music"); break;
@@ -170,10 +170,21 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == DriveLocation.PERMISSION) { location.start(); publish(); }
     }
+    /** Straight to Drive's own toggle where Android supports it (11+), otherwise the full list. */
+    private void openNotificationAccess() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            try {
+                startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, DriveNotifications.component(this).flattenToString()));
+                return;
+            } catch (Exception ignored) { }
+        }
+        open(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+    }
     private MediaController spotify() {
         try {
             MediaSessionManager manager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
-            for (MediaController c : manager.getActiveSessions(new ComponentName(this, DriveNotifications.class)))
+            for (MediaController c : manager.getActiveSessions(DriveNotifications.component(this)))
                 if (SPOTIFY.equals(c.getPackageName())) return c;
         } catch (SecurityException ignored) { }
         return null;
@@ -208,9 +219,13 @@ public class MainActivity extends Activity {
                 music.put("artId", artId);
                 if (!artId.equals(artSent)) { String data = DriveImages.encode(art, 360, false); music.put("art", data == null ? JSONObject.NULL : data); sentArt = artId; }
             }
+            boolean granted = DriveNotifications.granted(this), connected = DriveNotifications.instance != null;
+            if (granted && !connected) DriveNotifications.rebind(this, false);
             JSONObject maps = DriveNotifications.navigation();
             JSONObject fix = location.snapshot();
-            reply.postMessage(new JSONObject().put("access", DriveNotifications.instance != null)
+            // access: switched on in Android settings; connected: the listener is bound and reading Maps.
+            reply.postMessage(new JSONObject().put("access", granted).put("connected", connected)
+                    .put("supported", DriveNotifications.supported(this))
                     .put("location", fix == null ? JSONObject.NULL : fix).put("locationMessage", location.message())
                     .put("voice", voiceResult == null ? JSONObject.NULL : voiceResult)
                     .put("music", music == null ? JSONObject.NULL : music)
@@ -221,6 +236,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume(); if (web != null) { web.onResume(); web.evaluateJavascript("window.dispatchEvent(new Event('ctrlpanel:resume'))", null); }
         if (location != null) location.start();
+        DriveNotifications.rebind(this, false);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         handler.removeCallbacks(tick); handler.post(tick);
     }

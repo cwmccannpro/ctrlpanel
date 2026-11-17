@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider.jsx';
 import DayPlanHero from '../components/DayPlanHero.jsx';
+import DriveAccessNotice from '../components/DriveAccessNotice.jsx';
 import DriveDirections from '../components/DriveDirections.jsx';
 import Glyph from '../components/DriveGlyph.jsx';
 import DriveGreeting from '../components/DriveGreeting.jsx';
 import DriveMacroRings from '../components/DriveMacroRings.jsx';
 import DriveMap from '../components/DriveMap.jsx';
 import DriveNowPlaying from '../components/DriveNowPlaying.jsx';
-import { drivePreferences, driveThemeStyle, driveSummary, driveImage, DRIVE_FACES, FACE_LABELS, DRIVE_PAGES, DRIVE_SECTIONS, DRIVE_THEMES, sendDriveCommand, sendDriveRequest, swipePage } from '../lib/drive.js';
+import { drivePreferences, driveThemeStyle, driveSummary, driveImage, driveAccess, driveAccessNotice, DRIVE_FACES, FACE_LABELS, DRIVE_PAGES, DRIVE_SECTIONS, DRIVE_THEMES, sendDriveCommand, sendDriveRequest, swipePage } from '../lib/drive.js';
 import { ACCENT_OPTIONS } from '../lib/helpers.js';
 import { currentDriveLocation } from '../lib/driveMap.js';
 import { useDriveData } from '../lib/useDriveData.js';
@@ -101,14 +102,17 @@ export default function Drive() {
   useEffect(() => { if (music && Object.hasOwn(music, 'art')) setArt({ id: music.artId ?? null, src: driveImage(music.art) }); }, [music]);
   const cover = music && art.id != null && music.artId === art.id ? art.src : null;
   const navigating = Boolean(maps?.title || maps?.text);
+  const access = driveAccess(native);
+  // An empty card says why when Android notification access is off or reconnecting.
+  const mapsBlocked = !navigating && driveAccessNotice(access, 'maps'), musicBlocked = !music && driveAccessNotice(access, 'music');
   const map = (compact, full = false) => <DriveMap location={location.location} message={location.message} onEnable={location.enable} compact={compact} full={full} light={preferences.theme === 'light'} />;
   const mapActions = <div className="drive-panel-actions"><button onClick={() => speak('maps')}><Glyph name="mic" /> Destination</button><button onClick={() => sendDriveCommand('maps')} aria-label="Open Google Maps">↗</button></div>;
   // Next-turn directions only; the map itself lives in the centre circle (Live map face) and on the Map page.
   // Small mic + open-app buttons in a box's bottom-right corner.
   const corner = (kind, app, appLabel) => <div className="drive-corner"><button onClick={() => speak(kind)} aria-label={kind === 'maps' ? 'Speak a destination' : 'Choose music by voice'}><Glyph name="mic" /></button><button onClick={() => sendDriveCommand(app)} aria-label={appLabel}><Glyph name="external" /></button></div>;
-  const mapPanel = <section className="drive-panel drive-map"><div className="drive-panel-label"><Glyph name="maps" /><span>NEXT TURN</span></div><div className="drive-turn-box"><DriveDirections maps={maps} />{corner('maps', 'maps', 'Open Google Maps')}</div></section>;
+  const mapPanel = <section className="drive-panel drive-map"><div className="drive-panel-label"><Glyph name="maps" /><span>NEXT TURN</span></div><div className="drive-turn-box">{mapsBlocked ? <DriveAccessNotice state={access} kind="maps" /> : <DriveDirections maps={maps} />}{corner('maps', 'maps', 'Open Google Maps')}</div></section>;
   // Mirrors the directions panel: label, a box the same size (CarPlay-style now playing), then the action row.
-  const musicPanel = <section className="drive-panel drive-music"><div className="drive-panel-label"><Glyph name="music" /><span>SPOTIFY</span></div><div className="drive-music-box"><DriveNowPlaying music={music} cover={cover} />{corner('music', 'spotify', 'Open Spotify')}</div></section>;
+  const musicPanel = <section className="drive-panel drive-music"><div className="drive-panel-label"><Glyph name="music" /><span>SPOTIFY</span></div><div className="drive-music-box">{musicBlocked ? <DriveAccessNotice state={access} kind="music" /> : <DriveNowPlaying music={music} cover={cover} />}{corner('music', 'spotify', 'Open Spotify')}</div></section>;
   const tasks = <><span className="drive-eyebrow">DUE TODAY + OVERDUE</span><strong className="drive-number">{updated ? summary.due.length : '—'}</strong><span>{summary.due[0]?.title || (updated ? 'Nothing due. Room to breathe.' : 'Waiting for CTRLpanel')}</span></>;
   const habits = <><span className="drive-eyebrow">TODAY’S HABITS</span><strong className="drive-number">{updated ? `${summary.completed}/${summary.habits.length}` : '—'}</strong><span>{summary.habits.length ? 'Completed today' : 'No habits yet'}</span></>;
   let center;

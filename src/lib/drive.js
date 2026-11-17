@@ -74,6 +74,27 @@ export function trackTime(ms) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
+/**
+ * Whether the Android app can read Maps and Spotify. Both come through Android notification
+ * access; without it the cards stay empty with no other sign of why.
+ * 'browser' (no Android app), 'unsupported', 'off', 'connecting' (granted, listener not bound yet) or 'ready'.
+ * Older APKs send only `access` (meaning connected), which reads as 'off' or 'ready'.
+ */
+export function driveAccess(native) {
+  if (!native?.available) return 'browser';
+  if (native.supported === false) return 'unsupported';
+  if (!native.access) return 'off';
+  return native.connected === false ? 'connecting' : 'ready';
+}
+/** Message for an empty Next turn ('maps') or Spotify ('music') card, or null when nothing is wrong. */
+export function driveAccessNotice(state, kind) {
+  if (state === 'unsupported') return { text: 'This tablet’s Android doesn’t allow notification access, so Drive can’t read Maps or Spotify.', action: false };
+  if (state === 'off') return { text: `Turn on notification access for CTRLpanel Drive to show ${kind === 'maps' ? 'your next turn' : 'what’s playing'}.`, action: true };
+  // Spotify only needs access to be on; Maps turns need the listener connected.
+  if (state === 'connecting' && kind === 'maps') return { text: 'Reconnecting to Android notifications…', action: true };
+  return null;
+}
+
 // No arbitrary native intents, URLs, script execution or credential transfer.
 const COMMANDS = new Set(['state', 'maps', 'spotify', 'playPause', 'next', 'previous', 'permissions', 'ctrlpanel', 'location', 'voiceMaps', 'voiceMusic']);
 export function sendDriveCommand(command) {

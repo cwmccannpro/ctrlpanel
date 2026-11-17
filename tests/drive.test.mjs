@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drivePreferences, driveSummary, swipePage, sendDriveCommand, driveRequest, driveImage, driveSeek, turnKind, trackProgress, trackTime, TURN_KINDS, DRIVE_PAGES, DRIVE_SECTIONS, DRIVE_FACES, DRIVE_THEMES } from '../src/lib/drive.js';
+import { driveAccess, driveAccessNotice, drivePreferences, driveSummary, swipePage, sendDriveCommand, driveRequest, driveImage, driveSeek, turnKind, trackProgress, trackTime, TURN_KINDS, DRIVE_PAGES, DRIVE_SECTIONS, DRIVE_FACES, DRIVE_THEMES } from '../src/lib/drive.js';
 import { loadDriveSnapshot } from '../src/lib/driveSnapshot.js';
 import { driveMapStyle, driveHeading, currentDriveLocation } from '../src/lib/driveMap.js';
 
@@ -126,4 +126,23 @@ test('seek requests are whole milliseconds within a day, nothing else', () => {
   assert.deepEqual(driveSeek(83500.4), { command: 'seek', position: 83500 });
   assert.deepEqual(driveSeek(0), { command: 'seek', position: 0 });
   for (const bad of [-1, 86400001, NaN, Infinity, 'abc', null]) assert.equal(driveSeek(bad), null);
+});
+
+test('notification access state: browser, off, unsupported, reconnecting and ready', () => {
+  assert.equal(driveAccess({ available: false }), 'browser');
+  assert.equal(driveAccess({ available: true, access: false }), 'off');
+  assert.equal(driveAccess({ available: true, access: false, supported: false }), 'unsupported');
+  assert.equal(driveAccess({ available: true, access: true, connected: false }), 'connecting');
+  assert.equal(driveAccess({ available: true, access: true, connected: true }), 'ready');
+  // An older APK sends only access (= connected).
+  assert.equal(driveAccess({ available: true, access: true }), 'ready');
+});
+test('empty cards explain missing notification access; Spotify does not wait for the Maps listener', () => {
+  assert.equal(driveAccessNotice('ready', 'maps'), null);
+  assert.equal(driveAccessNotice('browser', 'music'), null);
+  assert.equal(driveAccessNotice('off', 'maps').action, true);
+  assert.match(driveAccessNotice('off', 'music').text, /notification access/);
+  assert.equal(driveAccessNotice('unsupported', 'maps').action, false);
+  assert.ok(driveAccessNotice('connecting', 'maps'));
+  assert.equal(driveAccessNotice('connecting', 'music'), null);
 });
