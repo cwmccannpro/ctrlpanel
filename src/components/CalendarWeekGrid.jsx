@@ -32,6 +32,7 @@ export default function CalendarWeekGrid({
   days, events, selected, onSelect = () => {}, onOpen = () => {}, loading,
   compact = false, fixedHour,
   drag = null, setDrag = () => {}, onDropTask, onResizeTask, onToggleTask, onUnscheduleTask,
+  onCreateAt,
 }) {
   const body = useRef(null);
   const cols = useRef([]);
@@ -108,6 +109,14 @@ export default function CalendarWeekGrid({
     setGhost(null);
     setDrag(null);
   };
+  // Click empty space in a day column → new event at that half hour.
+  const justResized = useRef(false); // a resize that ends over empty space must not also "click" it
+  const onColClick = (e, i) => {
+    if (!onCreateAt || drag || justResized.current || e.target !== e.currentTarget) return;
+    const top = e.currentTarget.getBoundingClientRect().top;
+    const min = GRID.start * 60 + Math.floor((((e.clientY - top) / hour) * 60) / 30) * 30;
+    onCreateAt(days[i], Math.max(GRID.start * 60, Math.min(min, GRID.end * 60 - 60)));
+  };
   const onGridLeave = (e) => {
     if (!e.currentTarget.contains(e.relatedTarget)) setGhost(null);
   };
@@ -137,6 +146,8 @@ export default function CalendarWeekGrid({
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
       setResizing(null);
+      justResized.current = true;
+      setTimeout(() => { justResized.current = false; }, 0);
       if (last !== base) onResizeTask?.(item.task_id, last);
     };
     window.addEventListener('pointermove', move);
@@ -254,7 +265,9 @@ export default function CalendarWeekGrid({
                 <div
                   key={dateKey(date)}
                   ref={(el) => { cols.current[i] = el; }}
-                  className={`wk-col ${today ? 'today' : ''} ${!compact && sameDate(date, selected) ? 'selected' : ''} ${ghost?.col === i ? 'is-target' : ''}`}
+                  className={`wk-col ${today ? 'today' : ''} ${!compact && sameDate(date, selected) ? 'selected' : ''} ${ghost?.col === i ? 'is-target' : ''} ${onCreateAt ? 'is-creatable' : ''}`}
+                  title={onCreateAt ? 'Click an empty slot to add an event' : undefined}
+                  onClick={(e) => onColClick(e, i)}
                   onDragOver={(e) => onDragOver(e, i)}
                   onDrop={(e) => onDrop(e, i)}
                 >

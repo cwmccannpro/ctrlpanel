@@ -3,12 +3,15 @@ import { useSearchParams } from 'react-router-dom';
 import Modal from '../components/shared/Modal.jsx';
 import { loadCalendarEvents } from '../lib/calendarData.js';
 import CalendarFeeds from '../components/CalendarFeeds.jsx';
+import CalendarICloud from '../components/CalendarICloud.jsx';
+import CalendarEventEditor from '../components/CalendarEventEditor.jsx';
 import CalendarWeekGrid from '../components/CalendarWeekGrid.jsx';
 import TaskTray from '../components/TaskTray.jsx';
 import TaskBlockDetail from '../components/TaskBlockDetail.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { useTaskPlanner } from '../lib/useTaskPlanner.js';
-import { gcal, ical } from '../lib/api.js';
+import { gcal, ical, icloud } from '../lib/api.js';
+import { canEditEvent, mergeCalendarSources, newDraft } from '../lib/calendarEdit.js';
 import { calendarDays, dateKey, eventsForDay, moveCalendar, sameDate } from '../lib/calendarView.js';
 import { feedName } from '../lib/icalFeeds.js';
 import { useIcalFeeds } from '../lib/useIcalFeeds.js';
@@ -40,6 +43,9 @@ export default function Calendar() {
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState(null);
+  const [icloudStatus, setIcloudStatus] = useState({ connected: false, configured: true });
+  const [managingIcloud, setManagingIcloud] = useState(false);
+  const [editing, setEditing] = useState(null); // { event } to edit, { draft } to create
   const planner = useTaskPlanner();
   const [drag, setDrag] = useState(null);
   const [tray, setTray] = useState(() => typeof window === 'undefined' || window.innerWidth >= 1100);
@@ -62,17 +68,13 @@ export default function Calendar() {
       setLoading(true);
       setError('');
       try {
-        let connection;
-        try {
-          connection = await gcal.status();
-        } catch {
-          connection = {
-            connected: false,
-            ready: false
-          };
-        }
+        const [connection, apple] = await Promise.all([
+          gcal.status().catch(() => ({ connected: false, ready: false })),
+          icloud.status().catch(() => ({ connected: false, configured: true })),
+        ]);
         if (!active) return;
         setStatus(connection);
+        setIcloudStatus(apple);
         let rows;
         const until = new Date(`${lastDay}T00:00:00`);
         until.setDate(until.getDate() + 1);
@@ -90,18 +92,31 @@ export default function Calendar() {
             rows = await loadCalendarEvents(from, until.toISOString());
           }
         } catch (e) {
-          // With feeds configured, a broken Google/saved source must not hide them.
-          if (!feeds.length) throw e;
+          // With feeds or iCloud configured, a broken Google/saved source must not hide them.
+          if (!feeds.length && !apple.connected) throw e;
           rows = [];
           sourceNote = e.message || 'Events could not load.';
         }
+        // iCloud (read + write). A failure is reported, never fatal.
+        let appleRows = [];
+        if (apple.connected) {
+          try {
+            const res = await icloud.list({ timeMin: from, timeMax: until.toISOString() });
+            appleRows = res.events || [];
+            if (res.errors?.length) sourceNote = [sourceNote, ...res.errors.map(x => `${x.calendar}: ${x.error}`)].filter(Boolean).join(' · ');
+          } catch (e) {
+            sourceNote = [sourceNote, `iCloud: ${e.message || 'events could not load.'}`].filter(Boolean).join(' · ');
+          }
+          if (!active) return;
+        }
         if (active) setNotice(sourceNote);
         // Read-only .ics feeds. One broken feed is reported, never fatal.
+        let feedRows = [];
         if (feeds.length) {
           try {
             const feedResult = await ical.events(feeds, { timeMin: from, timeMax: until.toISOString() });
             if (!active) return;
-            rows = [...rows, ...(feedResult.events || [])];
+            feedRows = feedResult.events || [];
             setFeedHealth(Object.fromEntries((feedResult.feeds || []).map(f => [f.id, f])));
           } catch (e) {
             if (!active) return;
@@ -110,7 +125,8 @@ export default function Calendar() {
         } else if (active) {
           setFeedHealth({});
         }
-        if (active) setEvents(rows);
+        // The same event from a public feed and from iCloud shows once (iCloud's editable copy).
+        if (active) setEvents(mergeCalendarSources({ base: rows, icloud: appleRows, feeds: feedRows }));
       } catch (e) {
         if (active) {
           setError(e.message || 'Events could not load.');
@@ -158,6 +174,16 @@ export default function Calendar() {
       mins: 30
     });
   };
+  // iCloud events from writable calendars open in the editor; everything else is read-only detail.
+  const writable = Boolean(icloudStatus.connected);
+  const openEvent = e => canEditEvent(e) ? setEditing({ event: e }) : setDetail(e);
+  const createAt = (date, startMin) => setEditing({ draft: newDraft(date, { startMin }) });
+  const newEvent = () => {
+    const now = new Date();
+    const next = Math.min(22 * 60 + 30, Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 30) * 30);
+    createAt(selected, sameDate(selected, now) ? next : 9 * 60);
+  };
+  const saved = () => setRevision(r => r + 1);
   const choose = date => {
     setSelected(date);
     if (!days.some(d => sameDate(d, date))) setCursor(date);
@@ -192,7 +218,12 @@ export default function Calendar() {
     });
     return a.getMonth() === b.getMonth() ? `${m(a)} ${a.getDate()} – ${b.getDate()}` : `${m(a)} ${a.getDate()} – ${m(b)} ${b.getDate()}`;
   };
-  const legend = [...feeds.map(f => ({
+  const appleCalendars = [...new Map(events.filter(e => e.source === 'icloud').map(e => [e.cal_id, {
+    id: e.cal_id,
+    name: e.calendar,
+    color: e.color
+  }])).values()];
+  const legend = [...appleCalendars, ...feeds.map(f => ({
     id: f.id,
     name: feedName(f),
     color: f.color
@@ -203,11 +234,12 @@ export default function Calendar() {
     dashed: true
   }] : [])];
   const sourceFooter = <footer className={`calendar-source ${weekMode ? 'calendar-source--bar' : ''}`}>
-    <span>{[status.connected ? 'Google Calendar' : feeds.length ? '' : 'Saved events', feeds.length ? `${feeds.length} iCal feed${feeds.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' + ')} · Read only</span>
+    <span>{[status.connected ? 'Google Calendar' : feeds.length || writable ? '' : 'Saved events', writable ? 'iCloud' : '', feeds.length ? `${feeds.length} iCal feed${feeds.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' + ')} · {writable ? 'Click an empty slot to add · iCloud events are editable' : 'Read only'}</span>
     {weekMode && legend.length > 0 && <div className="calendar-legend">{legend.map(l => <span key={l.id} className={l.dashed ? 'dashed' : ''} style={{
       '--event-color': l.color
     }}><i />{l.name}</span>)}</div>}
     <button className="btn btn--ghost btn--icon" aria-label="Refresh events" disabled={loading} onClick={() => setRevision(r => r + 1)}><i className="ti ti-refresh" /></button>
+    <button className="btn btn--sm" onClick={() => setManagingIcloud(true)}><i className="ti ti-brand-apple" /> {writable ? 'iCloud' : 'Connect iCloud'}</button>
     <button className="btn btn--sm" onClick={() => setManaging(true)}><i className="ti ti-rss" /> Feeds</button>
     {!status.connected && status.ready && !feeds.length && <button className="btn btn--sm" onClick={() => gcal.connect().catch(e => setError(e.message))}>Connect Google</button>}
     {status.connected && <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer">Open Google Calendar ↗</a>}
@@ -218,13 +250,13 @@ export default function Calendar() {
         })} <span>{cursor.getFullYear()}</span></>}</h1><div className="calendar-controls"><div className="segmented" aria-label="Calendar view">{['Month', 'Week'].map(v => <button key={v} aria-pressed={view === v} className={view === v ? 'active' : ''} onClick={() => {
             setCursor(selected);
             setView(v);
-          }}>{v}</button>)}</div>{weekMode && <button className={`btn btn--ghost calendar-tray-toggle ${tray ? 'on' : ''}`} aria-pressed={tray} onClick={() => setTray(t => !t)}><i className="ti ti-checkbox" /> Tasks{planner.unscheduled.length > 0 && <small>{planner.unscheduled.length}</small>}</button>}<button className="btn btn--ghost" onClick={today}>Today</button><div className="row"><button className="btn btn--ghost btn--icon" aria-label={`Previous ${view.toLowerCase()}`} onClick={() => move(-1)}><i className="ti ti-chevron-left" /></button><button className="btn btn--ghost btn--icon" aria-label={`Next ${view.toLowerCase()}`} onClick={() => move(1)}><i className="ti ti-chevron-right" /></button></div></div></header>
+          }}>{v}</button>)}</div>{writable && <button className="btn btn--accent calendar-new" onClick={newEvent}><i className="ti ti-plus" /> New event</button>}{weekMode && <button className={`btn btn--ghost calendar-tray-toggle ${tray ? 'on' : ''}`} aria-pressed={tray} onClick={() => setTray(t => !t)}><i className="ti ti-checkbox" /> Tasks{planner.unscheduled.length > 0 && <small>{planner.unscheduled.length}</small>}</button>}<button className="btn btn--ghost" onClick={today}>Today</button><div className="row"><button className="btn btn--ghost btn--icon" aria-label={`Previous ${view.toLowerCase()}`} onClick={() => move(-1)}><i className="ti ti-chevron-left" /></button><button className="btn btn--ghost btn--icon" aria-label={`Next ${view.toLowerCase()}`} onClick={() => move(1)}><i className="ti ti-chevron-right" /></button></div></div></header>
     {error && <div className="calendar-error" role="alert">{error}<button className="btn btn--sm" onClick={() => setRevision(r => r + 1)}>Retry</button></div>}
     {!error && notice && <div className="calendar-error" role="status"><span>{notice}</span>{status.connected && <button className="btn btn--sm" onClick={() => gcal.connect().catch(e => setError(e.message))}>Reconnect</button>}</div>}
     {!error && brokenFeeds.length > 0 && <div className="calendar-error" role="alert"><span>{brokenFeeds.map(f => `${feedName(f)}: ${feedHealth[f.id].error}`).join(' · ')}</span><button className="btn btn--sm" onClick={() => setManaging(true)}>Feeds</button></div>}
     {weekMode ? <><div className={`calendar-layout calendar-layout--week ${tray ? 'has-tray' : ''}`}>
       <div className="calendar-sheet" aria-busy={loading}>
-        <CalendarWeekGrid days={days} events={items} selected={selected} onSelect={choose} onOpen={setDetail} loading={loading} drag={drag} setDrag={setDrag} onDropTask={(id, date, startMin, mins) => planner.place(id, new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, startMin), mins)} onResizeTask={planner.resize} onToggleTask={toggleTask} onUnscheduleTask={planner.unschedule} />
+        <CalendarWeekGrid days={days} events={items} selected={selected} onSelect={choose} onOpen={openEvent} onCreateAt={writable ? createAt : undefined} loading={loading} drag={drag} setDrag={setDrag} onDropTask={(id, date, startMin, mins) => planner.place(id, new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, startMin), mins)} onResizeTask={planner.resize} onToggleTask={toggleTask} onUnscheduleTask={planner.unschedule} />
       </div>
       {tray && <TaskTray planner={planner} drag={drag} setDrag={setDrag} onSnap={snapTask} onOpenTask={openTask} onClose={() => setTray(false)} />}
     </div>{sourceFooter}</> : <div className="calendar-layout calendar-layout--month"><div className="calendar-sheet" aria-busy={loading}><div className="calendar-weekdays">{weekdays.map(day => <span key={day}>{day}</span>)}</div><div className="calendar-dates" ref={grid}>
@@ -245,12 +277,17 @@ export default function Calendar() {
             })}</span><h2>{selected.toLocaleDateString([], {
               month: 'long',
               day: 'numeric'
-            })}</h2></header><div className="calendar-agenda-events" aria-live="polite">{loading ? <p className="calendar-empty">Loading events…</p> : error ? <p className="calendar-empty">Events are unavailable.</p> : !selectedEvents.length ? <div className="calendar-empty"><i className="ti ti-sun" /><p>No events scheduled.</p></div> : selectedEvents.map(e => <button className="calendar-agenda-event" key={`${e.cal_id || ''}-${e.id}`} style={{
+            })}</h2>{writable && <button className="btn btn--sm calendar-agenda-add" onClick={newEvent} aria-label="Add an event on this day"><i className="ti ti-plus" /> Add</button>}</header><div className="calendar-agenda-events" aria-live="polite">{loading ? <p className="calendar-empty">Loading events…</p> : error ? <p className="calendar-empty">Events are unavailable.</p> : !selectedEvents.length ? <div className="calendar-empty"><i className="ti ti-sun" /><p>No events scheduled.</p></div> : selectedEvents.map(e => <button className="calendar-agenda-event" key={`${e.cal_id || ''}-${e.id}`} style={{
             '--event-color': e.color || 'var(--accent)'
-          }} onClick={() => setDetail(e)}><time>{eventTime(e)}</time><strong>{e.title || 'Untitled event'}</strong>{e.calendar && <span>{e.calendar}</span>}</button>)}</div>{sourceFooter}</aside></div>}
+          }} onClick={() => openEvent(e)}><time>{eventTime(e)}</time><strong>{e.title || 'Untitled event'}</strong>{e.calendar && <span>{e.calendar}</span>}</button>)}</div>{sourceFooter}</aside></div>}
     {detail && (detail.kind === 'task' ? <TaskBlockDetail item={detail} planner={planner} onSnap={snapTask} onClose={() => setDetail(null)} /> : <Modal title={detail.title || 'Event'} onClose={() => setDetail(null)}><div className="calendar-detail"><p>{allDay(detail) ? detail.starts_at.slice(0, 10) : new Date(detail.starts_at).toLocaleDateString([], {
             dateStyle: 'full'
-          })}</p><p>{eventTime(detail)}</p>{detail.location && <p><i className="ti ti-map-pin" /> {detail.location}</p>}{detail.calendar && <p>{detail.calendar}</p>}{detail.html_link && /^https:\/\//.test(detail.html_link) && <a className="btn" href={detail.html_link} target="_blank" rel="noopener noreferrer">Open event ↗</a>}</div></Modal>)}
+          })}</p><p>{eventTime(detail)}</p>{detail.location && <p><i className="ti ti-map-pin" /> {detail.location}</p>}{detail.calendar && <p>{detail.calendar}</p>}{detail.notes && <p className="calendar-detail-notes">{detail.notes}</p>}{detail.source === 'icloud' && <p className="calendar-detail-note"><i className="ti ti-lock" /> {detail.recurring ? 'Repeating event: edit it in Apple Calendar.' : 'This iCloud calendar is read-only.'}</p>}{detail.html_link && /^https:\/\//.test(detail.html_link) && <a className="btn" href={detail.html_link} target="_blank" rel="noopener noreferrer">Open event ↗</a>}</div></Modal>)}
     {managing && <CalendarFeeds feeds={feeds} health={feedHealth} onSave={saveFeeds} onClose={() => setManaging(false)} />}
+    {managingIcloud && <CalendarICloud status={icloudStatus} onChanged={next => {
+      setIcloudStatus(next);
+      saved();
+    }} onClose={() => setManagingIcloud(false)} />}
+    {editing && <CalendarEventEditor event={editing.event} draft={editing.draft} onSaved={saved} onClose={() => setEditing(null)} />}
   </section>;
 }

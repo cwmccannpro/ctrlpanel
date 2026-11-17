@@ -234,6 +234,36 @@ export const ical = {
     }),
 };
 
+// iCloud Calendar, read + write over CalDAV (backend/caldav.js). The Apple ID
+// and app-specific password go to the server once, on connect, and are stored
+// encrypted there; the browser only ever sees events and calendar names.
+let icloudCalendars = null; // { at, list } — new-event pickers open often
+export const icloud = {
+  status: () => authApi.get('/caldav/status'),
+  connect: async (username, password) => {
+    icloudCalendars = null;
+    return authApi.post('/caldav/connect', { username, password });
+  },
+  disconnect: async () => {
+    icloudCalendars = null;
+    return authApi.post('/caldav/disconnect');
+  },
+  calendars: async ({ fresh = false } = {}) => {
+    if (!fresh && icloudCalendars && Date.now() - icloudCalendars.at < 5 * 60000) return icloudCalendars.list;
+    const { calendars } = await authApi.post('/caldav/calendars');
+    icloudCalendars = { at: Date.now(), list: calendars || [] };
+    return icloudCalendars.list;
+  },
+  list: async ({ timeMin, timeMax } = {}) => {
+    const res = await authApi.post('/caldav/list', { timeMin, timeMax, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    if (res.calendars) icloudCalendars = { at: Date.now(), list: res.calendars };
+    return res;
+  },
+  create: (event) => authApi.post('/caldav/create', { event }),
+  update: (event) => authApi.post('/caldav/update', { event }),
+  remove: ({ href, etag }) => authApi.post('/caldav/delete', { href, etag }),
+};
+
 export const gcal = {
   status: () => gfetch('/status'),
   connect: async () => {

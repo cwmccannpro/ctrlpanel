@@ -1,0 +1,33 @@
+/* iCloud event editor + connect dialog. Theme tokens and the calendar's own colour only. */
+.cal-edit{--event-color:var(--accent);display:flex;flex-direction:column;gap:14px;min-width:min(440px,100%)}
+.cal-edit label{display:flex;flex-direction:column;min-width:0}
+.cal-edit .field-label{margin-bottom:5px;color:var(--text-secondary)}
+.cal-edit .field-label em{font-style:normal;text-transform:none;letter-spacing:0;color:var(--event-color);margin-left:4px}
+.cal-edit-title{font-size:16px;font-weight:550;padding-left:14px;box-shadow:inset 3px 0 0 var(--event-color)}
+.cal-edit-row{display:flex;align-items:center;gap:12px}
+.cal-edit .cal-edit-toggle{flex-direction:row;align-items:center;gap:9px;font-size:12px;color:var(--text-secondary);cursor:pointer}
+.cal-edit-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:10px}
+.cal-edit-times{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cal-edit .textarea{min-height:64px}
+.cal-edit-error{color:var(--red);font-size:12px;line-height:1.45}
+.cal-edit-note{font-size:11px;color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+.cal-edit-actions{display:flex;align-items:center;gap:8px;width:100%}
+.cal-edit-spacer{flex:1}
+@media(max-width:520px){.cal-edit-grid{grid-template-columns:1fr}}
+
+.cal-icloud{display:flex;flex-direction:column;gap:14px;min-width:min(440px,100%)}
+.cal-icloud-help{font-size:12px;line-height:1.55;color:var(--text-secondary)}
+.cal-icloud-help ol{margin:6px 0 0 18px;display:flex;flex-direction:column;gap:3px}
+.cal-icloud-help a{color:var(--accent)}
+.cal-icloud-form{display:flex;flex-direction:column;gap:8px}
+.cal-icloud-account{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--bg-elevated);box-shadow:inset 0 0 0 1px var(--border)}
+.cal-icloud-account>i{font-size:20px}
+.cal-icloud-account div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cal-icloud-account strong{font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.cal-icloud-account small{font-size:11px;color:var(--text-secondary)}
+.cal-icloud-cals{display:flex;flex-direction:column;gap:2px;list-style:none;margin:0;padding:0}
+.cal-icloud-cals li{display:flex;align-items:center;gap:9px;font-size:12px;padding:5px 2px}
+.cal-icloud-cals li>i{width:9px;height:9px;border-radius:50%;background:var(--c);flex-shrink:0}
+.cal-icloud-cals li>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-icloud-cals small{font-size:10px;color:var(--text-secondary);letter-spacing:.06em;text-transform:uppercase}
+.cal-icloud-bad{color:var(--red);font-size:12px;line-height:1.45}

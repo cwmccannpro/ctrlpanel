@@ -23,7 +23,7 @@
 .dp-load{height:3px;border-radius:2px;background:var(--border);margin-bottom:12px;overflow:hidden}
 .dp-load i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 40%,transparent),var(--accent));transition:width 400ms ease}
 
-.dp-timeline{height:360px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-surface)}
+.dp-timeline{position:relative;height:360px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg-surface)}
 .dp-timeline .wk{flex:1;min-height:0}
 
 .dp-todo{margin-top:12px}
@@ -42,3 +42,12 @@
 .dp-more{display:block;font-size:11px;color:var(--text-secondary);padding:4px 2px}
 .dp-more:hover{color:var(--accent)}
 @media(prefers-reduced-motion:reduce){.dp-progress i,.dp-load i{transition:none}}
+
+/* Drag the timeline's bottom edge to resize it (saved per panel); double-click / Enter = full day. */
+.dp-resize{position:absolute;left:0;right:0;bottom:0;height:12px;cursor:ns-resize;touch-action:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;z-index:6}
+.dp-resize i{width:38px;height:4px;border-radius:2px;background:var(--border-bright);opacity:.7;transition:background 140ms ease,opacity 140ms ease,width 140ms ease}
+.dp-resize:hover i,.dp-resize:focus-visible i,.dp-timeline.is-resizing .dp-resize i{background:var(--accent);opacity:1;width:56px}
+.dp-resize:focus-visible{outline:none}
+.dp-timeline.is-resizing{user-select:none;border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.dp-full.on{color:var(--accent)}
+@media(prefers-reduced-motion:reduce){.dp-resize i{transition:none}}

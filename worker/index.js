@@ -23,6 +23,7 @@ import { handleNutritionRequest, MAX_NUTRITION_BODY } from '../backend/nutrition
 import { handleSocialRequest } from '../backend/socials.js';
 import { getSheetsStatus, handleSheetsRequest } from '../backend/sheets.js';
 import { icalEvents } from '../backend/ical.js';
+import { handleCaldavRequest } from '../backend/caldav.js';
 import {
   backendReady,
   authUrl,
@@ -67,6 +68,7 @@ export default {
 
     try {
       if (pathname.startsWith('/api/room/')) return handleRoomRequest(request);
+      if (pathname.startsWith('/api/caldav/')) return handleCaldavRequest(request);
       if (pathname === '/api/knowledge/notes') {
         try {
           const raw = method === 'POST' ? await request.text() : '';

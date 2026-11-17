@@ -1,5 +1,33 @@
 # CTRLpanel — Project Context for Agents
 
+## iCloud Calendar read + write, resizable Day Plan (2026-11-16)
+- **The Calendar is writable through iCloud (CalDAV).** `backend/caldav.js` is one Bearer-only dispatcher
+  (`handleCaldavRequest`) for Express (`backend/routes/caldav.js`, thin adapter) and the Worker:
+  `GET /api/caldav/status` · `POST /api/caldav/connect|disconnect|calendars|list|create|update|delete`.
+  Connect takes an Apple ID + **app-specific password**, verifies it against iCloud, then stores it
+  AES-256-GCM-sealed (key = `CALDAV_SECRET`, else the service-role key) in `caldav_accounts`
+  (service-role only, RLS on with no policy; `migrations/20261116-icloud-caldav.sql`, also in the schema).
+  The password never returns to the browser.
+- Safety: only `https://*.icloud.com` is contacted (redirects re-checked every hop), and every href the
+  browser sends must sit inside the account's own calendar home (`ownUrl`). Apple's 401 is returned as
+  **422 `code: auth`** so it can't read as an expired CTRLpanel session.
+- Reads reuse `backend/ical.js` (`icsToEvents`, which now also returns `uid` and `notes`). iCloud events
+  carry `source:'icloud'`, `href`, `etag`, `recurring`, `editable`. Writes: create = PUT + `If-None-Match: *`;
+  update = GET, `patchIcs` rewrites only the edited props (keeps VALARMs, attendees, X- props; bumps
+  SEQUENCE), PUT + `If-Match` (412 → 409 `conflict`); moving calendars = PUT copy then DELETE; delete =
+  DELETE + `If-Match`. **Repeating events are read-only** (they'd need RECURRENCE-ID overrides).
+- Frontend: `icloud` in `lib/api.js`; pure helpers in `lib/calendarEdit.js` (`mergeCalendarSources` drops a
+  public-feed copy of an iCloud event by uid+start, `newDraft`/`draftFromEvent`/`eventFromDraft`,
+  `canEditEvent`). `CalendarICloud.jsx` (connect dialog), `CalendarEventEditor.jsx` (create/edit/move/delete;
+  remembers the last calendar in `ui_preferences.calendar.icloudCalendar`). Calendar page: footer "iCloud"
+  button, "New event", agenda "Add", and clicking an empty grid slot (`CalendarWeekGrid` `onCreateAt`)
+  creates at that half hour. `useCalendarEvents` merges iCloud too; `refreshCalendarEvents()` reloads every
+  mounted copy after a write.
+- **Day Plan timeline resizes**: drag its bottom edge (or arrow keys on the handle), double-click / the
+  ↕ button toggles the full 6 AM–midnight day. Height is saved per panel in `cfg.timelineH`; the grid
+  auto-fits hours (30–64 px). Editable iCloud events open the editor in place; empty slots create events.
+- Tests: `tests/caldav.test.mjs` (fake iCloud behind global fetch + fake DB), `tests/calendarEdit.test.mjs`.
+
 ## Room Control (2026-11-15)
 - `/room` is the lazy Room Control page, with sidebar/palette entry and optional
   `room_control` dashboard panel. Use the existing theme tokens and shared controls.
@@ -158,7 +186,8 @@
   jsonb for custom-column values — only used by non-sheet-backed pages),
   `google_sheets_tokens` (service-role only, RLS with no policy)
 - Calendar: `calendar_events` (local fallback; Google is primary when connected),
-  `google_tokens` (service-role only)
+  `google_tokens` (service-role only), `caldav_accounts` (iCloud CalDAV login, sealed
+  password, service-role only)
 - Socials: `youtube_channels` (service-role only; per-user OAuth tokens + cached
   channel stats, exposed to the owner only through `/api/youtube/*`)
 - Health: `nutrition_logs` (+ `notes`, `micros` jsonb), `weight_logs`, `water_logs`,
@@ -432,6 +461,8 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   `POST /api/calendar/disconnect|events` · `PATCH|DELETE /api/calendar/events/:id`
   (auth = Supabase access token via `Authorization: Bearer` or `?token=`)
 - `POST /api/ical/events` — read-only .ics feeds (see Calendar note; `backend/ical.js`)
+- `GET /api/caldav/status` · `POST /api/caldav/connect|disconnect|calendars|list|create|update|delete` —
+  iCloud Calendar read + write (Bearer auth; one dispatcher in `backend/caldav.js`)
 - `POST /api/nutrition/log` — external clients; auth = per-user API key
   (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
 - `POST /api/agents/opportunities/run` `{ apiKey?, today }` → NDJSON progress
@@ -490,10 +521,10 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - `tools/ctrlpanel-mcp.mjs` exposes read_context, save_context, and
   initialize_prompts over local stdio MCP. See `docs/context-sync.md` for
   deployment, client configuration, API contract, and activation limitations.
-- Calendar is now a read-only month/week overview with a selected-day agenda
-  (`src/pages/Calendar.jsx`, `src/lib/calendarView.js`). Event writes are absent
-  from the page; Google events are read for the visible range. Manage events
-  through Google Calendar. Date-only and overnight events use local-day overlap.
+- Calendar is a month/week overview with a selected-day agenda
+  (`src/pages/Calendar.jsx`, `src/lib/calendarView.js`). Google events are read for the
+  visible range; **event writes go to iCloud over CalDAV** (see "iCloud Calendar read +
+  write" at the top) — Google and .ics feeds stay read-only on this page. Date-only and overnight events use local-day overlap.
   **iCal feeds** (Calendar → Feeds): read-only `.ics` / `webcal://` URLs (iCloud "Public
   Calendar" links etc.) saved in `user_settings.ui_preferences.calendar.feeds`
   `[{id,label,url,color}]` — no schema change, no OAuth. Colours come from a curated

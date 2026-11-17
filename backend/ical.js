@@ -459,10 +459,13 @@ export function icsToEvents(text, opts = {}) {
     const title = clip(unescapeText(first(ev, 'SUMMARY')?.value || '').trim() || '(no title)', 200);
     const loc = clip(unescapeText(first(ev, 'LOCATION')?.value || '').replace(/\s*\n\s*/g, ', ').trim(), 300);
     const url = first(ev, 'URL')?.value?.trim();
+    const notes = clip(unescapeText(first(ev, 'DESCRIPTION')?.value || '').trim(), 4000);
     out.push({
       id: `${feedId}:${uid}:${startInst}`,
+      uid,
       cal_id: feedId,
       title,
+      ...(notes ? { notes } : {}),
       starts_at: dateOnly ? toDateStr(startInst) : new Date(startInst).toISOString(),
       ends_at: dateOnly ? toDateStr(startInst + dur) : dur > 0 ? new Date(startInst + dur).toISOString() : null,
       all_day: dateOnly,

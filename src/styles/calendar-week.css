@@ -67,3 +67,7 @@
 
 @media(prefers-reduced-motion:reduce){.wk-event,.wk-chip,.wk-day{transition:none}.wk-event:hover{transform:none}}
 @media(max-width:760px){.wk{min-width:560px}.wk{--gutter:44px}.wk-day{flex-direction:column;align-items:center;gap:2px;padding:8px 2px}.wk-day small{font-size:9px;letter-spacing:.08em}}
+
+/* Writable calendar (iCloud): empty slots create an event on click. */
+.wk-col.is-creatable{cursor:cell}
+.wk-col.is-creatable:hover{background-image:linear-gradient(color-mix(in srgb,var(--accent) 4%,transparent),color-mix(in srgb,var(--accent) 4%,transparent))}
