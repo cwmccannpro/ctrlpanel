@@ -25,21 +25,6 @@ export function planMyDayPrompt(now = new Date()) {
   ].join('\n');
 }
 
-/** A short spoken-style recap of the week plus what to focus on next. */
-export function weeklyReviewPrompt(now = new Date()) {
-  return [
-    `Run my weekly review. It is ${stamp(now)}.`,
-    '',
-    'Look at the last 7 days compared with the 7 before, using my real data:',
-    '- Habits: completion and any streak I am on or just lost.',
-    '- Tasks: what was due, what got done, and what is overdue now.',
-    '- Training, nutrition and weight if I logged them; spending against budget if I track it.',
-    '',
-    'Reply with: 3 wins, 2–3 things that slipped (and one honest reason each), and the 3 most important things for next week based on what is due and what I keep postponing.',
-    'Be specific, use my numbers, and keep it under 250 words. Then ask whether to save it as a note.',
-  ].join('\n');
-}
-
 /** What is late, and the smallest next step for each. */
 export function overduePrompt(now = new Date()) {
   return [
@@ -52,6 +37,5 @@ export function overduePrompt(now = new Date()) {
 
 export const AI_ACTIONS = [
   { id: 'plan-day', label: 'Plan my day', icon: 'ti-calendar-time', prompt: planMyDayPrompt },
-  { id: 'weekly-review', label: 'Weekly review', icon: 'ti-report', prompt: weeklyReviewPrompt },
   { id: 'overdue', label: 'What’s overdue?', icon: 'ti-alarm', prompt: overduePrompt },
 ];

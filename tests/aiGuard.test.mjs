@@ -71,7 +71,7 @@ globalThis.fetch = async (input, init = {}) => {
 
 const worker = (await import('../worker/index.js')).default;
 const { handleAiRequest, estimateChatUsd } = await import('../backend/ai.js');
-const { reserveAi, reserveAgentRun, resetAiGuard, getAiUsage, sonnetCostUsd, AI_ESTIMATE_USD } = await import('../backend/aiGuard.js');
+const { reserveAi, resetAiGuard, getAiUsage, sonnetCostUsd, AI_ESTIMATE_USD } = await import('../backend/aiGuard.js');
 const aiRouter = (await import('../backend/routes/ai.js')).default;
 
 const LIMIT_ENV = ['AI_DAILY_USD_LIMIT', 'AI_DAILY_REQUEST_LIMIT', 'AI_BURST_PER_MINUTE', 'AI_ALLOWED_EMAILS'];
@@ -251,33 +251,6 @@ test('a failed call refunds its reservation but still counts as a request', asyn
   const row = ledger[`user-one:${today()}`];
   assert.equal(row.requests, 1);
   assert.equal(row.cost, 0);
-});
-
-test('agent runs reserve before streaming and settle to the run\'s reported cost', async () => {
-  const run = await reserveAgentRun({ user: users['token-one'] });
-  assert.ok(Math.abs(ledger[`user-one:${today()}`].cost - AI_ESTIMATE_USD.agentRun) < 1e-9);
-  const seen = [];
-  const write = run.wrap((event) => { seen.push(event.type); });
-  write({ type: 'start' }); write({ type: 'done', cost_usd: 0.42 });
-  await run.settle();
-  assert.deepEqual(seen, ['start', 'done']);
-  assert.ok(Math.abs(ledger[`user-one:${today()}`].cost - 0.42) < 1e-9);
-
-  const crashed = await reserveAgentRun({ user: users['token-one'] });
-  crashed.wrap(() => {})({ type: 'search' });
-  await crashed.settle(); // no cost reported: the estimate stays
-  assert.ok(Math.abs(ledger[`user-one:${today()}`].cost - (0.42 + AI_ESTIMATE_USD.agentRun)) < 1e-9);
-});
-
-test('the Worker refuses an agent run over the cap before it starts', async () => {
-  process.env.AI_DAILY_USD_LIMIT = '1'; // below one run's 1.50 estimate
-  for (const path of ['/api/agents/opportunities/run', '/api/agents/industry/run']) {
-    const res = await call(path, { body: { today: '2026-10-12', industry: 'HVAC' } });
-    assert.equal(res.status, 429, path);
-    assert.equal((await res.json()).code, 'spend');
-  }
-  assert.equal(anthropicCalls().length, 0);
-  assert.equal((await call('/api/agents/opportunities/run', { token: null })).status, 401);
 });
 
 test('the Express route is the same guarded dispatcher, streaming included', async () => {

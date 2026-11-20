@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
 
 export default function Login({ afterSignIn = '/' }) {
   const { signIn, configured } = useAuth();
   const navigate = useNavigate();
+  const destination = useLocation().state?.returnTo;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,7 +19,7 @@ export default function Login({ afterSignIn = '/' }) {
     const { error } = await signIn({ email, password });
     setLoading(false);
     if (error) setError(error.message);
-    else navigate(afterSignIn);
+    else navigate(typeof destination === 'string' && /^\/(?![\/\\])/.test(destination) ? destination : afterSignIn, { replace: true });
   };
 
   return (

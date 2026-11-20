@@ -81,8 +81,9 @@ export async function exchangeXCode(userId, code, verifier) {
     access_token: tokens.access_token, refresh_token: tokens.refresh_token, scope: tokens.scope,
     expires_at: Date.now() + Number(tokens.expires_in || 7200) * 1000, updated_at: new Date().toISOString() };
   if (!row.refresh_token) delete row.refresh_token;
-  const { error } = await admin().from('x_accounts').upsert(row, { onConflict: 'user_id,x_user_id' });
+  const { data, error } = await admin().from('x_accounts').upsert(row, { onConflict: 'user_id,x_user_id' }).select('id').single();
   if (error) throw new Error('Could not save X connection. Apply migrations/20261011-social-connections.sql and try again.');
+  return [data.id];
 }
 export async function listXAccounts(userId) {
   const { data, error } = await admin().from('x_accounts').select(PUBLIC).eq('user_id', userId).order('created_at');

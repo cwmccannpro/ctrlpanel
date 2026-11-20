@@ -18,9 +18,9 @@ import NutritionPanel from './NutritionPanel.jsx';
 import RoomControlPanel from './RoomControlPanel.jsx';
 import DrivePanel from './DrivePanel.jsx';
 import NutritionMacrosPanel from './NutritionMacrosPanel.jsx';
-import IndustryProblemsPanel from './IndustryProblemsPanel.jsx';
 import InstagramPanel from './InstagramPanel.jsx';
 import XPanel from './XPanel.jsx';
+import TikTokPanel from './TikTokPanel.jsx';
 import '../styles/dashboardOptions.css';
 import '../styles/fitness.css';
 import {
@@ -541,38 +541,6 @@ function CrmPanel() {
   );
 }
 
-// Top picks from the Opportunities Agent (Agents folder), best fit first.
-function OpportunitiesPanel() {
-  const navigate = useNavigate();
-  const { rows } = useRows('opportunities', []);
-  const fresh = rows.filter((o) => o.status === 'new').length;
-  const picks = rows
-    .filter((o) => o.status === 'new' || o.status === 'saved')
-    .sort((a, b) => (b.score || 0) - (a.score || 0))
-    .slice(0, 5);
-  return (
-    <>
-      <div className="dash2-panel-head">
-        <PanelTitle to="/agents/opportunities">Opportunities</PanelTitle>
-        {fresh > 0 && <span className="dash2-count">{fresh} new</span>}
-      </div>
-      <div className="dash2-tasks">
-        {picks.length === 0 ? (
-          <Empty>No picks yet. Run the Opportunities Agent.</Empty>
-        ) : (
-          picks.map((o) => (
-            <div className="dash2-task" key={o.id} onClick={() => navigate('/agents/opportunities')} title={o.title}>
-              <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600, minWidth: 20, flexShrink: 0 }}>{o.score}</span>
-              <span className="dash2-task-title">{o.title}</span>
-              <span className="dash2-task-meta">{o.org || ''}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </>
-  );
-}
-
 function YouTubePanel({ cfg = {}, onCfg = () => {} }) {
   // Channels come from the shared Socials list (one fetch for the whole app).
   const { socials } = useWorkspace();
@@ -852,7 +820,7 @@ export const PANELS = [
   // Today
   { id: 'today_tasks', title: 'Today', description: 'Tasks due today, overdue work, and your next priorities.', icon: 'ti-sun', group: 'Today', Component: TodayTasksPanel },
   { id: 'today_habits', title: 'Habits Today', description: 'Tick off today’s habits and see what remains.', icon: 'ti-circle-check', group: 'Today', Component: TodayHabitsPanel },
-  { id: 'knowledge', title: 'Knowledge Base', description: 'Pinned notes and recently updated context.', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
+  { id: 'knowledge', title: 'Context', description: 'Pinned notes and recently updated context.', icon: 'ti-notebook', group: 'Work', Component: KnowledgePanel },
   // Tasks & work
   { id: 'board', title: 'Task Board Column', description: 'One column of your task board, with quick add.', icon: 'ti-layout-kanban', group: 'Work', Component: BoardPanel },
   { id: 'high_priority', title: 'High Priority Tasks', description: 'Every open urgent and high-priority task on your board.', icon: 'ti-flag', group: 'Work', Component: HighPriorityPanel },
@@ -861,8 +829,6 @@ export const PANELS = [
   { id: 'schedule', title: 'Day Plan', description: 'Calendar events and draggable task time blocks.', icon: 'ti-timeline-event', group: 'Work', Component: DayPlanPanel },
   { id: 'projects', title: 'Projects', description: 'Active projects, progress, and linked work.', icon: 'ti-folder', group: 'Work', Component: ProjectsPanel },
   { id: 'crm', title: 'CRM Pipeline', description: 'A snapshot of contacts in your CRM pages.', icon: 'ti-users', group: 'Work', Component: CrmPanel },
-  { id: 'opportunities', title: 'Opportunities', description: 'Top job, program, and event matches from your agent.', icon: 'ti-target', group: 'Work', Component: OpportunitiesPanel },
-  { id: 'industry_problems', title: 'Industry Problems', description: 'Ranked build ideas from your industry research.', icon: 'ti-bulb', group: 'Work', Component: IndustryProblemsPanel },
   // Finance
   { id: 'networth', title: 'Assets', description: 'Account balances and total assets.', icon: 'ti-wallet', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="networth" /> },
   { id: 'cashflow', title: 'Cashflow', description: 'Income, spending, and what remains this month.', icon: 'ti-arrows-exchange', group: 'Finance', Component: (props) => <FinancePanel {...props} kind="cashflow" /> },
@@ -883,6 +849,7 @@ export const PANELS = [
   { id: 'youtube', title: 'YouTube', description: 'Channel subscribers, views, and watch hours.', icon: 'ti-brand-youtube', group: 'Socials', Component: YouTubePanel },
   { id: 'instagram', title: 'Instagram', description: 'Account followers, views, reach, and engagement.', icon: 'ti-brand-instagram', group: 'Socials', Component: InstagramPanel },
   { id: 'x', title: 'X', description: 'Account followers and content analytics loaded on request.', icon: 'ti-brand-x', group: 'Socials', Component: XPanel },
+  { id: 'tiktok', title: 'TikTok', description: 'Profile stats and a shortcut to public video analytics.', icon: 'ti-brand-tiktok', group: 'Socials', Component: TikTokPanel },
 ];
 
 export const PANELS_BY_ID = Object.fromEntries(PANELS.map((p) => [p.id, p]));
@@ -893,12 +860,12 @@ export const LAYOUTS = {
   today: [
     ['today_tasks', 'upcoming_tasks'],
     ['schedule', 'today_habits'],
-    ['projects', 'knowledge', 'opportunities'],
+    ['projects', 'knowledge'],
   ],
   work: [
     ['quick_add', 'upcoming_tasks', 'board'],
     ['schedule', 'projects'],
-    ['knowledge', 'opportunities', 'crm'],
+    ['knowledge', 'crm'],
   ],
 };
 export const DEFAULT_LAYOUT = LAYOUTS.today;

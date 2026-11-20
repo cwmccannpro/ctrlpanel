@@ -4,6 +4,7 @@ const fields = {
   youtube: [['views', 'Views'], ['watchHours', 'Watch hours'], ['likes', 'Likes'], ['comments', 'Comments']],
   instagram: [['views', 'Views'], ['reach', 'Reach'], ['likes', 'Likes'], ['comments', 'Comments']],
   x: [['impressions', 'Impressions'], ['likes', 'Likes'], ['reposts', 'Reposts'], ['replies', 'Replies'], ['urlClicks', 'Link clicks']],
+  tiktok: [['views', 'Views'], ['likes', 'Likes'], ['comments', 'Comments'], ['shares', 'Shares']],
 };
 export default function SocialContentList({ platform, posts = [], metricFields = fields[platform], emptyMessage = 'No content returned for this account.' }) {
   if (!posts.length) return <p className="list-row-meta">{emptyMessage}</p>;

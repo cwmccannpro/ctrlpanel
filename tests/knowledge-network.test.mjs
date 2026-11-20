@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, mkdir, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { collectContext, containsSecret, syncDecision, noteHash } from '../tools/contentContext.mjs';
-import { fitGraph, layoutGraph } from '../src/lib/knowledgeGraph.js';
+import { fitCamera, projectStar, starPosition } from '../src/lib/knowledgeGraph.js';
 import { buildKnowledgeTree, filterKnowledgeNotes, knowledgeFolderPaths } from '../src/lib/knowledgeTree.js';
 
 test('context discovery excludes fluff and empty files; references build stable cross-links', async () => {
@@ -38,22 +38,6 @@ test('credential guard rejects keys while allowing references to environment var
   assert.equal(containsSecret('-----BEGIN PRIVATE KEY-----'), true);
   assert.equal(containsSecret('API_KEY=abcdefghijklmnopqrstuvwxyz1234'), true);
 });
-test('force graph is deterministic, deduplicates undirected links, and excludes outside nodes', () => {
-  const notes = ['a', 'b', 'c'].map(id => ({ id }));
-  const edges = [{ source: 'a', target: 'b' }, { source: 'b', target: 'a' }, { source: 'a', target: 'outside' }];
-  const graph = layoutGraph(notes, edges);
-  assert.deepEqual(graph.points, layoutGraph([...notes].reverse(), edges).points);
-  assert.equal(graph.degree.a, 1); assert.equal(graph.degree.c, 0);
-  assert.equal(graph.edges.length, 1);
-  assert.ok(Math.hypot(graph.points.a.x - graph.points.b.x, graph.points.a.y - graph.points.b.y) > 20);
-  for (const p of Object.values(graph.points)) assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
-  const camera = fitGraph(graph.points);
-  for (const p of Object.values(graph.points)) {
-    assert.ok(p.x * camera.zoom + camera.x > 50 && p.x * camera.zoom + camera.x < 750);
-    assert.ok(p.y * camera.zoom + camera.y > 50 && p.y * camera.zoom + camera.y < 530);
-  }
-  assert.deepEqual(fitGraph({}), { zoom: 1, x: 0, y: 0 });
-});
 test('knowledge tree preserves nested folders, counts descendants, and ranks pinned notes first', () => {
   const notes = [
     { id: 'a', title: 'Alpha', folder: 'Work/Research', content: 'market notes', tags: [], pinned: false },
@@ -70,4 +54,26 @@ test('knowledge tree preserves nested folders, counts descendants, and ranks pin
   assert.deepEqual(knowledgeFolderPaths(notes), ['Work', 'Work/Research']);
   assert.deepEqual(filterKnowledgeNotes(notes, 'strategy').map(note => note.id), ['b']);
   assert.deepEqual(filterKnowledgeNotes(notes, 'research').map(note => note.id), ['a']);
+});
+
+test('stars survive renames, move with their folder, and orbit in perspective', () => {
+  const note = { id: 'stable', title: 'First', folder: 'Research' };
+  const point = starPosition(note);
+  assert.deepEqual(starPosition({ ...note, title: 'Renamed' }), point);
+  const moved = starPosition({ ...note, folder: 'Ideas' });
+  assert.notDeepEqual(moved, point);
+  const camera = fitCamera([point, moved]);
+  for (const [width, height] of [[375, 660], [960, 540]]) {
+    for (const yaw of [0, 1, 3]) {
+      const result = projectStar(point, { ...camera, yaw }, width, height);
+      assert.ok(result.x > 0 && result.x < width && result.y > 0 && result.y < height);
+    }
+  }
+  assert.notDeepEqual(projectStar(point, camera, 400, 600), projectStar(point, { ...camera, yaw: 1 }, 400, 600));
+  assert.equal(projectStar([0,0,200], { ...camera, target:[0,0,0], distance:100 }, 800, 600), null);
+});
+test('explicit empty nested folders survive an empty note list', () => {
+  const tree = buildKnowledgeTree([], ['Ideas/Research']);
+  assert.equal(tree.folders[0].folders[0].path, 'Ideas/Research');
+  assert.equal(tree.count, 0);
 });

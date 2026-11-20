@@ -31,7 +31,7 @@ export class AiLimitError extends Error {
 }
 
 // Reserved up front per call kind (USD); replaced by the real cost on settle.
-export const AI_ESTIMATE_USD = { chat: 0.04, supplement: 0.03, interaction: 0.02, nutrition: 0.03, resume: 0.15, agentRun: 1.5 };
+export const AI_ESTIMATE_USD = { chat: 0.04, supplement: 0.03, interaction: 0.02, nutrition: 0.03 };
 
 const num = (value, fallback) => {
   const n = value === undefined || value === '' ? NaN : Number(value);
@@ -214,23 +214,6 @@ export async function withAiLease({ user, apiKey, estimateUsd }, fn, deps) {
     await lease.release();
     throw e;
   }
-}
-
-/**
- * Lease for a long agent run. `wrap(write)` watches the NDJSON stream for the
- * final `done` event, whose cost_usd settles the lease; a run that errors
- * before reporting a cost keeps the reserved estimate.
- */
-export async function reserveAgentRun({ user, apiKey }, deps) {
-  const lease = await reserveAi({ user, apiKey, estimateUsd: AI_ESTIMATE_USD.agentRun }, deps);
-  let cost = null;
-  return {
-    wrap: (write) => (event) => {
-      if (event?.type === 'done' && Number.isFinite(event.cost_usd)) cost = event.cost_usd;
-      return write(event);
-    },
-    settle: () => lease.settle(cost == null ? {} : { usd: cost }),
-  };
 }
 
 /* ---------------- Usage (Settings) ---------------- */

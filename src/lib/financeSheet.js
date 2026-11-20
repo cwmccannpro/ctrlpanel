@@ -134,7 +134,7 @@ export function financeSummary(data = {}, month = financeDay().slice(0, 7)) {
   };
 }
 
-// Read adapter for the Master Controller and weekly review. Old DB rows are
+// Read adapter for the Master Controller and dashboard. Old DB rows are
 // retained, but connected finance views never merge them into the workbook.
 export function financeAliases(data = {}) {
   return {

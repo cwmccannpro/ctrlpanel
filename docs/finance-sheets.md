@@ -1,7 +1,7 @@
 # Finance in Google Sheets
 
 Google Sheets is the finance source of truth. Overview, Net Worth, Cashflow,
-Investing, Debt, dashboard widgets, weekly review and the Master Controller's
+Investing, Debt, dashboard widgets and the Master Controller's
 finance reads use the same workbook. Historical Supabase finance rows are retained
 and are not combined with the workbook. The Master Controller directs finance
 edits to the dashboard rather than writing old database rows.

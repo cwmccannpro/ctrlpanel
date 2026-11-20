@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useToast } from './Toaster.jsx';
 import { useMasterController } from './MasterController.jsx';
-import { AGENTS } from '../lib/agentRegistry.js';
 import { PLATFORMS, socialSections } from '../lib/socialPlatforms.js';
 import { insert, remove, queryTable } from '../lib/supabase.js';
 import { saveNote } from '../lib/knowledge.js';
@@ -24,7 +23,7 @@ export function useCommandPalette() {
 }
 
 const RECENT_KEY = 'ctrlpanel-palette-recent';
-const GROUP_ORDER = ['Recent', 'Ask', 'Habits', 'Go to', 'Projects', 'Boards', 'CRM', 'Agents', 'Socials', 'Notes', 'Tasks'];
+const GROUP_ORDER = ['Recent', 'Ask', 'Habits', 'Go to', 'Projects', 'Boards', 'CRM', 'Socials', 'Notes', 'Tasks'];
 const EMPTY_GROUPS = new Set(['Recent', 'Ask', 'Habits', 'Go to', 'Projects']);
 const GROUP_CAP = { Tasks: 6, Notes: 6 };
 
@@ -166,7 +165,7 @@ function Palette({ onClose, modKey, cacheRef }) {
       const saved = await saveNote({ title, content: '', folder: '', tags: [], project_id: null });
       patchCache((c) => ({ ...c, notes: [saved, ...c.notes] }));
       notifyDataChanged('knowledge_notes');
-      navigate(`/knowledge?note=${saved.id}`);
+      navigate(`/context?note=${saved.id}`);
       toast(`Created note: ${saved.title}`);
     } catch (e) {
       toast({ tone: 'error', message: e.message || "Couldn't create the note." });
@@ -228,13 +227,12 @@ function Palette({ onClose, modKey, cacheRef }) {
     crmBoards.rows
       .filter((b) => !String(b.id).startsWith('tmp-'))
       .forEach((b) => list.push(nav(`crm:${b.id}`, 'CRM', b.name || 'Untitled', `/crm/${b.id}`, 'ti-users', 'CRM page')));
-    AGENTS.forEach((a) => list.push(nav(`agent:${a.key}`, 'Agents', a.name, a.to, a.icon, 'Agent', a.description)));
     socialSections(socials).forEach((s) => list.push(nav(`social:${s.key}`, 'Socials', s.label, s.to, PLATFORMS[s.platform].icon, `${PLATFORMS[s.platform].name} ${PLATFORMS[s.platform].noun}`)));
 
     remote.notes.forEach((n) => {
       const proj = projects.rows.find((p) => p.id === n.project_id);
       const hint = [proj?.name, n.folder].filter(Boolean).join(' · ') || 'Note';
-      list.push(nav(`note:${n.id}`, 'Notes', n.title, `/knowledge?note=${n.id}`, n.pinned ? 'ti-pin' : 'ti-note', hint));
+      list.push(nav(`note:${n.id}`, 'Notes', n.title, `/context?note=${n.id}`, n.pinned ? 'ti-pin' : 'ti-note', hint));
     });
     remote.tasks
       .filter((t) => t.column_name !== 'Done')
@@ -245,7 +243,7 @@ function Palette({ onClose, modKey, cacheRef }) {
         list.push(nav(`task:${t.id}`, 'Tasks', t.title, t.board_id ? `/todo/${t.board_id}` : '/todo', 'ti-checkbox', hint || t.column_name || 'Task'));
       });
 
-    // One-tap AI prompts (Plan my day, Weekly review, …) go straight to the Master Controller.
+    // One-tap AI prompts (Plan my day, What’s overdue?) go straight to the Master Controller.
     AI_ACTIONS.forEach((a) => list.push({ id: `ai:${a.id}`, group: 'Ask', label: a.label, icon: a.icon, hint: 'Master Controller', keywords: 'ai assistant claude plan', run: () => mc.send(a.prompt()) }));
 
     remote.habits.forEach((h) => {
@@ -302,7 +300,7 @@ function Palette({ onClose, modKey, cacheRef }) {
         group: 'Create',
         label: `New note “${trimmed}”`,
         icon: 'ti-file-plus',
-        hint: 'Knowledge Base',
+        hint: 'Context',
         run: () => createNote(trimmed),
       });
       out.push({ name: 'Create', rows: create });

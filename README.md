@@ -34,13 +34,6 @@ REST OAuth · Recharts · @dnd-kit · Excalidraw.
   analysis, workouts with a 52-week heatmap, habits with streaks, net worth,
   budget, and an investing portfolio with live prices (CoinGecko + optional
   Alpha Vantage).
-- **Agents** — on-demand AI agents in their own sidebar folder. The
-  **Opportunities Agent** searches the web and ranks jobs, programs, events,
-  certifications and competitions against your profile (import your resume),
-  interests and locations, and suggests skills to build. The **Industry
-  Problems Agent** maps how an industry works (an interactive mind map) and mines
-  reviews, forums and job posts for narrow problems you could realistically build a
-  solution for, scored on pain, attainability, demand, reach and gap.
 
 ## Quick start
 

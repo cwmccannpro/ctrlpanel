@@ -14,16 +14,8 @@ export function useWorkspace() {
 }
 
 /**
- * Socials sections. `youtube_channels` and `instagram_accounts` are service-role
- * only (tokens live on the row), so the lists come from /api/youtube/status and
- * /api/instagram/status rather than the RLS client. Kept here so the sidebar and
- * the Socials pages share one list — connecting, renaming or disconnecting a
- * section updates the sidebar immediately.
- *
- * The two platforms load independently: one being unconfigured or failing
- * (e.g. the Instagram migration isn't applied yet) never hides the other.
- * `channels` / `ready` / `error` stay YouTube's; Instagram lives under
- * `instagram` ({ ready, accounts, error, rename, disconnect }).
+ * Social lists come from the backend and are shared by the sidebar and pages.
+ * Keep YouTube's top-level fields for existing panels.
  */
 const errorText = (reason, fallback) => reason?.message || fallback;
 
@@ -68,7 +60,7 @@ function useSocials() {
     },
   }]));
   return { loaded: visibleState.loaded, reload, ...actions.youtube, channels: actions.youtube.accounts,
-    instagram: actions.instagram, x: actions.x };
+    instagram: actions.instagram, x: actions.x, tiktok: actions.tiktok };
 }
 export function WorkspaceProvider({ children }) {
   const projects = useCrud('projects', 'created_at');

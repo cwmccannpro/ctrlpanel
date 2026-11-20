@@ -1,4 +1,3 @@
-import { AGENTS } from './agentRegistry.js';
 import { socialSections } from './socialPlatforms.js';
 
 // Stable route/folder IDs keep visibility choices intact after a rename.
@@ -7,11 +6,10 @@ export const TOP_LINKS = [
   { to: '/', label: 'Dashboard', icon: 'ti-layout-dashboard', end: true },
   { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
   { to: '/todo', label: 'To Do', icon: 'ti-checkbox' },
-  { to: '/knowledge', label: 'Knowledge Base', icon: 'ti-notebook' },
+  { to: '/context', label: 'Context', icon: 'ti-notebook' },
   { to: '/habits', label: 'Habits', icon: 'ti-repeat' },
   { to: '/health', label: 'Health', icon: 'ti-heart' },
   { to: '/finance', label: 'Finance', icon: 'ti-coin' },
-  { to: '/review', label: 'Weekly Review', icon: 'ti-report' },
   { to: '/room', label: 'Room Control', icon: 'ti-bulb', dock: true },
   { to: '/drive', label: 'Drive', icon: 'ti-car', dock: true },
 ];
@@ -23,10 +21,6 @@ export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {
       {
         id: 'folder:crm', label: 'CRM', icon: 'ti-users', indexTo: '/crm', emptyLabel: 'No CRM pages yet',
         items: crmBoards.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
-      },
-      {
-        id: 'folder:agents', label: 'Agents', icon: 'ti-robot', indexTo: '/agents', emptyLabel: 'No agents yet',
-        items: AGENTS.map((a) => ({ label: a.name, to: a.to })),
       },
       {
         id: 'folder:projects', label: 'Projects', icon: 'ti-folder', indexTo: '/projects', emptyLabel: 'No projects yet',
@@ -42,7 +36,7 @@ export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {
 
 // Absence means visible, so existing accounts and newly added sections keep
 // their current navigation. Only an explicit false hides an entry.
-export const sidebarItemVisible = (visibility, id) => visibility?.[id] !== false;
+export const sidebarItemVisible = (visibility, id) => (visibility?.[id] ?? (id === '/context' ? visibility?.['/knowledge'] : undefined)) !== false;
 
 export function visibleSidebarNavigation(navigation, visibility) {
   return {

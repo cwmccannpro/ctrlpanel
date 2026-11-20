@@ -87,7 +87,7 @@ test('rankItems sorts by score, falls back to keywords, keeps order on ties', ()
 });
 
 test('fuzzy subsequence matching applies to labels, not keyword text', () => {
-  const items = [{ label: 'Opportunities Agent', keywords: 'Finds jobs within reach of home' }];
+  const items = [{ label: 'Room Control', keywords: 'Finds lights within reach of home' }];
   assert.equal(rankItems(items, 'read').length, 0);
   assert.equal(rankItems([{ label: 'Net Worth' }], 'ntwrth').length, 1);
 });

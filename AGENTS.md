@@ -1,5 +1,17 @@
 # CTRLpanel — Project Context for Agents
 
+## Weekly Review + Agents folder removed (2026-11-19)
+- `/review` and the whole Agents folder (`/agents`, Opportunities + Industry Problems agents) are gone:
+  pages, sidebar/palette entries, the Opportunities and Industry Problems dashboard panels, the
+  "Weekly review" AI one-tap, `/api/agents/*` (Express + Worker), `reserveAgentRun`, the resume parser
+  and the agent prompts in `backend/claude.js`. Old URLs fall through to the Dashboard; saved layouts
+  silently drop the retired panel ids.
+- The dashboard's week-at-a-glance numbers still use the rolling 7-day helpers, now in
+  `src/lib/weekStats.js` (`weekWindows`, `habitStats`, `taskStats`, …; tests `weekStats.test.mjs`).
+- The agents' tables (`agent_configs`, `opportunity_runs`, `opportunities`, `industry_runs`,
+  `industry_problems`) were dropped (`migrations/20261119-drop-agents-tables.sql`, also in the schema's
+  retired-features block). Never reuse those names.
+
 ## iCloud Calendar read + write, resizable Day Plan (2026-11-16)
 - **The Calendar is writable through iCloud (CalDAV).** `backend/caldav.js` is one Bearer-only dispatcher
   (`handleCaldavRequest`) for Express (`backend/routes/caldav.js`, thin adapter) and the Worker:
@@ -50,9 +62,8 @@
   It also validates input (1 MB body, ≤200 chat messages / supplements, names ≤200 chars) before anything is reserved.
 - **`backend/aiGuard.js` decides who may spend the server's `ANTHROPIC_API_KEY`.** `reserveAi({user, apiKey, estimateUsd})` returns a lease:
   it *reserves* an estimate, then `settle({usd,input_tokens,output_tokens})` swaps in the real cost (no `usd` keeps the estimate; `release()`
-  refunds a call that spent nothing). Helpers: `withAiLease` (one-shot calls — a throw refunds), `reserveAgentRun` (settles from the run's
-  `done.cost_usd`). **Any new code that can reach the server key must go through one of these** — today that is the dispatcher, the two agent
-  runs, the resume parser (Express + Worker) and nutrition `/analyze`. A call with the user's own key from Settings → Connectors (`apiKey`) is
+  refunds a call that spent nothing). Helper: `withAiLease` (one-shot calls — a throw refunds). **Any new code that can reach the server key must go through
+  these** — today that is the dispatcher and nutrition `/analyze`. A call with the user's own key from Settings → Connectors (`apiKey`) is
   authenticated but free and uncounted.
 - Limits are per user per **UTC** day: `AI_DAILY_USD_LIMIT` (default 10; `0` switches the shared key off), `AI_DAILY_REQUEST_LIMIT` (500),
   `AI_BURST_PER_MINUTE` (30, in memory per runtime instance), and optional `AI_ALLOWED_EMAILS` (only those accounts may use the shared
@@ -109,7 +120,7 @@
   ("8-10", "AMRAP"). The page has no fixed starter week: day names, routines and notes come only from saved user rows.
   The responsive routine view separates sets/reps/weight, and `lib/useFitnessPlan.js` validates DB saves and exposes load failures. The `fitness` dashboard panel
   (Today's Training) renders today's routine + tomorrow's split. The `workouts` panel and workout logging UI are retired;
-  `workout_logs` is kept for history and the Weekly Review no longer shows a workouts stat.
+  `workout_logs` is kept for history.
 - **Excalidraw**: serialized scenes never contain scroll/zoom, so `ExcalidrawBoard` opens with `scrollToContent` (otherwise
   drawings away from the origin looked empty). Stored scenes in `projects.excalidraw` are never rewritten on open — only on a real
   element change. The tab has a Full screen toggle (Fullscreen API + fixed-overlay fallback; Excalidraw needs a window `resize`
@@ -142,7 +153,7 @@
 | Auth + DB | Supabase (email auth; Postgres with Row-Level Security on every table) |
 | Backend (local dev) | Node + Express (`backend/server.js`, port 3001; Vite proxies `/api`) |
 | Backend (production) | Cloudflare Worker (`worker/index.js`) serving the same `/api` surface + `./dist` assets |
-| AI | Anthropic Claude API — model `claude-sonnet-4-6` (valid, current alias for Claude Sonnet 4.6 — do not "fix" it); the Agents folder uses its own `AGENT_MODEL` = `claude-opus-5` in `backend/claude.js` |
+| AI | Anthropic Claude API — model `claude-sonnet-4-6` (valid, current alias for Claude Sonnet 4.6 — do not "fix" it) |
 | Google Calendar | Two-way sync via plain REST OAuth (`backend/google.js`, no googleapis dependency — must stay Workers-compatible) |
 | Icons / Charts / DnD / Canvas | Tabler webfont · Recharts · @dnd-kit · @excalidraw/excalidraw (lazy-loaded) |
 
@@ -158,9 +169,7 @@
    - Frontend: `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (safe, RLS-scoped).
    - Backend only: `SUPABASE_SERVICE_ROLE_KEY` — bypasses RLS. Used exclusively
      for `google_tokens` (which has RLS enabled with NO policy, so the browser
-     can never read OAuth tokens) and for headless writers like the
-     Opportunities Agent run (`opportunities` + `opportunity_runs` rows, written
-     with the verified session's user_id).
+     can never read OAuth tokens) and the other service-role-only tables.
 4. **All DB access goes through `src/lib`**: `supabase.js` (client + auth +
    CRUD + `queryTable`), `useData.js` (`useRows`, `useCrud` with optimistic
    updates). Components never import @supabase/supabase-js directly.
@@ -207,24 +216,9 @@
   follower/following/post counts, the 60-day `access_token` + `expires_at` — same
   service-role-only pattern as `youtube_channels`; unique on (user_id, ig_user_id)).
   Apply `migrations/20261006-socials-instagram.sql` before first use.
-- Agents: `agent_configs` (one row per user per agent — `agent_key` +
-  `config` jsonb, unique on (user_id, agent_key)), `opportunity_runs` (one row
-  per Opportunities Agent run: status running|complete|error, `summary` jsonb
-  with the skills-to-build list, searches / tokens / `cost_usd`),
-  `opportunities` (ranked finds, unique on (user_id, `dedupe_key` = normalized
-  URL); `status` new|saved|applied|dismissed belongs to the user and is never
-  overwritten by a re-run). **Never name new tables `agents` / `agent_runs`** —
-  the schema's retired-features block still drops those on every re-run.
-  Industry Problems Agent: `industry_runs` (one row per run for one industry:
-  `industry` / `industry_key` slug, `focus`, status, cost, and `summary` jsonb =
-  `{ headline, where_to_start, market_notes, map:{stages:[{name,summary,
-  steps:[{name,pain,problem_key}]}]} }`) and `industry_problems` (ranked finds,
-  unique on (user_id, `dedupe_key` = `industry_key::title-slug`); `map_key` links
-  a problem to the map step that shows its pain; `scores` jsonb + `score`;
-  `evidence` jsonb; `status` new|saved|exploring|dismissed is the user's and is
-  never overwritten by a re-run).
 - Retired, data kept: `report_sources`, `reports` and the `reports` storage
-  bucket from the removed Reports feature (no longer defined in the schema)
+  bucket from the removed Reports feature (no longer defined in the schema).
+  The Agents folder's tables were dropped on 2026-11-19 (retired-features block)
 - **Schema changes**: append idempotent SQL (`create table if not exists`,
   `add column if not exists`) to `supabase-schema.sql` and add the table to the
   RLS loop. The whole file must always be safe to re-run.
@@ -251,8 +245,8 @@
     is self-contained (fetches its own rows) and receives `{ cfg, onCfg }` for
     its per-instance settings. Add an entry to `PANELS` and it shows up in the
     picker automatically — that is the only step needed for a new widget.
-    Groups: Work (board column, due soon, quick add, schedule, projects, CRM,
-    opportunities), Finance (net worth, cashflow, budget categories, portfolio),
+    Groups: Work (board column, due soon, quick add, schedule, projects, CRM),
+    Finance (net worth, cashflow, budget categories, portfolio),
     Health (nutrition complete, nutrition macros, weight, supplements, training), Habits
     (week grid, consistency trend, life), Socials (YouTube).
   · Layout saved to `user_settings.dashboard_widgets` as
@@ -269,8 +263,7 @@
   Open/closed state persists (localStorage + `ui_preferences.sidebar.folders`),
   as does the drag-resized width. Collapsed rail: hovering a folder icon opens a
   fixed-position flyout with the same sub-pages. Dynamic items come from
-  `WorkspaceProvider` (projects, CRM boards, socials channels); the Agents
-  folder lists `src/lib/agentRegistry.js`. Health and Finance are plain top-level links, not folders.
+  `WorkspaceProvider` (projects, CRM boards, socials channels). Health and Finance are plain top-level links, not folders.
 - **Master Controller dock**: `MasterControllerDock` in
   `src/components/MasterController.jsx`, rendered once in `App.jsx`. Fixed to
   the bottom on every page, hidden until the pointer comes within ~100px of the
@@ -310,11 +303,6 @@
     HTTPS, which breaks `http://localhost` dev. Only
     `.../auth/spreadsheets` (sensitive, localhost-friendly) is requested, which
     is why sheets are linked by URL rather than browsed from Drive.
-- **Agents** (`/agents`, sidebar folder fed by `src/lib/agentRegistry.js`):
-  on-demand AI agents. Add one with a registry entry, its page and its route
-  in `src/main.jsx`; the overview (`src/pages/agents/Agents.jsx`) renders an
-  `AgentCard` per entry. First agent: the Opportunities Agent (note below).
-  Replaces the removed Reports section.
 - **Habits**: tracker (14-day toggle grid, streaks) + Life View (birthdate,
   weeks-of-life; feeds the Life View widget).
 - **Nutrition external API**: `POST /api/nutrition/log` authenticated by a
@@ -381,58 +369,6 @@
   date-only strings: parse with `parseLocalDate`, never `new Date('YYYY-MM-DD')`.
   Tests: `tests/instagram.test.mjs` (fake Meta + Supabase behind global fetch),
   `tests/socialPlatforms.test.mjs`.
-- **Opportunities Agent** (`/agents/opportunities`,
-  `src/pages/agents/OpportunitiesAgent.jsx`): "Run now" has Claude search the
-  web and rank jobs, internships, programs/fellowships, events, certifications
-  and competitions against the user's config, writing them to `opportunities`
-  (score 0–100, reasons, Save / Applied / Dismiss); each run also returns
-  "Skills to build". The gear opens `OpportunityConfigModal` (profile with
-  "Import from resume PDF", current focus, industries, kinds, level, home base
-  + in-person cities, remote-US / nationwide toggles, keywords, examples,
-  search depth), saved to `agent_configs`. Defaults + `normalizeConfig` live in
-  `src/lib/opportunityConfig.js`, shared with the backend.
-  Backend: `backend/opportunities.js` orchestrates (retire stale runs → config
-  → run row → research → verify each link's host against the search results →
-  drop past deadlines/events → upsert on dedupe_key WITHOUT status → complete
-  the run with cost). The Claude calls live in `backend/claude.js`:
-  `researchOpportunities` (`AGENT_MODEL` `claude-opus-5`, adaptive thinking,
-  `web_search_20260209` with `user_location`, strict `submit_opportunities`
-  tool, `pause_turn` resume with the remaining search budget, one nudge,
-  server-side refusal fallback to `claude-opus-4-8`) and `extractResumeProfile`.
-  The run streams NDJSON progress with a 15s ping, because a web-search run
-  takes minutes and the Worker edge drops idle responses after ~100s. Runs left
-  `running` for 20+ minutes are marked interrupted by the next run. On demand
-  only — no cron. Dashboard panel `opportunities`; the Master Controller reads
-  `opportunities` (read-only) and lists top picks in its snapshot.
-- **Industry Problems Agent** (`/agents/industry-problems`,
-  `src/pages/agents/IndustryProblemsAgent.jsx`): name an industry (+ optional
-  focus) and "Run now" has Claude search the web, **map the industry's value
-  chain** (stages → steps → pains, drawn by `components/MindMap.jsx` as inline SVG:
-  click a stage to collapse, click a pain to jump to its problem, middle-drag to
-  pan, "Copy as Markdown" for Markmap) and **mine reviews, forums and job posts for
-  narrow problems the owner could build a solution for**. Each problem has the pain,
-  who has it, what to build, a first-version MVP, build weeks, pricing, how to reach
-  buyers, competition, risk and sourced evidence; Save / Exploring / Dismiss, "Start
-  project" (creates a `projects` row) and "Copy brief" (Markdown). The gear
-  (`IndustryConfigModal`) describes the *builder* — skills, solution types, buyers,
-  max build weeks, regulated-industry filter, home base, depth — because attainability is
-  scored against it. Config + enums in `src/lib/industryConfig.js` (shared with the
-  backend, key `industry_problems`); the map shape, tree layout and Markdown export
-  are pure in `src/lib/industryMap.js`; page helpers in `src/lib/industryProblems.js`.
-  **Score = pain 30 + attainable 25 + demand 20 + reach 15 + gap 10** (each part
-  clamped server-side, summed in `prepareProblems`). Evidence links are checked
-  against the hosts that actually appeared in the search results (same
-  `collectSourceUrls` / `isVerifiedHost` as Opportunities); a problem with **no
-  verified source gets demand 0 and pain capped at 15**, so unsupported ideas can't
-  rank high. Backend: `backend/industry.js` orchestrates (same retire-stale /
-  one-run-at-a-time / NDJSON-heartbeat flow as Opportunities); the Claude call is
-  `researchIndustry` in `backend/claude.js`, which now shares one
-  `researchWithSearch` loop (pause_turn resume, one nudge, refusal fallback) with
-  `researchOpportunities`. The Master Controller can read `industry_problems`
-  (read-only) and `navigate_to "industry"`. Apply
-  `migrations/20261005-agents-industry-problems.sql` (also at the end of
-  `supabase-schema.sql`) before first use.
-
 ## Design System (unchanged — FOLLOW EXACTLY)
 ```css
 :root {
@@ -465,13 +401,6 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   iCloud Calendar read + write (Bearer auth; one dispatcher in `backend/caldav.js`)
 - `POST /api/nutrition/log` — external clients; auth = per-user API key
   (`Authorization: Bearer ctp_…` or `X-API-Key`), logic in `backend/nutritionApi.js`
-- `POST /api/agents/opportunities/run` `{ apiKey?, today }` → NDJSON progress
-  stream · `POST /api/agents/opportunities/profile` `{ pdfBase64, apiKey? }` →
-  `{ profile }` (Supabase-token auth; logic in `backend/opportunities.js` +
-  `backend/claude.js`)
-- `POST /api/agents/industry/run` `{ apiKey?, today, industry, focus? }` → NDJSON
-  progress stream (same events as the Opportunities run; logic in
-  `backend/industry.js` + `backend/claude.js`)
 - `GET /api/youtube/status|connect|callback|analytics` ·
   `POST /api/youtube/disconnect` (Supabase-token auth except OAuth callback;
   logic in `backend/youtube.js`)
@@ -536,7 +465,7 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   RECURRENCE-ID overrides, TZID via Intl, floating times use the viewer's `tz`; a repeating
   event longer than its own interval is shown as a 1h marker). The server refuses non-https,
   IP-literal, localhost/internal hosts and re-checks every redirect hop.
-  `useCalendarEvents` (dashboard/review/projects) merges feeds in. Not yet fed to the Master
+  `useCalendarEvents` (dashboard/projects) merges feeds in. Not yet fed to the Master
   Controller snapshot (`mcTools.js`).
   **Week view = time grid** (`CalendarWeekGrid.jsx`, pure layout in `lib/weekLayout.js`): 6 AM–12 AM
   vertical axis, events positioned/sized by duration, side-by-side lanes for overlaps, now-line,
@@ -576,7 +505,7 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - **Command palette** (Ctrl/⌘+K, topbar "Search or add"): `src/components/CommandPalette.jsx`
   (provider + overlay, mounted once in `App.jsx`) over the pure `src/lib/commandPalette.js`
   (ranking, `parseCapture`, `formatDue`, `PAGES` — keep it import-free so `node --test` can load it).
-  Jumps to pages/projects/boards/CRM/agents/channels/notes/tasks, ticks today's habits, and
+  Jumps to pages/projects/boards/CRM/channels/notes/tasks, ticks today's habits, and
   captures tasks: `Call dentist @fri !high` (`@today|tomorrow|mon…|3d|2w|9/14|YYYY-MM-DD`,
   `!urgent|high|med|low`), Ctrl+Enter adds as a task from anywhere. Task/note/habit data is
   prefetched and cached for the shell's lifetime; writes patch the cache and call
@@ -630,20 +559,15 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   or a deploy removed the file) auto-reloads once per 30s, then shows a reload-only message
   (`src/lib/errors.js`). Knowledge notes are normalized at the boundary (`lib/noteShape.js`) so a row
   missing `tags` can't crash the page.
-- **Weekly review** (`/review`, sidebar "Weekly Review", palette): last 7 days vs the 7 before —
-  habits (rate, streaks, weakest), tasks (due vs done, overdue, coming up), training, nutrition, weight,
-  spending vs budget, notes written, next 7 days of events. Pure logic in `src/lib/review.js`
-  (`buildReview`, ISO weeks, `reviewNoteTemplate`); "Start review note" creates/opens a Knowledge note
-  titled "Weekly review YYYY-Www" (folder `Reviews`) — no schema change, never duplicates.
 - **Cross-links** (`src/lib/links.js`, no new columns): project → `todo_board_id` → tasks; notes via
   `knowledge_notes.project_id`; events match a project by name in the title. Project chips appear on
-  To Do cards (All Boards view), Today rows, review tasks, palette results and the Knowledge list; a
+  To Do cards (All Boards view), Today rows, palette results and the Knowledge list; a
   project's own board links back to it; the task editor has a Project picker (moves the task to that
   project's board); the Project page has "Coming up" and "Knowledge" roll-ups. `src/lib/boards.js`:
   "All Boards" shows every custom column too, and cards can only be dropped in a column their board has.
-- **AI one-taps** (`src/lib/prompts.js`, `AI_ACTIONS`): Plan my day / Weekly review / What's overdue?
+- **AI one-taps** (`src/lib/prompts.js`, `AI_ACTIONS`): Plan my day / What's overdue?
   from the palette ("Ask"), the Master Controller empty state, the dock quick button, the Today
-  panel's ✨ button and the Review page. They only send a prompt (the MC already has the snapshot and
+  panel's ✨ button. They only send a prompt (the MC already has the snapshot and
   read tools); they never change data unasked. The palette sits inside `MasterControllerProvider`.
 - **Toasts**: `useToast()` from `src/components/Toaster.jsx` (`toast('Saved')`,
   `toast({ tone:'error', message, action:{label,onClick} })`); styles in `src/styles/overlays.css`.
@@ -673,13 +597,10 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - Page rename, spreadsheet replacement, and page deletion live in the page options menu. Existing local
   crm_contacts rows are retained; no database migration is needed.
 
-## Knowledge network and linked context
-- `KnowledgeGraph` uses the pure `lib/knowledgeGraph.js` force layout. Undirected graph
-  edges are deduplicated; node sizes reflect degree, folder groups use theme tokens,
-  click focuses neighbours, double-click/Enter opens a note, Space focuses, and Local
-  view isolates direct connections. Wheel zoom anchors at the pointer; background
-  drag pans, node drag repositions, and Fit restores the view. Routine note refreshes
-  preserve camera positions when graph topology is unchanged.
+## Context network and linked notes
+- Context opens at `/context`; `/knowledge` redirects with the query and hash preserved. The project Context tab scopes the same workspace to one project.
+- `KnowledgeGraph` projects deterministic 3D note positions from the note ID and folder. Explicit wiki links produce edges. Click a star to preview it, then Edit to open the Markdown editor. Drag or use arrow keys to orbit, Shift-drag to pan, and scroll or pinch to fly. Fit all restores the camera.
+- The library accepts nested folders and note drops. Empty folders persist in scoped UI preferences. The editor stores Markdown through the version-checked note writer, keeps local drafts, and inserts stable ID-based wiki links from autocomplete.
 - `tools/ctrlpanel-file-sync.mjs` is a local-only filesystem bridge through the existing
   Context Sync API. It is scoped to the seven top-level Confuzed Guy context files;
   symlinks resolve canonical Obsidian content. Scripts, exports, templates, credentials,
@@ -717,7 +638,7 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   Snapshot writes preserve the workbook's full net worth; display history adds its
   recorded debt back to derive assets. The workbook's original data stays intact.
   Historical Supabase finance rows are retained and not mixed with sheet values.
-  Weekly Review and Master Controller finance reads use the workbook. MC finance
+  Master Controller finance reads use the workbook. MC finance
   writes direct the user to Finance, rather than mutating legacy DB records.
 - See `docs/finance-sheets.md` for headers, definitions, setup, API and concurrent
   edit limitations. Tests: `tests/financeSheets.test.mjs`.
@@ -745,8 +666,8 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
   macros and goal progress, recent meals, and shortcuts to photo/text meal logging.
   It uses the saved meal timezone and the same refresh/validation helpers as the
   Nutrition page, so GPT uploads appear while the dashboard is open.
-- Industry Problems and Instagram are optional panels too; their account,
-  industry and range selections persist per panel instance. Existing layouts
+- Instagram is an optional panel too; its account and range selections
+  persist per panel instance. Existing layouts
   are preserved — additions are choices in the picker, not forced defaults.
 - When adding a feature with a useful dashboard summary or frequent action,
   include its self-contained panel and a `PANELS` registry entry with a stable

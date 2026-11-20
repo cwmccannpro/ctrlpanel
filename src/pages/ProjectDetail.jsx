@@ -16,7 +16,7 @@ import { formatDate } from '../lib/helpers.js';
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
 
 const STATUSES = ['Active', 'Paused', 'Complete'];
-const TABS = ['Project Dashboard', 'Knowledge', 'Excalidraw', 'Files & Links', 'People'];
+const TABS = ['Project Dashboard', 'Context', 'Excalidraw', 'Files & Links', 'People'];
 const statusVariant = { Active: 'green', Paused: 'warm', Complete: 'accent' };
 
 function Rollup({ icon, title, onClick, children }) {
@@ -62,7 +62,7 @@ export default function ProjectDetail() {
       .then(({ data }) => { if (alive) setProjectNotes(data || []); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [id]);
+  }, [id, tab]);
   const digest = useMemo(
     () => (project ? projectDigest({ project, tasks, boards: todoBoards.rows, notes: projectNotes, events: calendarEvents }) : null),
     [project, tasks, todoBoards.rows, projectNotes, calendarEvents]
@@ -125,11 +125,11 @@ export default function ProjectDetail() {
       <Card className="card-section" static style={{ flex: 1, overflowY: 'auto' }}>
         <div className="tabs">
           {TABS.map((t) => (
-            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => { if (t === tab || !knowledgeDirty || window.confirm('Discard unsaved knowledge edits?')) setTab(t); }}>{t}</button>
+            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => { if (t === tab || !knowledgeDirty || window.confirm('Discard unsaved Context edits?')) setTab(t); }}>{t}</button>
           ))}
         </div>
 
-        {tab === 'Knowledge' && <KnowledgeBase key={id} projectId={id} onDirtyChange={setKnowledgeDirty} />}
+        {tab === 'Context' && <KnowledgeBase key={id} projectId={id} onDirtyChange={setKnowledgeDirty} />}
         {/* ============ 1. PROJECT DASHBOARD ============ */}
         {tab === 'Project Dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -196,10 +196,10 @@ export default function ProjectDetail() {
                 )}
               </Rollup>
 
-              <Rollup icon="ti-notebook" title="Knowledge" onClick={() => setTab('Knowledge')}>
+              <Rollup icon="ti-notebook" title="Context" onClick={() => setTab('Context')}>
                 <div className="value-md" style={{ marginBottom: 6 }}>{digest.notes.length}</div>
                 {digest.notes.length === 0 ? (
-                  <p className="body-text">No notes yet. Write one in the Knowledge tab.</p>
+                  <p className="body-text">No notes yet. Write one in the Context tab.</p>
                 ) : (
                   digest.notes.slice(0, 3).map((n) => (
                     <div className="list-row" key={n.id}>

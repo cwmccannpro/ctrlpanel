@@ -232,12 +232,12 @@ test('connecting exchanges the code, upgrades to a 60-day token and saves the ac
   let saved;
   supabase = (call) => {
     saved = { path: call.path, params: call.params, row: JSON.parse(call.body) };
-    return { status: 201 };
+    return { status: 201, body: { id: 'row-1' } };
   };
 
   const before = Date.now();
-  const username = await ig.exchangeInstagramCode('user-1', 'AQD-code#_');
-  assert.equal(username, 'cam.codes');
+  const ids = await ig.exchangeInstagramCode('user-1', 'AQD-code#_');
+  assert.deepEqual(ids, ['row-1']);
 
   // Short-lived exchange: POST form with the "#_" stripped from the code.
   const short = calls.find((c) => c.host === 'api.instagram.com');
@@ -269,7 +269,7 @@ test('connecting also accepts the older flat token response', async () => {
   oauth = () => ({ body: { access_token: 'short-tok', user_id: 999 } });
   graph = (path) => (path === '/access_token' ? { body: { access_token: 'long-tok', expires_in: 5184000 } } : { body: { ...PROFILE, user_id: undefined } });
   let row;
-  supabase = (call) => { row = JSON.parse(call.body); return { status: 201 }; };
+  supabase = (call) => { row = JSON.parse(call.body); return { status: 201, body: { id: 'row-1' } }; };
   await ig.exchangeInstagramCode('user-1', 'code');
   assert.equal(row.ig_user_id, '999', 'falls back to the user_id from the token response');
 });

@@ -52,14 +52,10 @@ export const TABLE_META = {
   dividends: { search: [], order: 'paid_date' },
   habits: { search: ['name'], order: 'created_at' },
   habit_logs: { search: [], order: 'log_date' },
-  opportunities: { search: ['title', 'org', 'industry', 'location', 'kind'], order: 'score' },
-  industry_problems: { search: ['title', 'problem', 'industry', 'stage', 'who'], order: 'score' },
 };
 
 const isAllowed = (table) => Object.prototype.hasOwnProperty.call(TABLE_META, table);
-// Opportunities are written by the Opportunities Agent run — the model may
-// read them, never write them.
-const READ_ONLY = new Set(['opportunities', 'industry_problems', 'knowledge_notes']); // Knowledge writes use version-checked save_context.
+const READ_ONLY = new Set(['knowledge_notes']); // Knowledge writes use version-checked save_context.
 // Meal micronutrients come only from photo/text analysis (or the nutrition GPT), never from chat.
 const MICROS_ERROR = 'Error: meal micronutrients are imported automatically from a meal photo or description and cannot be set here.';
 const writesMealMicros = (table, values) => table === 'nutrition_logs' && values && Object.prototype.hasOwnProperty.call(values, 'micros');
@@ -129,15 +125,6 @@ export async function buildSnapshot(userName) {
   snap.projects = projects.map((p) => ({ id: p.id, name: p.name, status: p.status }));
   snap.habits = habits.map((h) => ({ id: h.id, name: h.name }));
 
-  // Top Opportunities Agent picks the user hasn't dismissed or applied to.
-  try {
-    const { data: opps } = await queryTable('opportunities', { order: 'score', ascending: false, limit: 25 });
-    const picks = (opps || []).filter((o) => o.status === 'new' || o.status === 'saved').slice(0, 5);
-    if (picks.length) {
-      snap.opportunities = picks.map((o) => ({ id: o.id, title: o.title, org: o.org, kind: o.kind, score: o.score, deadline: o.deadline, status: o.status }));
-    }
-  } catch { /* opportunity awareness is optional */ }
-
   return snap;
 }
 
@@ -166,11 +153,11 @@ export async function executeTool(name, input = {}, { navigate, confirm } = {}) 
       case 'navigate_to': {
         const routes = {
           dashboard: '/', calendar: '/calendar', todo: '/todo', habits: '/habits',
-          agents: '/agents', opportunities: '/agents/opportunities', industry: '/agents/industry-problems', projects: '/projects', crm: '/crm',
+          projects: '/projects', crm: '/crm',
           health: '/health', nutrition: '/health#nutrition', supplements: '/health#supplements', fitness: '/health#fitness', weight: '/health#weight',
           networth: '/finance#assets', budget: '/finance#cashflow', investing: '/finance#investing',
           finance: '/finance', debt: '/finance',
-          settings: '/settings', knowledge: '/knowledge',
+          settings: '/settings', context: '/context', knowledge: '/context',
         };
         const route = routes[String(input.page || '').toLowerCase()];
         if (!route) return `Unknown page: ${input.page}`;

@@ -1,14 +1,14 @@
 # Social connections
 
-Socials connects multiple YouTube channels, Instagram professional accounts and X accounts. Each account has a renameable sidebar section and its own analytics page. The overview's **Load analytics** shows account performance and content together. Failed accounts are reported independently.
+Socials connects YouTube channels, Instagram professional accounts, X accounts and TikTok accounts. Choose **Sign in with** a provider and approve read access. After sign-in, a single connected account opens directly. If YouTube returns multiple channels, choose one from **Connected accounts**. Each account has its own sidebar entry and analytics page. **Load analytics** on the overview compares connected accounts.
 
 ## Activate the integration
 
-1. Run `migrations/20261011-social-connections.sql` in the project's Supabase SQL editor. It creates the social token tables if needed, adds YouTube labels, and enables RLS with browser access revoked. It is safe to rerun and contains no sample data. The same SQL is appended to `supabase-schema.sql`.
+1. Apply `migrations/20261011-social-connections.sql` and `migrations/20261119-tiktok-social.sql` to prepare token storage. Both are safe to rerun and also appear in `supabase-schema.sql`.
 2. Add the provider credentials below to `.env` for Express and to Cloudflare Worker secrets for production. Credentials are never `VITE_` values. The existing Supabase URL, anon key and backend service-role key are also required.
-3. Register the exact callback URLs in each provider console. For production use `https://ctrlpanel.cwmccann.pro/api/youtube/callback`, `/api/instagram/callback`, and `/api/x/callback`. Set `FRONTEND_URL=https://ctrlpanel.cwmccann.pro`. Open CTRLpanel on the same hostname as the callback, so its HttpOnly connection cookie can finish sign-in.
-4. Restart the local server or deploy the Worker and frontend with `npm run deploy`. Local callbacks use `http://localhost:3001/api/<platform>/callback`; open the frontend at `http://localhost:5173`. Instagram may require HTTPS, so use the production site or a tunnel for that provider.
-5. In Socials, open **Connection setup** and **Check setup**, then **Connect**. Repeat for every account. The owner must complete provider sign-in and consent.
+3. Register each provider's exact callback URL, such as `https://ctrlpanel.cwmccann.pro/api/tiktok/callback`. Set `FRONTEND_URL=https://ctrlpanel.cwmccann.pro`. Open CTRLpanel on the same hostname as the callback so the browser cookie can finish sign-in.
+4. Restart the local server or deploy the Worker and frontend with `npm run deploy`. For providers that accept HTTP, local callbacks use `http://localhost:3001/api/<platform>/callback` with the frontend at `http://localhost:5173`. Use the HTTPS site or an HTTPS tunnel for TikTok and any provider requiring HTTPS.
+5. Choose **Sign in with** the provider in Socials. If the button says **Set up**, open it for the server diagnostics, then **Check setup** after updating the configuration.
 
 `node tools/social-setup-check.mjs` performs a read-only check using local server settings. It prints credential names and storage/callback status, never credential values or account data. The UI checks the server it is running against, so local and production configuration can differ. A ready check means the required configuration and storage exist; it does not claim that provider permissions have been granted before sign-in.
 
@@ -42,9 +42,17 @@ The 7/28-day selector filters **when posts were published**. Their impressions, 
 
 Official references: [OAuth 2.0 PKCE](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code), [Metrics](https://docs.x.com/x-api/fundamentals/metrics), [Pricing and credits](https://docs.x.com/x-api/getting-started/pricing).
 
+## TikTok
+
+Set `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, and `TIKTOK_REDIRECT_URI`. Add Login Kit for Web and Display API to one TikTok developer app. Register the HTTPS callback and request `user.info.basic`, `user.info.stats`, and `video.list`. Use an authorized sandbox account during testing. Live use requires TikTok's app and scope approval.
+
+When granted, profile statistics include followers, following, total likes, and public video count. Public videos show lifetime views, likes, comments, and shares. The 7- or 28-day range filters the videos by publication date. The app reads up to 100 videos per request and labels incomplete lists. Account statistics may be unavailable if the user skips the profile statistics permission.
+
+Official references [Login Kit for Web](https://developers.tiktok.com/docs/en/login-kit-web/), [Display API](https://developers.tiktok.com/docs/en/display-api-get-started), [Video metrics](https://developers.tiktok.com/docs/en/tiktok-api-v2-video-object/).
+
 ## API and verification
 
-For `youtube`, `instagram`, and `x`, both Express and Worker use `backend/socials.js`:
+All four providers use `backend/socials.js` in Express and the Worker.
 
 - `GET /api/<platform>/status`: bearer-authenticated configuration check and safe account metadata.
 - `POST /api/<platform>/connect`: returns the provider URL and sets a short-lived HttpOnly, SameSite=Lax cookie. Session tokens are never included in redirect URLs.
@@ -52,6 +60,6 @@ For `youtube`, `instagram`, and `x`, both Express and Worker use `backend/social
 - `GET /api/<platform>/analytics?id=&range=`: verified owner's analytics only.
 - `POST /api/<platform>/rename` / `disconnect`: verified owner's account row only.
 
-OAuth tokens and refresh tokens stay in backend-only tables. Reconnecting preserves labels and other accounts. Disconnect removes only the local connection; revoke provider grants through that provider's account settings if desired.
+OAuth tokens and refresh tokens stay in backend-only tables. Reconnecting preserves labels and other accounts. Disconnect revokes TikTok access at the provider. For the other providers, account settings also let you revoke a provider grant after removing the local connection.
 
 Run `node --test tests/socialConnections.test.mjs tests/instagram.test.mjs tests/socialPlatforms.test.mjs tests/sidebarNavigation.test.mjs` and `npm run build`. These tests mock providers and Supabase, cover owner isolation, callback binding, PKCE, token refresh, errors, content, and both route adapters. Actual live account authorization still requires the owner's provider consent.

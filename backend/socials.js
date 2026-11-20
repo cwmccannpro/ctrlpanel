@@ -5,6 +5,7 @@ import { verifyUserToken } from './google.js';
 import * as yt from './youtube.js';
 import * as ig from './instagram.js';
 import * as x from './x.js';
+import * as tiktok from './tiktok.js';
 
 const providers = {
   youtube: { table: 'youtube_channels', listKey: 'channels', required: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
@@ -19,6 +20,11 @@ const providers = {
     redirect: x.xRedirectUri, sign: x.signXState, verify: x.verifyXState, auth: x.xAuthUrl,
     exchange: x.exchangeXCode, list: x.listXAccounts, rename: x.renameXAccount,
     disconnect: x.disconnectXAccount, analytics: x.getXAnalytics },
+  tiktok: { table: 'tiktok_accounts', listKey: 'accounts', required: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'],
+    redirect: tiktok.tiktokRedirectUri, sign: tiktok.signTikTokState, verify: tiktok.verifyTikTokState, auth: tiktok.tiktokAuthUrl,
+    exchange: tiktok.exchangeTikTokCode, list: tiktok.listTikTokAccounts, rename: tiktok.renameTikTokAccount,
+    disconnect: tiktok.disconnectTikTokAccount, analytics: tiktok.getTikTokAnalytics,
+    migration: '20261119-tiktok-social.sql' },
 };
 const response = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers },
@@ -42,10 +48,10 @@ export async function socialSetup(platform, userId) {
   try {
     const u = new URL(redirectUri);
     callbackValid = u.pathname === `/api/${platform}/callback` && !u.search && !u.hash &&
-      (u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)));
+      (u.protocol === 'https:' || (platform !== 'tiktok' && u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname)));
   } catch { /* reported below */ }
   const issues = [];
-  if (!callbackValid) issues.push(`Set ${platform === 'youtube' ? 'YOUTUBE' : platform.toUpperCase()}_REDIRECT_URI to the registered /api/${platform}/callback URL.`);
+  if (!callbackValid) issues.push(`Set ${platform.toUpperCase()}_REDIRECT_URI to the registered ${platform === 'tiktok' ? 'HTTPS ' : ''}/api/${platform}/callback URL.`);
   let storage = 'unconfigured';
   if (storageUrl && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const client = createClient(storageUrl, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
@@ -53,7 +59,7 @@ export async function socialSetup(platform, userId) {
       const { error } = await client.from(p.table).select('id').eq('user_id', userId).limit(0).abortSignal(AbortSignal.timeout(10000));
       storage = error ? 'error' : 'ready';
       if (error) issues.push(['42P01', 'PGRST205', 'PGRST204'].includes(error.code)
-        ? `Apply migrations/20261011-social-connections.sql in Supabase to prepare ${p.table}.`
+        ? `Apply migrations/${p.migration || '20261011-social-connections.sql'} in Supabase to prepare ${p.table}.`
         : 'Cannot reach social connection storage. Check the server Supabase configuration.');
     } catch { storage = 'error'; issues.push('Cannot reach social connection storage. Check the server Supabase configuration.'); }
   }
@@ -75,7 +81,8 @@ export async function handleSocialRequest(request) {
       if (!state || saved?.state !== state) throw new Error('This connection must finish in the browser where it started. Please connect again.');
       const userId = p.verify(state);
       if (url.searchParams.get('error')) throw new Error('Sign-in was cancelled or denied. Please connect again and approve the requested permissions.');
-      await p.exchange(userId, url.searchParams.get('code'), saved.verifier);
+      const ids = await p.exchange(userId, url.searchParams.get('code'), saved.verifier);
+      if (ids.length === 1) back.pathname = `/socials/${platform}/${encodeURIComponent(ids[0])}`;
       back.searchParams.set(platform, 'connected');
     } catch (e) {
       back.searchParams.set(platform, 'error');

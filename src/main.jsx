@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useLocation } from 'react-router-dom';
 
 import './styles/globals.css';
 import './styles/components.css';
@@ -28,6 +28,7 @@ loadDisplayPrefs();
 
 // Gate the app behind authentication.
 function RequireAuth({ children }) {
+  const location = useLocation();
   const { loading, session } = useAuth();
   if (loading) {
     return (
@@ -36,7 +37,7 @@ function RequireAuth({ children }) {
       </div>
     );
   }
-  if (!session) return <Navigate to="/login" replace />;
+  if (!session) return <Navigate to="/login" state={{ returnTo: location.pathname + location.search + location.hash }} replace />;
   return children;
 }
 

@@ -35,6 +35,6 @@ test('Markdown renders GFM tables, tasks, code, and wiki links without executing
 test('project graph only displays edges between visible notes', async () => {
   const { default: Graph } = await server.ssrLoadModule('/src/components/KnowledgeGraph.jsx');
   const html = renderToStaticMarkup(React.createElement(Graph, { notes: [notes[0]], allNotes: notes, onSelect() {} }));
-  assert.match(html, /1 notes · 0 links/);
+  assert.match(html, /1 note · 0 links/);
   assert.doesNotMatch(html, /<line /);
 });

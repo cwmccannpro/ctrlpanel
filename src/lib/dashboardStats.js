@@ -6,8 +6,8 @@ import { currentStreak } from './habits.js';
 import { doneColumn } from './commandPalette.js';
 import { eventsForDay } from './calendarView.js';
 import {
-  rowDay, reviewWindows, isoWeek, delta, habitStats, taskStats, workoutStats, nutritionStats, spendStats,
-} from './review.js';
+  rowDay, weekWindows, isoWeek, delta, habitStats, taskStats, workoutStats, nutritionStats, spendStats,
+} from './weekStats.js';
 
 const DAY_MS = 86400000;
 const dayNum = (key) => {
@@ -52,7 +52,7 @@ export function taskKpis({ tasks = [], boards = [], today = new Date() }) {
   const t = dayKey(today);
   const byId = boardIndex(boards);
   const open = tasks.filter((x) => !isTaskDone(x, byId));
-  const week = new Set(reviewWindows(today).current);
+  const week = new Set(weekWindows(today).current);
   const dueWeek = tasks.filter((x) => x.due_date && week.has(rowDay(x.due_date)));
   const doneWeek = dueWeek.filter((x) => isTaskDone(x, byId)).length;
   return {
@@ -205,7 +205,7 @@ export function countdowns(items = [], today = new Date()) {
 }
 
 /* ============================================================
-   Week at a glance (reuses the weekly-review stats)
+   Week at a glance (rolling 7-day stats from weekStats.js)
    ============================================================ */
 /**
  * Tone of a change: `good` names the direction that is an improvement ('up' | 'down').
@@ -218,7 +218,7 @@ export function deltaTone(d, good = 'up') {
 
 /** KPI tiles for the last 7 days vs the 7 before, only for the areas that have data. */
 export function weekKpis({ habits = [], habitLogs = [], tasks = [], boards = [], workouts = [], transactions = [], categories = [], today = new Date() }) {
-  const windows = reviewWindows(today);
+  const windows = weekWindows(today);
   const h = habitStats({ habits, logs: habitLogs, windows });
   const t = taskStats({ tasks, boards, windows });
   const w = workoutStats({ logs: workouts, windows });
@@ -304,28 +304,6 @@ export function crmFollowups({ contacts = [], today = new Date(), limit = 6 }) {
     touchedThisWeek: rows.filter((r) => r.since !== null && r.since <= 6).length,
     dueCount: queue.length,
     queue: queue.slice(0, limit),
-  };
-}
-
-/** Opportunities Agent finds: status counts and what closes (or starts) soonest. */
-export function opportunityStats({ rows = [], today = new Date(), soonDays = 30, limit = 5 }) {
-  const t = dayKey(today);
-  const counts = { new: 0, saved: 0, applied: 0, dismissed: 0 };
-  rows.forEach((r) => { if (r.status in counts) counts[r.status] += 1; });
-  const live = rows.filter((r) => r.status === 'new' || r.status === 'saved');
-  const closing = live
-    .map((r) => {
-      const when = rowDay(r.deadline) || rowDay(r.starts_on);
-      return { id: r.id, title: r.title, org: r.org || '', score: r.score || 0, status: r.status, url: r.url || null, when, kind: r.deadline ? 'deadline' : 'starts', days: when ? daysBetween(t, when) : null };
-    })
-    .filter((x) => x.when && x.days >= 0 && x.days <= soonDays)
-    .sort((a, b) => a.days - b.days || b.score - a.score);
-  return {
-    counts,
-    liveCount: live.length,
-    avgScore: live.length ? Math.round(sum(live, (r) => r.score) / live.length) : null,
-    closingCount: closing.length,
-    closing: closing.slice(0, limit),
   };
 }
 
@@ -515,7 +493,7 @@ export function weekTraining({ schedule = [], logs = [], today = new Date() }) {
 
 /** Body, training and nutrition numbers for the last 7 days. */
 export function healthKpis({ weights = [], workouts = [], schedule = [], nutrition = [], goals = [], today = new Date() }) {
-  const windows = reviewWindows(today);
+  const windows = weekWindows(today);
   const sortedWeights = weights.filter((w) => w.logged_at && Number(w.weight) > 0).sort((a, b) => String(a.logged_at).localeCompare(String(b.logged_at)));
   const latest = sortedWeights.at(-1) || null;
   // Compare with the last weigh-in on or before a week ago; failing that, the first one this week.

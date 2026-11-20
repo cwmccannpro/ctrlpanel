@@ -19,6 +19,6 @@
     { "name": "Today", "short_name": "Today", "url": "/" },
     { "name": "To Do", "short_name": "To Do", "url": "/todo" },
     { "name": "Habits", "short_name": "Habits", "url": "/habits" },
-    { "name": "Knowledge Base", "short_name": "Notes", "url": "/knowledge" }
+    { "name": "Context", "short_name": "Context", "url": "/context" }
   ]
 }

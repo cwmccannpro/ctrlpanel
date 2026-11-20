@@ -74,8 +74,10 @@ function normalize(saved, containerWidth) {
   if (Array.isArray(saved.columns) && saved.columns.length) {
     const oldDefault = [['board', 'board', 'board'], ['networth', 'cashflow', 'investing', 'youtube'], ['habits_grid', 'habits_trend', 'macros', 'supplements', 'fitness']];
     if (idsOf(saved.columns) === JSON.stringify(oldDefault)) return fresh();
-    // Still on the previous default (now the Work layout) and never customized -> move to Today.
-    if (idsOf(saved.columns) === JSON.stringify(LAYOUTS.work) && untouched(saved.columns)) return fresh();
+    // Still on the previous default (now the Work layout, with or without the retired
+    // Opportunities panel) and never customized -> move to Today.
+    const oldWork = [['quick_add', 'upcoming_tasks', 'board'], ['schedule', 'projects'], ['knowledge', 'opportunities', 'crm']];
+    if ([LAYOUTS.work, oldWork].some((l) => idsOf(saved.columns) === JSON.stringify(l)) && untouched(saved.columns)) return fresh();
 
     const columns = saved.columns.slice(0, MAX_COLS).map(cleanColumn);
     const widths = Array.isArray(saved.widths)
@@ -479,7 +481,7 @@ export default function Dashboard() {
               </button>
             </div>
           )}
-          <Link className="btn btn--sm" to="/knowledge"><i className="ti ti-notebook" /> Capture context</Link>
+          <Link className="btn btn--sm" to="/context"><i className="ti ti-notebook" /> Capture context</Link>
           {editing && ['today', 'work'].map((key) => (
             <button key={key} className="btn btn--sm" onClick={() => applyLayout(key)}>
               {key === 'today' ? 'Today layout' : 'Work layout'}

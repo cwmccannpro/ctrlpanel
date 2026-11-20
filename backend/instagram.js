@@ -212,9 +212,9 @@ export async function exchangeInstagramCode(userId, rawCode) {
     updated_at: new Date().toISOString(),
   };
   // `label` is deliberately absent so reconnecting keeps the owner's own name.
-  const { error } = await requireAdmin().from('instagram_accounts').upsert(row, { onConflict: 'user_id,ig_user_id' });
+  const { data, error } = await requireAdmin().from('instagram_accounts').upsert(row, { onConflict: 'user_id,ig_user_id' }).select('id').single();
   if (error) throw dbError('Could not save Instagram account', error);
-  return row.username;
+  return [data.id];
 }
 
 function fetchProfile(token) {

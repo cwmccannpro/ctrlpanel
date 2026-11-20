@@ -172,7 +172,14 @@ export const x = {
   rename: (id, label) => authApi.post('/x/rename', { id, label }),
   disconnect: id => authApi.post('/x/disconnect', { id }),
 };
-export const socialApi = { youtube, instagram, x };
+export const tiktok = {
+  status: () => authApi.get('/tiktok/status'),
+  connect: async () => { const { url } = await authApi.post('/tiktok/connect'); window.location.assign(url); },
+  analytics: (id, range) => authApi.get(`/tiktok/analytics?id=${encodeURIComponent(id)}&range=${encodeURIComponent(range)}`),
+  rename: (id, label) => authApi.post('/tiktok/rename', { id, label }),
+  disconnect: id => authApi.post('/tiktok/disconnect', { id }),
+};
+export const socialApi = { youtube, instagram, x, tiktok };
 
 // Google Sheets-backed CRM. The server authenticates with a service account,
 // so there's no user OAuth — the user shares their spreadsheet with the
@@ -187,39 +194,12 @@ export const sheets = {
   deleteRows: (id, sheetId, rows) => authApi.post('/sheets/delete-rows', { id, sheetId, rows }),
 };
 
-// Agents folder. The Opportunities and Industry Problems runs stream NDJSON
-// progress events (start / search / results / status / ping / done / error) —
-// see backend/opportunities.js and backend/industry.js. The server reads the
-// user's config itself.
-async function streamAgentRun(path, payload, onEvent, signal) {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => ({}));
-    onEvent({ type: 'error', message: body?.error || `API ${res.status}` });
-    return;
-  }
-  await readNdjson(res, onEvent);
-}
-
 // AI helpers other than the streaming chat. Signed-in only; the server limits
 // spend on its own Anthropic key per user (calls with the user's own key aren't counted).
 export const aiApi = {
   usage: () => authApi.get('/ai/usage'),
   supplementAnalyze: (supplements, apiKey) => authApi.post('/ai/supplement-analyze', { supplements, apiKey }),
   interactionCheck: (a, b, apiKey) => authApi.post('/ai/interaction-check', { a, b, apiKey }),
-};
-
-export const agentsApi = {
-  runOpportunities: ({ apiKey, today } = {}, onEvent, signal) =>
-    streamAgentRun('/agents/opportunities/run', { apiKey, today }, onEvent, signal),
-  runIndustry: ({ apiKey, today, industry, focus } = {}, onEvent, signal) =>
-    streamAgentRun('/agents/industry/run', { apiKey, today, industry, focus }, onEvent, signal),
-  extractProfile: (pdfBase64, apiKey) => authApi.post('/agents/opportunities/profile', { pdfBase64, apiKey }),
 };
 
 // Read-only .ics feeds (iCloud public calendars etc.). The backend fetches and

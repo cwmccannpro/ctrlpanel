@@ -1,4 +1,4 @@
-// One connected Socials section (a YouTube channel or an Instagram account) on
+// One connected Socials account on
 // the overview. Clicking opens its analytics page; rename / disconnect are
 // inline. Platform differences live in lib/socialPlatforms.js.
 import { useState } from 'react';
@@ -7,6 +7,8 @@ import { number, compactNumber } from '../lib/helpers.js';
 import { PLATFORMS, accountLabel, instagramAccountKind } from '../lib/socialPlatforms.js';
 
 function details(platform, a) {
+  if (platform === 'tiktok') return { image: a.avatar_url, sub: a.label && a.name ? `TikTok · ${a.name}` : 'TikTok',
+    stats: `${a.followers_count == null ? '—' : number(a.followers_count)} followers · ${a.video_count == null ? '—' : number(a.video_count)} public videos` };
   if (platform === 'x') return { image: a.profile_image_url, sub: a.label ? `X · @${a.username}` : 'X',
     stats: `${number(a.followers_count)} followers · ${number(a.tweet_count)} posts` };
   if (platform === 'instagram') {

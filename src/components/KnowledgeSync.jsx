@@ -28,7 +28,7 @@ export default function KnowledgeSync({ onClose, onSaved, linkedFiles = 0 }) {
     }catch(e){setError(e.message);}finally{setBusy(false);}
   };
   return <Modal title="Context sync" onClose={onClose} wide>
-    <p className="body-text">Connect a chat tool or the local Markdown vault watcher on each device. Its key can read and update your Knowledge Base; revoke it here at any time.</p>
+    <p className="body-text">Connect a chat tool or the local Markdown vault watcher on each device. Its key can read and update your Context; revoke it here at any time.</p>
     {linkedFiles > 0 && <div className="field" style={{marginTop:18}}><label className="field-label">Linked context files · {linkedFiles}</label><p className="body-text">Local source files update their linked notes automatically while the computer running the sync is on and online. Edit the source file for lasting changes. Edits here pause that note’s sync to protect your work. Revoke the file-sync key below to disconnect it.</p></div>}
     <div className="field" style={{marginTop:18}}><label className="field-label">API endpoint</label><code>{window.location.origin}/api/knowledge/notes</code><p className="body-text">Use your deployed HTTPS address on both computers. Localhost only reaches this computer.</p></div>
     <div className="field"><label className="field-label">Markdown vault</label><p className="body-text">Run <code>npm run vault:watch</code> on the computer that stores the vault. Files under <code>Projects/&lt;project name&gt;</code> attach to that project automatically; frontmatter keeps a stable identity across edits.</p></div>

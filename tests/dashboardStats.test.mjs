@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
   agendaDays, categorySpend, countdowns, crmFollowups, daysBetween, deltaTone, dividendStats, financeKpis,
   focusTasks, formatCountdown, habitHeatmap, healthKpis, holdingMovers, isTaskDone, longestRun, nextEvent,
-  normalizeLink, opportunityStats, projectProgress, recentTransactions, streakBoard, supplementChecklist,
+  normalizeLink, projectProgress, recentTransactions, streakBoard, supplementChecklist,
   taskKpis, timeProgress, weekKpis, weekTraining,
 } from '../src/lib/dashboardStats.js';
 
@@ -195,23 +195,6 @@ test('crmFollowups: hottest and longest-untouched first, cadence by temperature'
   assert.equal(r.queue.find((q) => q.id === 'A').overdueBy, 3);
   assert.equal(crmFollowups({ contacts, today: NOW, limit: 2 }).queue.length, 2);
   assert.equal(crmFollowups({ today: NOW }).total, 0);
-});
-
-test('opportunityStats: counts, average fit and what closes soonest', () => {
-  const rows = [
-    { id: 'o1', status: 'new', title: 'One', deadline: '2026-10-10', score: 80 },
-    { id: 'o2', status: 'saved', title: 'Two', deadline: '2026-10-05', score: 70 },
-    { id: 'o3', status: 'new', title: 'Past', deadline: '2026-09-01', score: 60 },
-    { id: 'o4', status: 'applied', title: 'Applied', deadline: '2026-10-03', score: 90 },
-    { id: 'o5', status: 'new', title: 'Far', starts_on: '2027-03-01', score: 50 },
-    { id: 'o6', status: 'dismissed', title: 'No', deadline: '2026-10-02', score: 99 },
-  ];
-  const s = opportunityStats({ rows, today: NOW });
-  assert.deepEqual(s.counts, { new: 3, saved: 1, applied: 1, dismissed: 1 });
-  assert.equal(s.liveCount, 4);
-  assert.equal(s.avgScore, 65);
-  assert.deepEqual(s.closing.map((o) => [o.id, o.days, o.kind]), [['o2', 4, 'deadline'], ['o1', 9, 'deadline']]);
-  assert.equal(opportunityStats({ rows, today: NOW, soonDays: 400 }).closing.at(-1).kind, 'starts');
 });
 
 /* ---------------- finance ---------------- */

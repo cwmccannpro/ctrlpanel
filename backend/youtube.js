@@ -170,6 +170,7 @@ export async function exchangeYoutubeCode(userId, code) {
   if (!channels.length) throw new Error('This Google account has no YouTube channel.');
 
   const now = new Date().toISOString();
+  const ids = [];
   for (const c of channels) {
     const s = c.statistics || {};
     const row = {
@@ -190,12 +191,13 @@ export async function exchangeYoutubeCode(userId, code) {
     };
     // Keep an existing refresh_token if Google didn't return a new one.
     if (!row.refresh_token) delete row.refresh_token;
-    const { error } = await requireAdmin()
+    const { data, error } = await requireAdmin()
       .from('youtube_channels')
-      .upsert(row, { onConflict: 'user_id,channel_id' });
+      .upsert(row, { onConflict: 'user_id,channel_id' }).select('id').single();
     if (error) throw new Error(`Could not save YouTube channel: ${error.message}`);
+    ids.push(data.id);
   }
-  return channels.map((c) => c.snippet?.title).filter(Boolean);
+  return ids;
 }
 
 /** Public channel list (no tokens). */

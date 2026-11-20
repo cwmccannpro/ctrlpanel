@@ -34,12 +34,17 @@ test('sections tolerate Instagram not being loaded yet', () => {
 });
 
 test('every platform has the fields the overview needs', () => {
-  assert.deepEqual(PLATFORM_LIST.map((p) => p.id), ['youtube', 'instagram', 'x']);
+  assert.deepEqual(PLATFORM_LIST.map((p) => p.id), ['youtube', 'instagram', 'x', 'tiktok']);
   for (const p of PLATFORM_LIST) {
     assert.ok(p.name && p.icon.startsWith('ti-') && p.noun && p.setup && p.requirement);
     assert.equal(p.path('abc'), `/socials/${p.id}/abc`);
   }
   assert.match(PLATFORMS.instagram.requirement, /Business or Creator/);
+});
+
+test('TikTok uses display names and gets a sidebar entry for each account', () => {
+  const sections = socialSections({ tiktok: { accounts: [{ id: 't1', name: 'Creator' }, { id: 't2', name: 'Creator', label: 'Studio' }] } });
+  assert.deepEqual(sections.map(s => [s.label, s.to]), [['Creator', '/socials/tiktok/t1'], ['Studio', '/socials/tiktok/t2']]);
 });
 
 test('X accounts have distinct sidebar sections and handle-based names', () => {

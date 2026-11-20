@@ -17,7 +17,7 @@ export function graphEdges(notes) {
     .map(target => ({ source: n.id, target })));
 }
 export async function loadNotes() {
-  if (!supabase) throw new Error('Connect Supabase to use Knowledge Base.');
+  if (!supabase) throw new Error('Connect Supabase to use Context.');
   const rows = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await supabase.from('knowledge_notes').select('*').order('id').range(offset, offset + 499);

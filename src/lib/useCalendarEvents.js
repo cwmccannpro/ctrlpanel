@@ -16,7 +16,7 @@ export function refreshCalendarEvents() {
  * Calendar events from the same sources the Calendar page uses: Google when connected,
  * else the local Supabase table, plus iCloud (read + write) and the user's read-only
  * .ics feeds. The same event from a feed and from iCloud appears once.
- * Shared by the dashboard, the weekly review and projects.
+ * Shared by the dashboard and projects.
  */
 export function useCalendarEvents() {
   const { rows: localRows } = useRows('calendar_events', []);

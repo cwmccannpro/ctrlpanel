@@ -2,7 +2,7 @@
 // src/main.jsx and the test harness so both render exactly the same pages.
 
 import { lazy } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 
 // Every page is its own chunk: a first visit downloads the shell + the page you open; the
 // rest are fetched on demand (and warmed while idle — see lib/prefetch.js).
@@ -13,10 +13,6 @@ const loaders = {
   Calendar: () => import('./pages/Calendar.jsx'),
   ToDo: () => import('./pages/ToDo.jsx'),
   Habits: () => import('./pages/Habits.jsx'),
-  Review: () => import('./pages/Review.jsx'),
-  Agents: () => import('./pages/agents/Agents.jsx'),
-  OpportunitiesAgent: () => import('./pages/agents/OpportunitiesAgent.jsx'),
-  IndustryProblemsAgent: () => import('./pages/agents/IndustryProblemsAgent.jsx'),
   Projects: () => import('./pages/Projects.jsx'),
   ProjectDetail: () => import('./pages/ProjectDetail.jsx'),
   KnowledgeBase: () => import('./pages/KnowledgeBase.jsx'),
@@ -28,6 +24,7 @@ const loaders = {
   YouTube: () => import('./pages/socials/YouTube.jsx'),
   Instagram: () => import('./pages/socials/Instagram.jsx'),
   X: () => import('./pages/socials/X.jsx'),
+  TikTok: () => import('./pages/socials/TikTok.jsx'),
 };
 const Dashboard = lazy(loaders.Dashboard);
 const Drive = lazy(loaders.Drive);
@@ -35,10 +32,6 @@ const RoomControl = lazy(loaders.RoomControl);
 const Calendar = lazy(loaders.Calendar);
 const ToDo = lazy(loaders.ToDo);
 const Habits = lazy(loaders.Habits);
-const Review = lazy(loaders.Review);
-const Agents = lazy(loaders.Agents);
-const OpportunitiesAgent = lazy(loaders.OpportunitiesAgent);
-const IndustryProblemsAgent = lazy(loaders.IndustryProblemsAgent);
 const Projects = lazy(loaders.Projects);
 const ProjectDetail = lazy(loaders.ProjectDetail);
 const KnowledgeBase = lazy(loaders.KnowledgeBase);
@@ -50,6 +43,7 @@ const Socials = lazy(loaders.Socials);
 const YouTube = lazy(loaders.YouTube);
 const Instagram = lazy(loaders.Instagram);
 const X = lazy(loaders.X);
+const TikTok = lazy(loaders.TikTok);
 
 // Order = prefetch order (most-visited first). Dashboard loads with the first render.
 export const pageLoaders = [
@@ -58,7 +52,6 @@ export const pageLoaders = [
   loaders.ToDo,
   loaders.Calendar,
   loaders.Habits,
-  loaders.Review,
   loaders.KnowledgeBase,
   loaders.Projects,
   loaders.ProjectDetail,
@@ -66,14 +59,17 @@ export const pageLoaders = [
   loaders.Settings,
   loaders.Health,
   loaders.Finance,
-  loaders.Agents,
-  loaders.OpportunitiesAgent,
-  loaders.IndustryProblemsAgent,
   loaders.Socials,
   loaders.YouTube,
   loaders.Instagram,
   loaders.X,
+  loaders.TikTok,
 ];
+
+function LegacyKnowledgeRoute() {
+  const { search, hash } = useLocation();
+  return <Navigate replace to={{ pathname: '/context', search, hash }} />;
+}
 
 export const appChildren = [
   { path: 'drive', element: <Drive /> },
@@ -83,13 +79,10 @@ export const appChildren = [
   { path: 'todo', element: <ToDo /> },
   { path: 'todo/:boardId', element: <ToDo /> },
   { path: 'habits', element: <Habits /> },
-  { path: 'review', element: <Review /> },
-  { path: 'agents', element: <Agents /> },
-  { path: 'agents/opportunities', element: <OpportunitiesAgent /> },
-  { path: 'agents/industry-problems', element: <IndustryProblemsAgent /> },
   { path: 'projects', element: <Projects /> },
   { path: 'projects/:id', element: <ProjectDetail /> },
-  { path: 'knowledge', element: <KnowledgeBase /> },
+  { path: 'context', element: <KnowledgeBase /> },
+  { path: 'knowledge', element: <LegacyKnowledgeRoute /> },
   { path: 'crm', element: <CRM /> },
   { path: 'crm/:boardId', element: <CRM /> },
   { path: 'health', element: <Health /> },
@@ -111,6 +104,8 @@ export const appChildren = [
   { path: 'socials/instagram/:id', element: <Instagram /> },
   { path: 'socials/x', element: <Socials /> },
   { path: 'socials/x/:id', element: <X /> },
+  { path: 'socials/tiktok', element: <Socials /> },
+  { path: 'socials/tiktok/:id', element: <TikTok /> },
   { path: 'settings', element: <Settings /> },
   { path: '*', element: <Dashboard /> },
 ];

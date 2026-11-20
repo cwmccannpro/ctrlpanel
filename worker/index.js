@@ -10,11 +10,7 @@
 // Requires compatibility flag "nodejs_compat" (node:crypto, Buffer, and
 // process.env populated from Worker secrets/vars).
 // ============================================================
-import { extractResumeProfile } from '../backend/claude.js';
 import { handleAiRequest } from '../backend/ai.js';
-import { AI_ESTIMATE_USD, aiErrorResponse, reserveAgentRun, withAiLease } from '../backend/aiGuard.js';
-import { runOpportunitiesCore } from '../backend/opportunities.js';
-import { runIndustryCore } from '../backend/industry.js';
 import { contextRequest } from '../backend/knowledge.js';
 import { handleRoomRequest } from '../backend/room.js';
 import { getPrices, getHistory, getPortfolioHistory } from '../backend/finance.js';
@@ -133,58 +129,6 @@ export default {
         }
       }
 
-      /* ---- Agents folder (per-user session) ---- */
-      if (pathname.startsWith('/api/agents')) {
-        const user = await userFrom(request, url);
-        if (!user) return json({ error: 'Not authenticated' }, 401);
-        const body = method === 'POST' ? await request.json().catch(() => ({})) : {};
-
-        // On-demand Opportunities run: NDJSON progress stream. Streaming keeps
-        // the response alive through a multi-minute web-search run.
-        if (pathname === '/api/agents/opportunities/run' && method === 'POST') {
-          let lease;
-          try { lease = await reserveAgentRun({ user, apiKey: body.apiKey }); } catch (e) { const r = aiErrorResponse(e); if (r) return r; throw e; }
-          const { readable, writable } = new TransformStream();
-          const writer = writable.getWriter();
-          const enc = new TextEncoder();
-          const write = lease.wrap((obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {}));
-          ctx.waitUntil(
-            runOpportunitiesCore({ userId: user.id, apiKey: body.apiKey, today: body.today }, write)
-              .catch((e) => write({ type: 'error', message: e?.message || 'Opportunities run failed' }))
-              .finally(async () => { await lease.settle(); writer.close().catch(() => {}); })
-          );
-          return new Response(readable, {
-            headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
-          });
-        }
-        // On-demand Industry Problems run — same NDJSON streaming as above.
-        if (pathname === '/api/agents/industry/run' && method === 'POST') {
-          let lease;
-          try { lease = await reserveAgentRun({ user, apiKey: body.apiKey }); } catch (e) { const r = aiErrorResponse(e); if (r) return r; throw e; }
-          const { readable, writable } = new TransformStream();
-          const writer = writable.getWriter();
-          const enc = new TextEncoder();
-          const write = lease.wrap((obj) => writer.write(enc.encode(JSON.stringify(obj) + '\n')).catch(() => {}));
-          ctx.waitUntil(
-            runIndustryCore({ userId: user.id, apiKey: body.apiKey, today: body.today, industry: body.industry, focus: body.focus }, write)
-              .catch((e) => write({ type: 'error', message: e?.message || 'Industry run failed' }))
-              .finally(async () => { await lease.settle(); writer.close().catch(() => {}); })
-          );
-          return new Response(readable, {
-            headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-cache' },
-          });
-        }
-        if (pathname === '/api/agents/opportunities/profile' && method === 'POST') {
-          try {
-            return json(await withAiLease({ user, apiKey: body.apiKey, estimateUsd: AI_ESTIMATE_USD.resume }, () => extractResumeProfile(body)));
-          } catch (e) {
-            const limited = aiErrorResponse(e);
-            if (limited) return limited;
-            return json({ error: e?.message || 'Could not read that resume.' }, 400);
-          }
-        }
-      }
-
       /* ---- Calendar ---- */
       if (pathname.startsWith('/api/calendar')) {
         if (pathname === '/api/calendar/status' && method === 'GET') {
@@ -264,7 +208,7 @@ export default {
       }
 
       /* ---- Social connections: identical dispatcher in Express and Worker ---- */
-      if (/^\/api\/(youtube|instagram|x)(\/|$)/.test(pathname)) return handleSocialRequest(request);
+      if (/^\/api\/(youtube|instagram|x|tiktok)(\/|$)/.test(pathname)) return handleSocialRequest(request);
 
       if (pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 

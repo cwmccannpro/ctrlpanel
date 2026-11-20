@@ -500,8 +500,11 @@ end $$;
 -- ============================================
 -- RETIRED FEATURES
 -- The old Agents + Email Triage tables are dropped here (safe to re-run;
--- drops data for those tables). Never reuse these names for new tables —
--- the current Agents folder uses agent_configs / opportunity_* below.
+-- drops data for those tables). Never reuse these names for new tables.
+--
+-- The Agents folder (Opportunities + Industry Problems agents) was removed
+-- from the app on 2026-11-19 and its tables are dropped below too
+-- (migrations/20261119-drop-agents-tables.sql).
 --
 -- The Reports feature (report_sources, reports, the `reports` storage bucket
 -- and its policies) was removed from the app; its tables and files are
@@ -513,6 +516,11 @@ drop table if exists triage_runs cascade;
 drop table if exists gmail_accounts cascade;
 drop table if exists agent_runs cascade;
 drop table if exists agents cascade;
+drop table if exists industry_problems cascade;
+drop table if exists industry_runs cascade;
+drop table if exists opportunities cascade;
+drop table if exists opportunity_runs cascade;
+drop table if exists agent_configs cascade;
 
 -- ============================================
 -- SOCIALS: YouTube channel analytics
@@ -702,88 +710,8 @@ drop function if exists public.can_access_board(uuid);
 drop function if exists public.is_board_owner(uuid);
 
 -- ============================================
--- AGENTS folder — per-agent config + the Opportunities Agent
--- agent_configs: one row per user per agent (agent_key), settings in config.
--- opportunity_runs: one row per on-demand run, written by the backend with
---   the verified session's user_id; `summary` holds the skills-to-build list.
--- opportunities: ranked finds, unique per user on dedupe_key (normalized URL).
---   `status` belongs to the user — later runs never overwrite it.
--- Named agent_configs / opportunity_* on purpose: `agents` / `agent_runs` are
--- dropped by the retired-features block above.
--- ============================================
-create table if not exists agent_configs (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  agent_key text not null,
-  config jsonb not null default '{}'::jsonb,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  unique (user_id, agent_key)
-);
-
-create table if not exists opportunity_runs (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_at timestamptz default now(),
-  finished_at timestamptz,
-  status text not null default 'running' check (status in ('running','complete','error')),
-  error text,
-  summary jsonb not null default '{}'::jsonb,   -- { headline, skill_gaps:[{skill,why,how_to_learn,url}], market_notes }
-  found int not null default 0,
-  added int not null default 0,
-  searches int not null default 0,
-  input_tokens int not null default 0,
-  output_tokens int not null default 0,
-  cost_usd numeric(10,4) not null default 0,
-  model text,
-  config_snapshot jsonb not null default '{}'::jsonb
-);
-create index if not exists opportunity_runs_user on opportunity_runs(user_id, run_at desc);
-
-create table if not exists opportunities (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_id uuid references opportunity_runs(id) on delete set null,
-  dedupe_key text not null,                       -- normalized URL (or org::title)
-  kind text not null check (kind in ('job','internship','program','event','certification','competition')),
-  title text not null,
-  org text,
-  industry text,
-  location text,
-  mode text check (mode in ('remote','in_person','hybrid')),
-  starts_on date,
-  deadline date,
-  cost text,
-  is_free boolean not null default false,
-  url text,
-  score int not null default 0,                   -- 0-100 fit
-  reasons text[] not null default '{}',
-  source_verified boolean not null default false, -- link host appeared in the search results
-  status text not null default 'new' check (status in ('new','saved','applied','dismissed')),
-  first_seen_at timestamptz default now(),
-  last_seen_at timestamptz default now(),
-  unique (user_id, dedupe_key)
-);
-create index if not exists opportunities_user_score on opportunities(user_id, score desc);
-
-do $$
-declare
-  t text;
-begin
-  foreach t in array array['agent_configs','opportunity_runs','opportunities'] loop
-    execute format('alter table %I enable row level security', t);
-    execute format('drop policy if exists "own rows" on %I', t);
-    execute format(
-      'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
-    );
-  end loop;
-end $$;
-
--- ============================================
 -- PROJECT KNOWLEDGE + MARKDOWN VAULT SYNC
--- Project-aware external writes verify ownership atomically. Legacy notes are
--- copied into Knowledge with stable identities; their original project fields
--- remain intact so this migration is non-destructive and safe to re-run.
+-- Project-aware external writes verify ownership atomically.
 -- ============================================
 -- Claim a browser-created note (which has no external key) for a vault.
 create or replace function public.claim_context_note(
@@ -869,99 +797,8 @@ end $$;
 revoke all on function public.save_context_note_v2(uuid,text,text,text,text,uuid,boolean,timestamptz) from public,anon,authenticated;
 grant execute on function public.save_context_note_v2(uuid,text,text,text,text,uuid,boolean,timestamptz) to service_role;
 
-insert into knowledge_notes(user_id,project_id,external_key,title,content,folder,tags,pinned,created_at,updated_at)
-select p.user_id,p.id,
-  'legacy-project-note/'||p.id::text||'/'||md5(coalesce(item->>'id','')||':'||ordinality::text||':'||coalesce(item->>'title','')),
-  coalesce(nullif(btrim(item->>'title'),''),'Project note'),coalesce(item->>'content',''),
-  'Projects/'||p.name,array['legacy-project-note']::text[],
-  case when lower(coalesce(item->>'pinned','false'))='true' then true else false end,
-  p.created_at,p.created_at
-from projects p
-cross join lateral jsonb_array_elements(coalesce(p.notes_list,'[]'::jsonb)) with ordinality as legacy(item,ordinality)
-on conflict do nothing;
-
-insert into knowledge_notes(user_id,project_id,external_key,title,content,folder,tags,pinned,created_at,updated_at)
-select p.user_id,p.id,'legacy-project-note/'||p.id::text||'/single','Notes',p.notes,
-  'Projects/'||p.name,array['legacy-project-note']::text[],false,p.created_at,p.created_at
-from projects p
-where coalesce(jsonb_array_length(coalesce(p.notes_list,'[]'::jsonb)),0)=0
-  and nullif(btrim(p.notes),'') is not null
-on conflict do nothing;
-
--- ============================================
--- INDUSTRY PROBLEMS AGENT (Agents folder)
--- industry_runs: one row per on-demand run for one industry, written by the
---   backend with the verified session's user_id; `summary` holds the headline,
---   where-to-start note and the industry map (stages -> steps -> pains).
--- industry_problems: ranked finds, unique per user on dedupe_key
---   (industry_key::title slug). `status` belongs to the user — later runs
---   never overwrite it. Config lives in agent_configs (agent_key 'industry_problems').
--- ============================================
-create table if not exists industry_runs (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_at timestamptz default now(),
-  finished_at timestamptz,
-  status text not null default 'running' check (status in ('running','complete','error')),
-  error text,
-  industry text not null,
-  industry_key text not null,
-  focus text not null default '',
-  summary jsonb not null default '{}'::jsonb,
-  found int not null default 0,
-  added int not null default 0,
-  searches int not null default 0,
-  input_tokens int not null default 0,
-  output_tokens int not null default 0,
-  cost_usd numeric(10,4) not null default 0,
-  model text,
-  config_snapshot jsonb not null default '{}'::jsonb
-);
-create index if not exists industry_runs_user on industry_runs(user_id, run_at desc);
-
-create table if not exists industry_problems (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  run_id uuid references industry_runs(id) on delete set null,
-  dedupe_key text not null,
-  industry_key text not null,
-  industry text not null,
-  map_key text,
-  title text not null,
-  problem text not null,
-  who text,
-  stage text,
-  solution text,
-  mvp text,
-  solution_type text check (solution_type in ('web_app','automation','ai_tool','dashboard','mobile','extension','service')),
-  build_weeks int,
-  pricing text,
-  reach text,
-  competition text,
-  evidence jsonb not null default '[]'::jsonb,
-  evidence_verified int not null default 0,
-  scores jsonb not null default '{}'::jsonb,
-  score int not null default 0,
-  risk text,
-  status text not null default 'new' check (status in ('new','saved','exploring','dismissed')),
-  first_seen_at timestamptz default now(),
-  last_seen_at timestamptz default now(),
-  unique (user_id, dedupe_key)
-);
-create index if not exists industry_problems_user_industry on industry_problems(user_id, industry_key, score desc);
-
-do $$
-declare
-  t text;
-begin
-  foreach t in array array['industry_runs','industry_problems'] loop
-    execute format('alter table %I enable row level security', t);
-    execute format('drop policy if exists "own rows" on %I', t);
-    execute format(
-      'create policy "own rows" on %I for all using (auth.uid() = user_id) with check (auth.uid() = user_id)', t
-    );
-  end loop;
-end $$;
+-- The one-time import of legacy project notes lives in migrations/20261005-project-knowledge-vault-sync.sql.
+-- Reapplying the schema must preserve intentional note deletions.
 
 -- SOCIAL CONNECTIONS: YouTube, Instagram and X (2026-10-11)
 create table if not exists youtube_channels (
@@ -1286,3 +1123,30 @@ create table if not exists public.caldav_accounts (
 alter table public.caldav_accounts enable row level security;
 revoke all on public.caldav_accounts from anon, authenticated;
 
+
+
+-- TikTok OAuth tokens are accessible only to the backend service role.
+create table if not exists public.tiktok_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  open_id text not null,
+  name text,
+  label text,
+  avatar_url text,
+  followers_count bigint,
+  following_count bigint,
+  likes_count bigint,
+  video_count bigint,
+  access_token text not null,
+  refresh_token text not null,
+  scope text not null,
+  expires_at bigint not null,
+  refresh_expires_at bigint not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, open_id)
+);
+
+alter table public.tiktok_accounts enable row level security;
+revoke all on table public.tiktok_accounts from public, anon, authenticated;
+grant select, insert, update, delete on table public.tiktok_accounts to service_role;

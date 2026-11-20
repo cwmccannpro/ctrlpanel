@@ -1,4 +1,4 @@
-function cleanFolder(value = '') {
+export function cleanFolder(value = '') {
   return value.replace(/\\/g, '/').split('/').map(part => part.trim()).filter(Boolean).join('/');
 }
 
@@ -8,7 +8,7 @@ export function filterKnowledgeNotes(notes, query = '') {
   return notes.filter(note => `${note.title} ${note.folder} ${note.content} ${(note.tags || []).join(' ')}`.toLowerCase().includes(needle));
 }
 
-export function buildKnowledgeTree(notes) {
+export function buildKnowledgeTree(notes, paths = []) {
   const root = { name: 'Vault', path: '', folders: [], notes: [], count: 0 };
   const folders = new Map([['', root]]);
   const folderFor = path => {
@@ -21,6 +21,7 @@ export function buildKnowledgeTree(notes) {
     return node;
   };
 
+  for (const path of paths) folderFor(cleanFolder(path));
   for (const note of notes) folderFor(cleanFolder(note.folder)).notes.push(note);
   const sort = node => {
     node.folders.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));

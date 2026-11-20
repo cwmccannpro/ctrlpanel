@@ -105,28 +105,6 @@ export async function remove(table, id) {
   return supabase.from(table).delete().eq('id', id);
 }
 
-/* ---------------- Agent configs ---------------- */
-
-// One row per (user, agent_key) in agent_configs; RLS scopes it to the owner.
-export async function getAgentConfig(agentKey) {
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('agent_configs').select('*').eq('agent_key', agentKey).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
-// Upsert on (user_id, agent_key); user_id comes from the column default.
-export async function saveAgentConfig(agentKey, config) {
-  if (!supabase) throw new Error('Supabase is not configured.');
-  const { data, error } = await supabase
-    .from('agent_configs')
-    .upsert({ agent_key: agentKey, config, updated_at: new Date().toISOString() }, { onConflict: 'user_id,agent_key' })
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 /* ---------------- Storage ---------------- */
 
 // Short-lived signed URL for a private object (bucket RLS scopes it to the

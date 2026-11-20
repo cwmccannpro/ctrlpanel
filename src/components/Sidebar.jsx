@@ -191,8 +191,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
     };
   }, [updateUiPreferences, width]);
 
-  // CRM, Projects + Socials are dynamic per-user; Agents come from the agent
-  // registry (src/lib/agentRegistry.js); Finance is fixed, and Health is a plain top-level link. `indexTo`
+  // CRM, Projects + Socials are dynamic per-user; Finance is fixed, and Health is a plain top-level link. `indexTo`
   // is the section's overview page — reached from the header's manage button,
   // never by clicking the folder itself.
   const navigation = sidebarNavigation({ projects: projects.rows, crmBoards: crmBoards.rows, socials, settings });

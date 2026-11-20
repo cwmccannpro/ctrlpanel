@@ -21,6 +21,12 @@ test('debt is absent from navigation and search even with old opt-ins and Show a
   assert.equal(PAGES.some((p) => p.to === '/finance/debt'), false);
 });
 
+test('Weekly Review and Agents are gone from navigation and search', () => {
+  assert.equal(paths(all).some((path) => path === '/review' || path.startsWith('/agents')), false);
+  assert.equal(all.folders.some((f) => f.id === 'folder:agents'), false);
+  assert.equal(PAGES.some((p) => p.to === '/review' || p.to.startsWith('/agents')), false);
+});
+
 test('all existing sections and newly added pages are visible by default', () => {
   assert.deepEqual(visibleSidebarNavigation(all).links, all.links);
   assert.deepEqual(paths(visibleSidebarNavigation(all, {})), paths(all));
@@ -42,7 +48,7 @@ test('every top-level link and folder can be hidden independently', () => {
 });
 
 test('individual pages disappear in expanded navigation and rail flyouts using the same items', () => {
-  const hidden = { '/health': false, '/projects/project-1': false, '/socials/youtube/youtube-1': false, '/agents/opportunities': false };
+  const hidden = { '/health': false, '/projects/project-1': false, '/socials/youtube/youtube-1': false, '/crm/crm-1': false };
   const visible = visibleSidebarNavigation(all, hidden);
   for (const path of Object.keys(hidden)) assert.equal(paths(visible).includes(path), false);
   assert.ok(paths(visible).includes('/finance'));
@@ -57,9 +63,9 @@ test('hiding all static children removes an empty folder; sections with a Manage
   const folder = { id: 'folder:static', label: 'Static', icon: 'ti-folder', items: [{ label: 'One', to: '/one' }, { label: 'Two', to: '/two' }] };
   const hidden = { '/one': false, '/two': false };
   assert.equal(visibleSidebarNavigation({ links: [], folders: [folder] }, hidden).folders.length, 0);
-  const agents = all.folders.find((f) => f.id === 'folder:agents');
-  const agentsHidden = visibleSidebarNavigation(all, Object.fromEntries(agents.items.map((i) => [i.to, false]))).folders.find((f) => f.id === 'folder:agents');
-  assert.equal(agentsHidden.indexTo, '/agents');
+  const managed = { ...folder, id: 'folder:managed', indexTo: '/managed' };
+  const managedHidden = visibleSidebarNavigation({ links: [], folders: [managed] }, hidden).folders.find((f) => f.id === 'folder:managed');
+  assert.equal(managedHidden.indexTo, '/managed');
   assert.ok(visibleSidebarNavigation(sidebarNavigation()).folders.some((f) => f.id === 'folder:projects'));
 });
 
@@ -71,11 +77,11 @@ test('renaming a dynamic page keeps its hidden choice and does not affect anothe
 });
 
 test('showing a parent restores only its visible children; saved child choices survive', () => {
-  const visibility = { 'folder:agents': false, '/agents/opportunities': false };
-  assert.equal(visibleSidebarNavigation(all, visibility).folders.some((f) => f.id === 'folder:agents'), false);
-  const restored = visibleSidebarNavigation(all, { ...visibility, 'folder:agents': true });
-  assert.equal(paths(restored).includes('/agents/opportunities'), false);
-  assert.ok(paths(restored).includes('/agents/industry-problems'));
+  const visibility = { 'folder:socials': false, '/socials/youtube/youtube-1': false };
+  assert.equal(visibleSidebarNavigation(all, visibility).folders.some((f) => f.id === 'folder:socials'), false);
+  const restored = visibleSidebarNavigation(all, { ...visibility, 'folder:socials': true });
+  assert.equal(paths(restored).includes('/socials/youtube/youtube-1'), false);
+  assert.ok(paths(restored).includes('/socials/instagram/instagram-1'));
   const showAll = Object.fromEntries(Object.keys(visibility).map((id) => [id, true]));
   assert.deepEqual(paths(visibleSidebarNavigation(all, showAll)), paths(all));
 });

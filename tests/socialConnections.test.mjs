@@ -8,9 +8,10 @@ Object.assign(process.env, {
   GOOGLE_CLIENT_ID: 'google-app', GOOGLE_CLIENT_SECRET: 'google-secret', YOUTUBE_REDIRECT_URI: 'https://ctrl.test/api/youtube/callback',
   INSTAGRAM_APP_ID: 'ig-app', INSTAGRAM_APP_SECRET: 'ig-secret', INSTAGRAM_REDIRECT_URI: 'https://ctrl.test/api/instagram/callback',
   X_CLIENT_ID: 'x-app', X_CLIENT_SECRET: 'x-secret', X_REDIRECT_URI: 'https://ctrl.test/api/x/callback', FRONTEND_URL: 'https://ctrl.test',
+  TIKTOK_CLIENT_KEY: 'tiktok-app', TIKTOK_CLIENT_SECRET: 'tiktok-secret', TIKTOK_REDIRECT_URI: 'https://ctrl.test/api/tiktok/callback',
 });
 const realFetch = globalThis.fetch;
-let calls, rows, missing, xHandler, ytHandler;
+let calls, rows, missing, xHandler, ytHandler, tikTokHandler;
 const published = daysAgo => new Date(Date.now() - daysAgo * 86400000 - 1000).toISOString();
 const profile = { id: 'x-owner', username: 'creator', name: 'Creator', public_metrics: { followers_count: 100, following_count: 12, tweet_count: 4 } };
 const post = { id: '123', text: 'First post', created_at: new Date().toISOString(), public_metrics: { impression_count: 1000, like_count: 20, retweet_count: 3, reply_count: 2, quote_count: 1, bookmark_count: 0 }, non_public_metrics: { url_link_clicks: 4, user_profile_clicks: 5 } };
@@ -28,22 +29,29 @@ globalThis.fetch = async (input, init = {}) => {
     if (missing === table) return json({ code: 'PGRST205', message: 'Missing table' }, 404);
     const data = rows[table] ||= [];
     if (url.searchParams.get('limit') === '0') return json([]);
-    const matches = r => [...url.searchParams].filter(([key]) => ['id', 'user_id'].includes(key)).every(([key, value]) => `eq.${r[key]}` === value);
+    const matches = r => [...url.searchParams].filter(([key]) => ['id', 'user_id', 'updated_at'].includes(key)).every(([key, value]) => `eq.${r[key]}` === value);
     let found = data.filter(matches);
     if (method === 'POST') {
       const next = JSON.parse(body);
-      const existing = data.find(r => r.user_id === next.user_id && r.x_user_id === next.x_user_id);
-      if (existing) Object.assign(existing, next); else data.push({ id: `account-${data.length}`, ...next });
-      return json(null, 201);
+      const keys = url.searchParams.get('on_conflict').split(',');
+      let existing = data.find(r => keys.every(key => r[key] === next[key]));
+      if (existing) Object.assign(existing, next);
+      else { existing = { id: `account-${data.length}`, ...next }; data.push(existing); }
+      if (!url.searchParams.has('select')) return json(null, 201);
+      found = [existing];
     }
     if (method === 'PATCH') { found.forEach(r => Object.assign(r, JSON.parse(body))); if (!url.searchParams.get('select')) return new Response(null, { status: 204 }); }
-    if (method === 'DELETE') { rows[table] = data.filter(r => !matches(r)); return new Response(null, { status: 204 }); }
+    if (method === 'DELETE') {
+      rows[table] = data.filter(r => !matches(r));
+      if (!url.searchParams.has('select')) return new Response(null, { status: 204 });
+    }
     const columns = url.searchParams.get('select');
     const projected = found.map(r => columns === '*' ? r : Object.fromEntries(columns.split(',').map(c => c.trim()).filter(c => c in r).map(c => [c, r[c]])));
     const single = headers.get('accept')?.includes('vnd.pgrst.object');
     return json(single ? projected[0] || null : projected);
   }
   if (url.hostname === 'api.x.com') return xHandler(url, { method, headers, body });
+  if (url.hostname === 'open.tiktokapis.com') return tikTokHandler(url, { method, headers, body });
   if (url.hostname === 'oauth2.googleapis.com') return json({ access_token: 'new-yt-token', refresh_token: 'yt-refresh', expires_in: 3600 });
   if (url.hostname === 'www.googleapis.com') {
     if (url.pathname.includes('userinfo')) return json({ email: 'owner@example.test' });
@@ -57,12 +65,25 @@ const x = await import('../backend/x.js');
 const yt = await import('../backend/youtube.js');
 const worker = (await import('../worker/index.js')).default;
 const socialRouter = (await import('../backend/routes/socials.js')).default;
+const tikTokTokens = { access_token: 'tiktok-access', refresh_token: 'tiktok-refresh', open_id: 'creator-id',
+  scope: 'user.info.basic,user.info.stats,video.list', expires_in: 7200, refresh_expires_in: 86400 };
+const tikTokDisplay = data => json({ data, error: { code: 'ok' } });
 beforeEach(() => {
   calls = []; missing = '';
   rows = {
     x_accounts: [{ id: 'mine', user_id: 'user-one', x_user_id: 'x-owner', username: 'creator', label: 'Studio', access_token: 'private-token', refresh_token: 'refresh-secret', expires_at: Date.now() + 3600000 },
       { id: 'other', user_id: 'user-two', x_user_id: 'other-owner', username: 'other', access_token: 'other-private-token' }],
     youtube_channels: [{ id: 'youtube1', user_id: 'user-one', channel_id: 'yt-channel', title: 'Channel', access_token: 'yt-private', refresh_token: 'yt-refresh', expiry_date: Date.now() + 3600000 }], instagram_accounts: [],
+    tiktok_accounts: [{ id: 't1', user_id: 'user-one', open_id: 'creator-id', name: 'TikTok Creator', label: 'Studio', scope: tikTokTokens.scope,
+      access_token: 'old-tiktok-access', refresh_token: 'old-tiktok-refresh', expires_at: Date.now() + 3600000, refresh_expires_at: Date.now() + 86400000,
+      updated_at: published(1) }],
+  };
+  tikTokHandler = url => {
+    if (url.pathname.endsWith('/token/')) return json(tikTokTokens);
+    if (url.pathname.endsWith('/revoke/')) return new Response(null, { status: 204 });
+    if (url.pathname.endsWith('/info/')) return tikTokDisplay({ user: { open_id: 'creator-id', display_name: 'TikTok Creator', follower_count: 100 } });
+    return tikTokDisplay({ videos: [{ id: '123456789123456789', title: 'A video', create_time: Date.now() / 1000 - 100,
+      view_count: 12, like_count: 0, comment_count: 1 }], has_more: false });
   };
   xHandler = (url) => url.pathname === '/2/oauth2/token' ? json({ access_token: 'rotated-token', refresh_token: 'rotated-refresh', expires_in: 7200 })
     : url.pathname === '/2/users/me' ? json({ data: profile }) : json({ data: [post], meta: {} });
@@ -90,7 +111,7 @@ const req = (path, { method = 'GET', auth = true, body, cookie } = {}) => new Re
 });
 
 test('all platforms reject anonymous and query-token requests; Worker uses the same authenticated surface', async () => {
-  for (const p of ['youtube', 'instagram', 'x']) {
+  for (const p of ['youtube', 'instagram', 'x', 'tiktok']) {
     assert.equal((await handleSocialRequest(req(`/api/${p}/status`, { auth: false }))).status, 401);
     assert.equal((await handleSocialRequest(req(`/api/${p}/connect?token=session-one`, { auth: false, method: 'POST' }))).status, 401);
     const r = await worker.fetch(req(`/api/${p}/status`), {}, {});
@@ -138,6 +159,7 @@ test('X uses S256 PKCE and HttpOnly browser-bound state, and retains labels on r
   assert.equal(calls.some(c => c.url.pathname === '/2/oauth2/token'), false);
   const accepted = await handleSocialRequest(req(callback, { auth: false, cookie: cookie.split(';')[0] }));
   assert.match(accepted.headers.get('location'), /x=connected/);
+  assert.equal(new URL(accepted.headers.get('location')).pathname, '/socials/x/mine');
   assert.match(accepted.headers.get('set-cookie'), /Max-Age=0/);
   assert.equal(rows.x_accounts[0].label, 'Studio');
   assert.equal(rows.x_accounts[0].access_token, 'rotated-token');
@@ -145,7 +167,7 @@ test('X uses S256 PKCE and HttpOnly browser-bound state, and retains labels on r
   assert.equal(new URLSearchParams(tokenCall.body).get('code_verifier'), saved.verifier);
 });
 test('every callback rejects mismatched browser state before exchanging any code', async () => {
-  for (const p of ['youtube', 'instagram', 'x']) {
+  for (const p of ['youtube', 'instagram', 'x', 'tiktok']) {
     const start = await handleSocialRequest(req(`/api/${p}/connect`, { method: 'POST' }));
     const state = new URL((await start.json()).url).searchParams.get('state');
     const r = await handleSocialRequest(req(`/api/${p}/callback?state=${state}&code=code`, { auth: false, cookie: 'wrong=cookie' }));
@@ -158,6 +180,57 @@ test('signed X state rejects tampering and expiration', () => {
   assert.throws(() => x.verifyXState(Buffer.from(Buffer.from(state, 'base64url').toString().replace('user-one', 'user-two')).toString('base64url')), /Invalid/);
   const now = Date.now; Date.now = () => now() + 601000;
   try { assert.throws(() => x.verifyXState(state), /expired/); } finally { Date.now = now; }
+});
+
+test('TikTok sign-in uses web Login Kit and opens the saved account without exposing credentials', async () => {
+  const start = await handleSocialRequest(req('/api/tiktok/connect', { method: 'POST' }));
+  assert.equal(start.status, 200);
+  const url = new URL((await start.json()).url);
+  assert.equal(url.origin + url.pathname, 'https://www.tiktok.com/v2/auth/authorize/');
+  assert.equal(url.searchParams.get('scope'), tikTokTokens.scope);
+  assert.doesNotMatch(url.href, /tiktok-secret|session-one/);
+  const cookie = start.headers.get('set-cookie').split(';')[0];
+  const callback = await handleSocialRequest(req(`/api/tiktok/callback?code=auth-code&state=${url.searchParams.get('state')}`, { auth: false, cookie }));
+  assert.equal(new URL(callback.headers.get('location')).pathname, '/socials/tiktok/t1');
+  assert.equal(rows.tiktok_accounts[0].label, 'Studio');
+  assert.equal(rows.tiktok_accounts[0].access_token, 'tiktok-access');
+  const status = await handleSocialRequest(req('/api/tiktok/status'));
+  assert.doesNotMatch(await status.text(), /tiktok-access|tiktok-refresh|creator-id/);
+});
+
+test('TikTok analytics refreshes access, filters public videos by publication date and preserves unavailable counts', async () => {
+  rows.tiktok_accounts[0].expires_at = Date.now() - 1000;
+  const baseHandler = tikTokHandler;
+  tikTokHandler = (url, options) => {
+    if (!url.pathname.endsWith('/list/')) return baseHandler(url, options);
+    assert.equal(options.headers.get('authorization'), 'Bearer tiktok-access');
+    return tikTokDisplay({ videos: [
+      { id: '123', create_time: Date.now() / 1000 - 600, view_count: 12, like_count: 0, comment_count: 1 },
+      { id: '456', create_time: Date.now() / 1000 - 8 * 86400, view_count: 20, like_count: 2, comment_count: 3 },
+    ], has_more: true, cursor: 123 });
+  };
+  const result = await handleSocialRequest(req('/api/tiktok/analytics?id=t1&range=7d'));
+  assert.equal(result.status, 200);
+  const data = await result.json();
+  assert.deepEqual(data.posts.map(post => post.id), ['123']);
+  assert.deepEqual(data.totals, { views: 12, likes: 0, comments: 1, shares: null });
+  assert.equal(data.partial, false);
+  assert.equal(data.account.followers_count, 100);
+  assert.doesNotMatch(JSON.stringify(data), /tiktok-access|tiktok-refresh|creator-id/);
+  assert.equal(rows.tiktok_accounts[0].refresh_token, 'tiktok-refresh');
+  assert.equal(calls.filter(({ url }) => url.pathname.endsWith('/list/')).length, 1);
+});
+
+test('TikTok analytics and disconnect are owner scoped and disconnect revokes at the provider', async () => {
+  rows.tiktok_accounts[0].user_id = 'user-two';
+  assert.equal((await handleSocialRequest(req('/api/tiktok/analytics?id=t1'))).status, 502);
+  assert.equal((await handleSocialRequest(req('/api/tiktok/disconnect', { method: 'POST', body: { id: 't1' } }))).status, 400);
+  assert.equal(calls.some(({ url }) => url.hostname === 'open.tiktokapis.com'), false);
+  rows.tiktok_accounts[0].user_id = 'user-one';
+  const response = await handleSocialRequest(req('/api/tiktok/disconnect', { method: 'POST', body: { id: 't1' } }));
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.ok(calls.some(({ url, body }) => url.pathname.endsWith('/revoke/') && new URLSearchParams(body).get('token') === 'old-tiktok-access'));
+  assert.deepEqual(rows.tiktok_accounts, []);
 });
 test('X refresh persists rotated tokens and analytics contain public data only', async () => {
   rows.x_accounts[0].expires_at = 0;

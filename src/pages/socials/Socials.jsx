@@ -1,118 +1,108 @@
-// ============================================================
-// CTRLpanel — Socials (overview)
-// Socials is modular, like Projects: every connected YouTube channel or
-// Instagram account is its own renameable section with its own page
-// (`/socials/youtube/:id`, `/socials/instagram/:id`) and its own sidebar entry,
-// so several accounts stay distinguishable. Each platform renders on its own,
-// so one being unconfigured or failing never hides the other.
-// ============================================================
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/shared/Card.jsx';
 import Spinner from '../../components/shared/Spinner.jsx';
 import SocialPlatformSection from '../../components/SocialPlatformSection.jsx';
+import SocialConnectionSetup from '../../components/SocialConnectionSetup.jsx';
 import SocialAnalyticsOverview from '../../components/SocialAnalyticsOverview.jsx';
 import { useWorkspace } from '../../components/WorkspaceProvider.jsx';
 import { socialApi } from '../../lib/api.js';
-import { PLATFORMS, PLATFORM_LIST, accountLabel } from '../../lib/socialPlatforms.js';
-
-// The OAuth callbacks come back here with ?youtube=… or ?instagram=…
-const CALLBACK_PARAMS = PLATFORM_LIST.map(p => p.id);
+import { PLATFORM_LIST, accountLabel, socialSections } from '../../lib/socialPlatforms.js';
 
 export default function Socials() {
   const { socials } = useWorkspace();
-  const { reload } = socials;
   const navigate = useNavigate();
-  const [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const connect = async platform => {
-    setBusy(true); setError('');
-    try { await socialApi[platform].connect(); }
-    catch (e) { setError(e.message || 'Could not start sign-in.'); setBusy(false); }
-  };
-  const check = async () => { setBusy(true); try { await reload(); } finally { setBusy(false); } };
+  const [setupPlatform, setSetupPlatform] = useState('');
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const platform = CALLBACK_PARAMS.find((p) => params.get(p));
+    const platform = PLATFORM_LIST.find(({ id }) => ['connected', 'error'].includes(params.get(id)));
     if (!platform) return;
-    const name = PLATFORMS[platform].name;
-    setNotice(
-      params.get(platform) === 'connected'
-        ? `${name} ${PLATFORMS[platform].noun} connected.`
-        : `Connection failed: ${params.get('message') || 'unknown error'}`
-    );
-    window.history.replaceState({}, '', '/socials');
-    reload();
-  }, [reload]);
+    const failed = params.get(platform.id) === 'error';
+    setNotice({ failed, platform: platform.id, text: failed
+      ? params.get('message') || `Could not connect to ${platform.name}.`
+      : `${platform.name} connected. Select a channel to view its analytics.` });
+    setParams({}, { replace: true });
+  }, [params, setParams]);
 
+  const connect = async platform => {
+    setBusy(platform);
+    setError('');
+    try { await socialApi[platform].connect(); }
+    catch (e) { setError(e.message || 'Could not start sign-in.'); setBusy(''); }
+  };
+  const check = async () => {
+    setBusy('check');
+    try { await socials.reload(); } finally { setBusy(''); }
+  };
   const rename = async (platform, account, apply) => {
-    const next = prompt('Rename section', accountLabel(platform, account));
+    const next = prompt('Rename account', accountLabel(platform, account));
     if (next === null) return;
     setError('');
-    try {
-      await apply(account.id, next);
-    } catch (e) {
-      setError(e.message || 'Could not rename this section.');
-    }
+    try { await apply(account.id, next); }
+    catch (e) { setError(e.message || 'Could not rename this account.'); }
   };
-
   const disconnect = async (platform, account, apply) => {
-    if (!confirm(`Disconnect "${accountLabel(platform, account)}"? Its analytics page is removed from the sidebar.`)) return;
-    setBusy(true);
+    if (!confirm(`Disconnect "${accountLabel(platform, account)}"?`)) return;
+    setBusy('disconnect');
     setError('');
-    try {
-      await apply(account.id);
-    } catch (e) {
-      setError(e.message || `Could not disconnect this ${PLATFORMS[platform].noun}.`);
-    } finally {
-      setBusy(false);
-    }
+    try { await apply(account.id); }
+    catch (e) { setError(e.message || 'Could not disconnect this account.'); }
+    finally { setBusy(''); }
   };
 
-  const { instagram: ig } = socials;
-  const total = socials.channels.length + ig.accounts.length + socials.x.accounts.length;
-  const noticeIsError = notice.startsWith('Connection failed');
+  const platforms = PLATFORM_LIST.map(meta => ({
+    meta, state: meta.id === 'youtube' ? { ...socials, accounts: socials.channels } : socials[meta.id],
+  }));
+  const total = socialSections(socials).length;
+  const selected = platforms.find(({ meta }) => meta.id === setupPlatform);
 
   return (
     <div className="fade-in">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Socials</h1>
-          <div className="page-header-sub">
-            YouTube, Instagram & X · {total} {total === 1 ? 'account' : 'accounts'} connected
-          </div>
-        </div>
-      </div>
+      <div className="page-header"><h1 className="page-title">Socials</h1></div>
 
-      {notice && (
-        <Card className={`yt-notice ${noticeIsError ? 'is-error' : ''}`} static>
-          <i className={`ti ${noticeIsError ? 'ti-alert-triangle' : 'ti-circle-check'}`} />
-          <span>{notice}</span>
-          <button className="btn btn--ghost btn--icon" onClick={() => setNotice('')} aria-label="Dismiss"><i className="ti ti-x" /></button>
-        </Card>
-      )}
+      {notice && <Card className={`yt-notice ${notice.failed ? 'is-error' : ''}`} static>
+        <i className={`ti ${notice.failed ? 'ti-alert-triangle' : 'ti-circle-check'}`} aria-hidden="true" />
+        <span role={notice.failed ? 'alert' : 'status'}>{notice.text}</span>
+        {notice.failed && <button className="btn btn--sm" onClick={() => setSetupPlatform(notice.platform)}>Connection setup</button>}
+        <button className="btn btn--ghost btn--icon" onClick={() => setNotice(null)} aria-label="Dismiss"><i className="ti ti-x" aria-hidden="true" /></button>
+      </Card>}
 
-      {error && (
-        <Card className="card-section" static>
-          <p className="body-text" style={{ color: 'var(--accent)' }} role="alert"><i className="ti ti-alert-triangle" aria-hidden="true" /> {error}</p>
-        </Card>
-      )}
-
-      {!socials.loaded ? (
-        <div className="placeholder" style={{ minHeight: 200 }}><Spinner large /></div>
-      ) : (
+      {!socials.loaded ? <div className="placeholder" style={{ minHeight: 200 }}><Spinner large /></div> : (
         <div className="social-sections">
-          <SocialAnalyticsOverview socials={socials} />
-          {PLATFORM_LIST.map(meta => {
-            const state = meta.id === 'youtube' ? { ...socials, accounts: socials.channels } : socials[meta.id];
-            return <SocialPlatformSection key={meta.id} platform={meta.id} {...state} busy={busy}
-              onConnect={() => connect(meta.id)} onRetry={check}
-              onOpen={a => navigate(meta.path(a.id))}
-              onRename={a => rename(meta.id, a, state.rename)}
-              onDisconnect={a => disconnect(meta.id, a, state.disconnect)} />;
-          })}
+          <Card className="card-section" static>
+            <h2 className="social-overview-title">Connect an account</h2>
+            <div className="social-connect-options">
+              {platforms.map(({ meta, state }) => {
+                const label = state.ready ? `Sign in with ${meta.name}` : `Set up ${meta.name}`;
+                return <button key={meta.id} className="btn social-connect-button" disabled={Boolean(busy)}
+                  aria-expanded={state.ready ? undefined : setupPlatform === meta.id}
+                  onClick={() => state.ready ? connect(meta.id) : setSetupPlatform(current => current === meta.id ? '' : meta.id)}>
+                  <i className={`ti ${meta.icon}`} aria-hidden="true" />
+                  <span>{busy === meta.id ? 'Opening sign-in…' : label}
+                    {meta.id === 'instagram' && <small>Business or Creator</small>}
+                  </span>
+                </button>;
+              })}
+            </div>
+            {error && <p className="social-connect-error" role="alert">{error}</p>}
+            {selected && <SocialConnectionSetup key={setupPlatform} platform={setupPlatform} setup={selected.state.setup}
+              error={selected.state.error} onRetry={check} busy={Boolean(busy)} onClose={() => setSetupPlatform('')} />}
+          </Card>
+          {total > 0 && <>
+            <section aria-labelledby="connected-social-accounts">
+              <h2 className="social-overview-title" id="connected-social-accounts">Connected accounts</h2>
+              {platforms.filter(({ state }) => state.accounts.length).map(({ meta, state }) =>
+                <SocialPlatformSection key={meta.id} platform={meta.id} accounts={state.accounts} ready={state.ready} busy={Boolean(busy)}
+                  onConnect={() => connect(meta.id)} onOpen={a => navigate(meta.path(a.id))}
+                  onRename={a => rename(meta.id, a, state.rename)}
+                  onDisconnect={a => disconnect(meta.id, a, state.disconnect)} />)}
+            </section>
+            <SocialAnalyticsOverview socials={socials} />
+          </>}
         </div>
       )}
     </div>
