@@ -25,12 +25,14 @@ export function useRoomControl() {
     document.addEventListener('visibilitychange', tick);
     return () => { active.current = false; clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
   }, [refresh]);
-  const send = useCallback(async (target, patch) => {
+  const sendRequest = useCallback(async (path, body) => {
     if (writing.current) return;
     writing.current = true; setBusy(true);
-    try { await authApi.post('/room/command', { target, patch }); await refresh(); }
+    try { await authApi.post(path, body); await refresh(); }
     catch (e) { if (active.current) setError(e.message); }
     finally { writing.current = false; if (active.current) setBusy(false); }
   }, [refresh]);
-  return { ...data, error, busy, loading: !data && !error, online: !error && roomOnline(data?.controller, now), refresh, send };
+  const send = useCallback((target, patch) => sendRequest('/room/command', { target, patch }), [sendRequest]);
+  const applyPreset = useCallback(preset => sendRequest('/room/preset', { preset }), [sendRequest]);
+  return { ...data, error, busy, loading: !data && !error, online: !error && roomOnline(data?.controller, now), refresh, send, applyPreset };
 }

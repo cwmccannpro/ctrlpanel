@@ -29,6 +29,13 @@
 .room-range-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 3px; }
 .room-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 30px 0 16px; }
 .room-section-heading span { color: var(--text-secondary); font-size: 11px; }
+.room-presets { margin-bottom: 24px; }
+.room-preset-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.room-preset.btn { display: flex; gap: 10px; text-align: left; padding: 9px 14px; }
+.room-preset strong, .room-preset small { display: block; }
+.room-preset strong { font-weight: 500; }
+.room-preset small { color: var(--text-secondary); }
+.room-preset-swatch { flex: 0 0 12px; height: 12px; border: 1px solid var(--border-bright); border-radius: 50%; }
 .room-light-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .room-sent { font-size: 10px; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 22px !important; }
 .room-notice { padding: 16px; margin-bottom: 18px; border: 1px solid var(--border-bright); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--text-secondary); font-size: 12px; line-height: 1.6; }

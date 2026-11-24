@@ -32,15 +32,23 @@ export async function handleRoomRequest(request, { client, verify = verifyUserTo
       try { body = JSON.parse(raw); } catch { throw fail('Invalid JSON.'); }
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail('A JSON object is required.');
     }
-    const rpc = async (action, payload = {}) => {
-      const { data, error } = await db.rpc('room_relay', { p_action: action, p_user: user?.id || null, p_hash: bridge ? hash(token) : null, p_body: payload });
+    const readResult = ({ data, error }) => {
       if (error) {
         const statuses = { '42501': 403, '22023': 400, '55000': 409, '54000': 429 };
         throw fail(statuses[error.code] ? error.message : 'Room storage is unavailable. Check the Room Control migration.', statuses[error.code] || 503);
       }
       return data;
     };
-    if (path === 'status' && request.method === 'GET') return json(await rpc('status'));
+    const rpc = async (action, payload = {}) => readResult(await db.rpc('room_relay', { p_action: action, p_user: user?.id || null, p_hash: bridge ? hash(token) : null, p_body: payload }));
+    if (path === 'status' && request.method === 'GET') {
+      const current = await rpc('status');
+      const settings = readResult(await db.from('room_controllers').select('preset_schedule_enabled').eq('user_id', user.id).maybeSingle());
+      return json({ ...current, presetScheduleEnabled: settings?.preset_schedule_enabled === true });
+    }
+    if (path === 'preset' && request.method === 'POST') {
+      if (!['day', 'relax', 'party', 'night', 'work'].includes(body.preset)) throw fail('Choose a room preset.');
+      return json(readResult(await db.rpc('room_apply_preset', { p_user: user.id, p_preset: body.preset })), 202);
+    }
     if (path === 'command' && request.method === 'POST') {
       const current = await rpc('status');
       let command;

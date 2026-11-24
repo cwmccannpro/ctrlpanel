@@ -49,12 +49,21 @@ test('every route rejects absent/query-only tokens before touching storage', asy
   }
 });
 test('bridge key cannot issue commands or rotate keys; session cannot impersonate bridge', async () => {
-  for (const path of ['command', 'pair', 'revoke']) {
+  for (const path of ['command', 'preset', 'pair', 'revoke']) {
     const deps = mock();
     assert.equal((await handleRoomRequest(request(path, bridgeKey, {}), deps)).status, 401);
     assert.equal(deps.calls.length, 0);
   }
   assert.equal((await handleRoomRequest(request('bridge/poll', 'owner-session', {}), mock())).status, 401);
+});
+test('presets require a known name and pass only the verified owner to the queue', async () => {
+  const deps = mock();
+  const invalid = await handleRoomRequest(request('preset', 'owner-session', { preset: 'other' }), deps);
+  assert.equal(invalid.status, 400);
+  assert.equal(deps.calls.length, 0);
+  const accepted = await handleRoomRequest(request('preset', 'owner-session', { preset: 'work', user_id: 'another-user' }), deps);
+  assert.equal(accepted.status, 202);
+  assert.deepEqual(deps.calls[0], { name: 'room_apply_preset', p_user: owner, p_preset: 'work' });
 });
 test('ownership comes only from verified user; other account is denied', async () => {
   const deps = mock();
