@@ -19,6 +19,7 @@ tools/context-projects.json
 finance-launch-tests.log
 .claude/
 .room-local/
+.local-ai/
 __pycache__/
 .android-tools/
 dist-android/

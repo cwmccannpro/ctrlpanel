@@ -4,6 +4,7 @@ import path from 'node:path';
 
 export const hash = content => createHash('sha256').update(content).digest('hex');
 export const noteHash = note => hash(JSON.stringify([note.title, note.folder, note.content]));
+export const normalizeProjectMarkdown = content => content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 export const MAX_BYTES = 750 * 1024;
 
 // Friendly labels for well-known context files. Unknown files get a label
@@ -69,7 +70,10 @@ export async function collectProject(project, { globalExclude = [], projectId } 
   const info = await stat(root).catch(() => null);
   if (!info?.isDirectory()) throw new Error(`Project root not found: ${root}`);
   const explicit = Array.isArray(project.files) && project.files.length > 0;
-  const patterns = explicit ? project.files : DEFAULT_FILES;
+  const twoWayFiles = new Set((project.twoWayFiles || []).map(file => file.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()));
+  if ([...twoWayFiles].some(file => file.includes('*'))) throw new Error('twoWayFiles must list exact Markdown paths.');
+  const patterns = [...(explicit ? project.files : DEFAULT_FILES), ...twoWayFiles];
+  const canonicalRoot = await realpath(root);
   const excludes = [...globalExclude, ...(project.exclude || [])].map(p => globToRegex(p.replace(/\\/g, '/')));
   const seen = new Set(), selected = [], skipped = [];
   for (const raw of patterns) {
@@ -77,7 +81,7 @@ export async function collectProject(project, { globalExclude = [], projectId } 
     const segs = pattern.split('/');
     if (path.isAbsolute(raw) || segs.includes('..') || segs.length > MAX_DEPTH) { skipped.push({ file: raw, reason: `invalid pattern (relative, at most ${MAX_DEPTH} levels)` }); continue; }
     const matches = await expand(root, segs);
-    if (!matches.length && explicit && !pattern.includes('*')) skipped.push({ file: pattern, reason: 'not found' });
+    if (!matches.length && (explicit || twoWayFiles.has(pattern.toLowerCase())) && !pattern.includes('*')) skipped.push({ file: pattern, reason: 'not found' });
     for (const rel of matches) {
       if (seen.has(rel.toLowerCase())) continue;
       seen.add(rel.toLowerCase());
@@ -89,10 +93,18 @@ export async function collectProject(project, { globalExclude = [], projectId } 
       try { canonical = await realpath(source); const s = await stat(canonical); if (!s.isFile()) { skip('not a file'); continue; } size = s.size; }
       catch (e) { skip(`unreadable (${e.code || e.message})`); continue; }
       if (size > (project.maxBytes || MAX_BYTES)) { skip(`too large (${Math.round(size / 1024)} KB > ${Math.round((project.maxBytes || MAX_BYTES) / 1024)} KB)`); continue; }
-      const content = (await readFile(canonical, 'utf8')).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').trim();
-      if (!content) { skip('empty'); continue; }
+      const twoWay = twoWayFiles.has(rel.toLowerCase());
+      const location = path.relative(canonicalRoot, canonical);
+      if (twoWay && (location === '..' || location.startsWith(`..${path.sep}`) || path.isAbsolute(location))) {
+        skip('two-way file resolves outside the project root'); continue;
+      }
+      const original = await readFile(canonical, 'utf8');
+      const body = normalizeProjectMarkdown(original);
+      const content = body.trim();
+      if (twoWay && Buffer.byteLength(body) > 750_000) { skip('exceeds the 750 KB Context note limit'); continue; }
+      if (!content && !twoWay) { skip('empty'); continue; }
       if (containsSecret(content)) { skip('appears to contain credentials; remove them before syncing'); continue; }
-      selected.push({ rel, base, source, canonical, content });
+      selected.push({ rel, base, source, canonical, content, ...(twoWay ? { twoWay: { original, body, canonical, source, maxBytes: project.maxBytes || MAX_BYTES } } : {}) });
     }
   }
   selected.sort((a, b) => a.rel.localeCompare(b.rel));
@@ -113,12 +125,16 @@ export async function collectProject(project, { globalExclude = [], projectId } 
     const references = ordered.filter(o => o !== f && upper.includes(o.base.toUpperCase())).map(o => notePath(o.label));
     const related = [indexTitle, ...references];
     return { external_key: `files/${project.key}/${f.rel.toLowerCase().replace(/\s+/g, '-')}`, title: noteTitle(f.label), folder, ...extra,
+      ...(f.twoWay ? { twoWay: f.twoWay } : {}),
       content: `${f.content}\n\n---\n\n## Connected context\n\n${related.map(t => `- [[${t}]]`).join('\n')}\n\n## Linked source\n\nSource: \`${f.source}\`\n\n${f.canonical !== f.source ? `Canonical file: \`${f.canonical}\`\n\n` : ''}This note follows the local file. Edit the source for lasting changes. Changes made here pause synchronization for this note until reconciled.\n` };
   });
+  if (notes.some(note => note.twoWay && notes.filter(other => other.external_key === note.external_key).length > 1)) {
+    throw new Error('Two selected paths map to the same two-way note key. Exclude one of the files.');
+  }
   if (notes.length && project.index !== false) {
     const scope = project.scope || 'Only curated context documents are included; scripts, credentials, media, exports, dependencies, and other projects are excluded.';
     notes.unshift({ external_key: `files/${project.key}/index`, title: indexTitle, folder, ...extra,
-      content: `# ${indexTitle}\n\n${kind} context linked from \`${root}\`. ${scope}\n\n## ${kind} context\n\n${ordered.map(f => `- [[${notePath(f.label)}|${f.label}]]`).join('\n')}\n\nSource files remain authoritative. Changes are synchronized one way by the daily CTRLpanel context sync task on this computer.\n` });
+      content: `# ${indexTitle}\n\n${kind} context linked from \`${root}\`. ${scope}\n\n## ${kind} context\n\n${ordered.map(f => `- [[${notePath(f.label)}|${f.label}]]${f.twoWay ? ' · Two-way' : ''}`).join('\n')}\n\n${twoWayFiles.size ? 'Two-way files accept edits in CTRLpanel and on disk. Other files update from their local source.' : 'Source files remain authoritative. Changes are synchronized one way by the daily CTRLpanel context sync task on this computer.'}\n` });
   }
   return { notes, skipped };
 }

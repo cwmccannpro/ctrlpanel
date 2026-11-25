@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { collectProject, labelFor, MAX_BYTES } from '../tools/contentContext.mjs';
+import { collectProject, hash, labelFor, MAX_BYTES, noteHash } from '../tools/contentContext.mjs';
+import { projectFileDecision, writeProjectFile } from '../tools/projectContextSync.mjs';
 
 test('config-driven projects select shallow Markdown, honour excludes and skip unsafe files', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'ctrl-projects-'));
@@ -37,4 +38,32 @@ test('labels derive from file names unless overridden', () => {
   assert.equal(labelFor('FEEDBACK_LOOP.md'), 'Feedback Loop');
   assert.equal(labelFor('CRM Layout.md'), 'CRM Layout');
   assert.equal(labelFor('.agents/skills/x.md', { '.agents/skills/x.md': 'Skill' }), 'Skill');
+});
+
+test('two-way project context reuses the legacy key and preserves both edits on divergence', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'ctrl-projects-'));
+  try {
+    const source = path.join(root, 'CHANNEL.md');
+    await writeFile(source, '\uFEFF# Channel\r\n\r\nOriginal\r\n');
+    const project = { name: 'Demo', key: 'demo', root, folder: 'Projects/Demo', files: ['README.md'] };
+    const readProjectFile = async () => (await collectProject({ ...project, twoWayFiles: ['CHANNEL.md'] })).notes[1];
+    const legacy = (await collectProject({ ...project, files: ['CHANNEL.md'] })).notes[1];
+    const note = await readProjectFile();
+    assert.equal(note.external_key, legacy.external_key);
+    assert.equal(projectFileDecision(note, null), 'create');
+    assert.equal(projectFileDecision(note, legacy, noteHash(legacy)), 'update');
+    assert.equal(projectFileDecision(note, { ...legacy, content: `${legacy.content}Browser edits` }, noteHash(legacy)), 'conflict');
+
+    const baseline = { bodyHash: hash(note.twoWay.body) };
+    const remote = { ...legacy, content: '# Channel\n\nBrowser update\n' };
+    assert.equal(projectFileDecision(note, remote, baseline), 'pull');
+    await writeProjectFile(note.twoWay, remote.content);
+    assert.equal(await readFile(source, 'utf8'), '\uFEFF# Channel\r\n\r\nBrowser update\r\n');
+    const pulled = await readProjectFile();
+    assert.equal(projectFileDecision(pulled, remote, baseline), 'unchanged');
+    assert.equal(projectFileDecision(pulled, { ...remote, content: note.twoWay.body }, baseline), 'update');
+    assert.equal(projectFileDecision(pulled, { ...remote, content: 'Another browser edit' }, baseline), 'conflict');
+    await assert.rejects(writeProjectFile(note.twoWay, 'another edit'), /Local file changed/);
+    assert.equal(await readFile(source, 'utf8'), '\uFEFF# Channel\r\n\r\nBrowser update\r\n');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

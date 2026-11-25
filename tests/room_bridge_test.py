@@ -52,6 +52,19 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         scanner.start.assert_awaited_once()
         client.write_gatt_char.assert_awaited_once()
 
+    async def test_elk_bleddm_writes_without_response_and_settles(self):
+        radio = types.SimpleNamespace(scanner=None, get=lambda address: object())
+        client = AsyncMock()
+        client.__aenter__.return_value = client
+        client.services = types.SimpleNamespace(get_characteristic=lambda uuid: types.SimpleNamespace(properties=['write', 'write-without-response', 'read']))
+        sleep = AsyncMock()
+        with patch.object(bridge, 'BleakClient', return_value=client), patch.object(bridge.asyncio, 'sleep', new=sleep):
+            await bridge.send_light({'address': 'BE:68:7D:0C:48:02', 'profile': 'elk-bleddm'}, {'power': True}, {}, radio)
+        args, kwargs = client.write_gatt_char.await_args
+        self.assertEqual(args[1].hex(), '7e0404f00001ff00ef')
+        self.assertIs(kwargs['response'], False)
+        sleep.assert_awaited_with(.3)
+
     async def test_failed_connection_resumes_discovery_without_replaying(self):
         scanner = types.SimpleNamespace(stop=AsyncMock(), start=AsyncMock())
         radio = types.SimpleNamespace(scanner=scanner, get=lambda address: object())

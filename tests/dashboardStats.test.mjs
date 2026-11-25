@@ -165,14 +165,14 @@ test('deltaTone', () => {
 test('projectProgress: completion per project, most urgent first, complete projects hidden', () => {
   const projects = [
     { id: 'p2', name: 'Unlinked', status: 'Active' },
-    { id: 'p1', name: 'Linked', status: 'Active', todo_board_id: 'b1', color: '#fff' },
-    { id: 'p3', name: 'Shipped', status: 'Complete', todo_board_id: 'b1' },
+    { id: 'p1', name: 'Linked', status: 'Active', todo_board_id: 'b1', todo_column_name: 'To Do', color: '#fff' },
+    { id: 'p3', name: 'Shipped', status: 'Complete', todo_board_id: 'b1', todo_column_name: 'Done' },
   ];
   const rows = projectProgress({ projects, tasks, boards, today: NOW });
   assert.deepEqual(rows.map((r) => r.id), ['p1', 'p2']);
   assert.deepEqual(
     { total: rows[0].total, done: rows[0].done, open: rows[0].open, overdue: rows[0].overdue, pct: rows[0].pct, next: rows[0].next.id },
-    { total: 5, done: 1, open: 4, overdue: 1, pct: 20, next: 'overdue' }
+    { total: 4, done: 0, open: 4, overdue: 1, pct: 0, next: 'overdue' }
   );
   assert.deepEqual({ total: rows[1].total, pct: rows[1].pct, linked: rows[1].linked }, { total: 0, pct: null, linked: false });
   assert.equal(projectProgress({ projects, tasks, boards, today: NOW, includeComplete: true }).length, 3);

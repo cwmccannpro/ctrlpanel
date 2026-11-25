@@ -27,7 +27,48 @@ Anthropic connector first, falling back to `ANTHROPIC_API_KEY`. All Claude calls
 in `backend/claude.js` and use the existing `claude-sonnet-4-6` model. The photo is
 resized to JPEG in the browser, stripping camera metadata; the server receives
 at most 600 KB of image bytes. CTRLpanel stores reviewed meal values and notes,
-not the uploaded image. Photos are sent to Anthropic for analysis.
+not the uploaded image. Photos are sent to Anthropic for analysis unless your
+desktop model handles them (below).
+
+## Desktop model first (free when your PC is on)
+
+If you connect a Windows desktop running [Ollama](https://ollama.com), every
+estimate goes there first and costs nothing. Claude is used only when the desktop
+is off, its model isn't loaded, it's busy, it fails, it returns an unusable
+estimate, or it takes longer than about 42 seconds. The meal editor shows where
+each estimate ran. Local estimates use the same instructions as Claude. The
+desktop schema also makes the model list each component (grams + macros) before
+the totals, and the bridge sums those items itself; this measurably cut
+undercounting. It runs with a 4096-token context so a 7B model fits entirely on
+an 8 GB GPU (8192 spilled 14% to CPU), and caps answers at 1,200 tokens, retrying
+once. Measured on an RTX 5060 (text meals): ~11 s cold, ~3–7 s warm, 11 of 12
+answers usable first time. Accuracy is clearly below Claude: totals still tend
+to run low (e.g. a Chipotle bowl at ~680 kcal), confidence is often overstated,
+and micronutrients are mostly left empty. Photos were not benchmarked.
+
+Setup, once:
+
+1. Install Ollama, then `ollama pull qwen2.5vl:7b` (~6 GB; fits an 8 GB GPU).
+   Any Ollama vision model works with `-Model <name>` below.
+2. Apply `migrations/20261121-local-ai.sql` (also in `supabase-schema.sql`).
+3. Settings → Nutrition → **Run estimates on your computer** → Create desktop key.
+4. In this folder: `powershell -File tools/local-ai-install.ps1` and paste the key
+   at the hidden prompt. Options: `-Model`, `-Origin` (default the production
+   site), `-KeepAlive` (how long Ollama keeps the model in VRAM, default `15m`),
+   `-KeepCredential` (reinstall without a new key).
+
+The installer stores the key encrypted with Windows DPAPI in `.local-ai/`
+(private ACL, gitignored) and registers the hidden logon task **CTRLpanel Local AI
+Bridge**, which runs `tools/local-ai-bridge.mjs`. The bridge makes outbound
+HTTPS requests only. It polls every 3 s while the model is ready and every 15 s
+while it isn't, and it talks to Ollama on `127.0.0.1` only. It refuses
+redirects and non-loopback model hosts. The `ctla_` key can only receive this
+account's meal inputs and return estimates. Its SHA-256 hash is the only server
+copy. The photo is removed from the job row when the desktop claims it, an
+unclaimed job expires after 45 s, and a result is deleted once read. Log:
+`.local-ai/bridge.log` (no keys or photos). Stop with
+`Stop-ScheduledTask -TaskName 'CTRLpanel Local AI Bridge'`. Cut it off
+immediately with **Disconnect desktop**.
 
 ## Connect an existing private custom GPT
 
@@ -62,7 +103,9 @@ One dispatcher, `handleNutritionRequest`, is used by Express and the Worker.
 | `GET /api/nutrition/status` | Supabase session | Configuration and database readiness |
 | `GET /api/nutrition/check` | Nutrition API key | Local-day totals/goals; no meal inserted |
 | `POST /api/nutrition/log` | Nutrition API key | Save/replay one meal |
-| `POST /api/nutrition/analyze` | Supabase session | Photo or description estimate with token usage; no meal inserted |
+| `POST /api/nutrition/analyze` | Supabase session | Photo or description estimate (desktop model, else Claude) with `engine` and cost; no meal inserted |
+| `GET /api/nutrition/local/status` · `POST local/pair`, `local/revoke` | Supabase session | Desktop model connection; pair returns a `ctla_` key once |
+| `POST /api/nutrition/local/bridge/poll`, `bridge/complete` | Desktop `ctla_` key | Heartbeat + claim one meal; return its estimate |
 
 Analysis accepts either `{ description }` (1–2,000 characters) or
 `{ imageBase64, mediaType, context? }`. Mixed input is rejected. Both methods

@@ -8,7 +8,7 @@ Socials connects YouTube channels, Instagram professional accounts, X accounts a
 2. Add the provider credentials below to `.env` for Express and to Cloudflare Worker secrets for production. Credentials are never `VITE_` values. The existing Supabase URL, anon key and backend service-role key are also required.
 3. Register each provider's exact callback URL, such as `https://ctrlpanel.cwmccann.pro/api/tiktok/callback`. Set `FRONTEND_URL=https://ctrlpanel.cwmccann.pro`. Open CTRLpanel on the same hostname as the callback so the browser cookie can finish sign-in.
 4. Restart the local server or deploy the Worker and frontend with `npm run deploy`. For providers that accept HTTP, local callbacks use `http://localhost:3001/api/<platform>/callback` with the frontend at `http://localhost:5173`. Use the HTTPS site or an HTTPS tunnel for TikTok and any provider requiring HTTPS.
-5. Choose **Sign in with** the provider in Socials. If the button says **Set up**, open it for the server diagnostics, then **Check setup** after updating the configuration.
+5. Choose **Sign in with** the provider in Socials and approve read access. If Socials opens **Connection setup**, it shows the missing server settings. After the one-time activation, use **Check setup** to verify it, then choose **Sign in with** again.
 
 `node tools/social-setup-check.mjs` performs a read-only check using local server settings. It prints credential names and storage/callback status, never credential values or account data. The UI checks the server it is running against, so local and production configuration can differ. A ready check means the required configuration and storage exist; it does not claim that provider permissions have been granted before sign-in.
 

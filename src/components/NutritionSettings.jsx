@@ -11,6 +11,7 @@ import { nutritionTimeZone } from '../lib/nutrition.js';
 import { nutritionOpenApi, publicNutritionOrigin, NUTRITION_GPT_INSTRUCTIONS } from '../lib/nutritionIntegration.js';
 import { formatDate } from '../lib/helpers.js';
 import { copyNutritionText } from '../lib/nutritionClipboard.js';
+import LocalAiSetup from './LocalAiSetup.jsx';
 import '../styles/nutrition.css';
 
 export default function NutritionSettings() {
@@ -101,10 +102,12 @@ export default function NutritionSettings() {
         <div className="nutrition-actions">
           <Link className="btn btn--accent" to="/health/nutrition?log=photo"><i className="ti ti-camera" aria-hidden="true" /> Log by photo</Link>
           <Link className="btn" to="/health/nutrition?log=text">Describe a meal</Link>
-          <span className="list-row-meta">{status?.photoReady ? 'Meal analyzer ready' : status ? 'Enable Anthropic in Connectors above to estimate meals' : 'Checking meal analyzer…'}</span>
+          <span className="list-row-meta">{status?.photoReady ? 'Meal analyzer ready' : status ? 'Enable Anthropic in Connectors above, or connect your desktop model below' : 'Checking meal analyzer…'}</span>
         </div>
-        <p className="list-row-meta">Analysis uses Claude and usually costs about 0.5–2¢ USD per meal, billed to your Anthropic API key. Each result shows a token-based cost estimate. Photos are sent for analysis; CTRLpanel saves the reviewed numbers and notes.</p>
+        <p className="list-row-meta">When your desktop model is on, estimates run there at no cost. Otherwise analysis uses Claude and usually costs about 0.5–2¢ USD per meal, billed to your Anthropic API key. Each result says where it ran and, for Claude, a token-based cost estimate. CTRLpanel saves the reviewed numbers and notes, not the photo.</p>
       </div>
+
+      <LocalAiSetup local={status?.local} claudeReady={status?.claudeReady} refresh={refresh} />
 
       <div className="nutrition-setup-section">
         <div className="nutrition-setup-heading"><i className="ti ti-clock" aria-hidden="true" /><h3>Meal day</h3></div>

@@ -1,22 +1,33 @@
 // Cross-links between tasks, projects, notes and events, derived from the relations the
-// database already has — no new columns:
-//   project.todo_board_id → boards.id → tasks.board_id        (a project's tasks)
+// database stores:
+//   project.todo_board_id + project.todo_column_name → tasks.board_id + tasks.column_name
 //   knowledge_notes.project_id → projects.id                   (a project's notes)
 //   events carry no id link, so they match on the project's name appearing in the title.
 import { dayKey } from './helpers.js';
 import { doneColumn } from './commandPalette.js';
 
-const real = (id) => id && !String(id).startsWith('tmp-');
+const real = (id) => Boolean(id) && !String(id).startsWith('tmp-');
 
-/** The project whose To Do board this is, or null. */
-export function projectForBoard(projects = [], boardId) {
-  return real(boardId) ? projects.find((p) => p.todo_board_id === boardId) || null : null;
+export const hasProjectColumn = (project) => real(project?.todo_board_id) && Boolean(project?.todo_column_name);
+
+export function projectsForColumn(projects = [], boardId, column) {
+  if (!real(boardId) || !column) return [];
+  return projects.filter((project) => project.todo_board_id === boardId && project.todo_column_name === column);
 }
 
-export const projectForTask = (task, projects) => projectForBoard(projects, task?.board_id);
+export function projectForTask(task, projects) {
+  const matches = projectsForColumn(projects, task?.board_id, task?.column_name);
+  return matches.length === 1 ? matches[0] : null;
+}
 
 export const tasksOfProject = (tasks = [], project) =>
-  project?.todo_board_id ? tasks.filter((t) => t.board_id === project.todo_board_id) : [];
+  hasProjectColumn(project) ? tasks.filter((t) => t.board_id === project.todo_board_id && t.column_name === project.todo_column_name) : [];
+
+export function todoColumnPath(boardId, column, taskId) {
+  const params = new URLSearchParams({ column });
+  if (taskId) params.set('task', taskId);
+  return `/todo/${boardId}?${params}`;
+}
 
 export const notesOfProject = (notes = [], projectId) => notes.filter((n) => n.project_id === projectId);
 

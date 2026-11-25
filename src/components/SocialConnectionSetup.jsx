@@ -40,6 +40,7 @@ export default function SocialConnectionSetup({ platform, setup, error, onRetry,
     <div className="social-setup-body">
       {error && <p role="alert">{error}</p>}
       {setup?.ready && <p role="status">Ready to sign in.</p>}
+      {setup && !setup.ready && <p role="alert">Finish the one-time server setup to enable sign-in.</p>}
       {setup?.missing?.length > 0 && <p>Set these server credentials: <code>{setup.missing.join(', ')}</code>.</p>}
       {setup?.issues?.filter(issue => issue !== error).map(issue => <p key={issue}>{issue}</p>)}
       <ol>{guide.steps.map(step => <li key={step}>{step}</li>)}</ol>

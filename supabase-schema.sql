@@ -138,7 +138,7 @@ alter table projects add column if not exists excalidraw_preview text;
 -- Per-project Services quick-links bar: [{ id, label, url, icon, paid }]
 alter table projects add column if not exists service_links jsonb default '[]'::jsonb;
 
--- Link a project to a single To Do board (mirrors crm_board_id below).
+-- Parent board for a project's To Do column (mirrors crm_board_id below).
 alter table projects add column if not exists todo_board_id uuid references boards(id) on delete set null;
 
 -- ============================================
@@ -1151,6 +1151,126 @@ alter table public.tiktok_accounts enable row level security;
 revoke all on table public.tiktok_accounts from public, anon, authenticated;
 grant select, insert, update, delete on table public.tiktok_accounts to service_role;
 
+-- ============================================================
+-- DESKTOP MODEL RELAY (meal estimates on the owner's PC) — migrations/20261121-local-ai.sql
+-- ============================================================
+-- Desktop model relay for meal estimates. The owner's Windows desktop polls
+-- outbound over HTTPS with a ctla_ key; CTRLpanel hands it one meal at a time
+-- while it reports a ready local model, and falls back to Claude otherwise.
+create table if not exists public.local_ai_bridges (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade unique,
+  name text not null default 'Windows desktop',
+  key_hash text unique,
+  model text,
+  ready boolean not null default false,
+  last_seen timestamptz,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.local_ai_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  bridge_id uuid not null references public.local_ai_bridges(id) on delete cascade,
+  input jsonb, -- the photo/description; cleared the moment the desktop claims it
+  status text not null default 'queued' check (status in ('queued','running','done','failed','expired')),
+  result jsonb,
+  error text,
+  model text,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '45 seconds'),
+  claimed_at timestamptz,
+  completed_at timestamptz
+);
+create index if not exists local_ai_jobs_queue on public.local_ai_jobs(bridge_id, created_at);
+-- No browser policies: the owner goes through the authenticated API only.
+do $$ declare t text; begin
+  foreach t in array array['local_ai_bridges','local_ai_jobs'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all on table public.%I from anon, authenticated', t);
+    execute format('grant all on table public.%I to service_role', t);
+  end loop;
+end $$;
+
+create or replace function public.local_ai_relay(p_action text, p_user uuid, p_hash text, p_body jsonb default '{}'::jsonb)
+returns jsonb language plpgsql security invoker set search_path = public as $$
+declare b public.local_ai_bridges; j public.local_ai_jobs; online boolean;
+begin
+  if p_action in ('poll','complete') then
+    if p_hash is null or p_user is not null then raise exception 'Invalid desktop credential.' using errcode='42501'; end if;
+    select * into b from public.local_ai_bridges where key_hash = p_hash for update;
+    if b.id is null then raise exception 'Invalid desktop credential.' using errcode='42501'; end if;
+  elsif p_action in ('status','pair','revoke','enqueue','result','cancel') then
+    if p_user is null or p_hash is not null then raise exception 'A user session is required.' using errcode='42501'; end if;
+    select * into b from public.local_ai_bridges where user_id = p_user for update;
+  else raise exception 'Unknown desktop model action.' using errcode='22023'; end if;
+
+  if b.id is not null then
+    -- Expire and scrub abandoned work; nothing keeps a meal photo past its deadline.
+    update public.local_ai_jobs set status='expired', input=null, completed_at=now()
+      where bridge_id=b.id and status in ('queued','running') and expires_at <= now();
+    delete from public.local_ai_jobs where bridge_id=b.id and created_at < now()-interval '10 minutes';
+  end if;
+  online := coalesce(b.id is not null and b.key_hash is not null and b.ready and b.last_seen > now()-interval '15 seconds', false);
+
+  if p_action='status' then
+    return jsonb_build_object('paired', coalesce(b.key_hash is not null, false), 'online', online,
+      'ready', coalesce(b.ready, false), 'model', b.model, 'last_seen', b.last_seen);
+  elsif p_action in ('pair','revoke') then
+    if p_action='pair' and coalesce(p_body->>'key_hash','') !~ '^[a-f0-9]{64}$' then raise exception 'Invalid key hash.' using errcode='22023'; end if;
+    if b.id is null then
+      if p_action='revoke' then return jsonb_build_object('ok',true); end if;
+      insert into public.local_ai_bridges(user_id) values (p_user) returning * into b;
+    end if;
+    update public.local_ai_bridges set key_hash=case when p_action='pair' then p_body->>'key_hash' else null end,
+      ready=false, last_seen=null where id=b.id;
+    delete from public.local_ai_jobs where bridge_id=b.id;
+    return jsonb_build_object('ok',true);
+  elsif p_action='enqueue' then
+    -- Not an error: the caller uses Claude whenever the desktop can't take the meal.
+    if not online then return jsonb_build_object('online',false); end if;
+    if (select count(*) from public.local_ai_jobs where bridge_id=b.id and status in ('queued','running')) >= 2 then
+      return jsonb_build_object('online',true,'busy',true); end if;
+    if jsonb_typeof(p_body->'input') is distinct from 'object' or octet_length((p_body->'input')::text) > 900000 then
+      raise exception 'Invalid meal input.' using errcode='22023'; end if;
+    insert into public.local_ai_jobs(user_id,bridge_id,input) values (b.user_id,b.id,p_body->'input') returning * into j;
+    return jsonb_build_object('online',true,'id',j.id,'expires_at',j.expires_at);
+  elsif p_action in ('result','cancel') then
+    if b.id is null then return jsonb_build_object('status','expired'); end if;
+    select * into j from public.local_ai_jobs where id=(p_body->>'id')::uuid and bridge_id=b.id;
+    if j.id is null then return jsonb_build_object('status','expired'); end if;
+    if p_action='cancel' or j.status in ('done','failed','expired') then
+      delete from public.local_ai_jobs where id=j.id; -- read once, then gone
+    end if;
+    return jsonb_build_object('status',case when p_action='cancel' then 'expired' else j.status end,
+      'result',j.result,'error',j.error,'model',j.model);
+  elsif p_action='poll' then
+    update public.local_ai_bridges set last_seen=now(), ready=coalesce((p_body->>'ready')::boolean,false),
+      model=left(nullif(p_body->>'model',''),100) where id=b.id;
+    if coalesce((p_body->>'ready')::boolean,false)
+       and not exists(select 1 from public.local_ai_jobs where bridge_id=b.id and status='running') then
+      select * into j from public.local_ai_jobs where bridge_id=b.id and status='queued' order by created_at,id limit 1 for update skip locked;
+      if j.id is not null then
+        update public.local_ai_jobs set status='running', claimed_at=now(), input=null where id=j.id;
+        return jsonb_build_object('job',jsonb_build_object('id',j.id,'input',j.input,'expires_at',j.expires_at));
+      end if;
+    end if;
+    return jsonb_build_object('job',null);
+  elsif p_action='complete' then
+    select * into j from public.local_ai_jobs where id=(p_body->>'id')::uuid and bridge_id=b.id for update;
+    if j.id is null or j.status <> 'running' then return jsonb_build_object('ok',true,'ignored',true); end if;
+    if jsonb_typeof(p_body->'ok') is distinct from 'boolean'
+       or ((p_body->>'ok')::boolean and (jsonb_typeof(p_body->'result') is distinct from 'object' or octet_length((p_body->'result')::text) > 32768)) then
+      raise exception 'Invalid desktop result.' using errcode='22023'; end if;
+    update public.local_ai_jobs set status=case when (p_body->>'ok')::boolean then 'done' else 'failed' end,
+      result=case when (p_body->>'ok')::boolean then p_body->'result' else null end,
+      error=left(p_body->>'error',240), model=left(nullif(p_body->>'model',''),100), completed_at=now() where id=j.id;
+    update public.local_ai_bridges set last_seen=now() where id=b.id;
+    return jsonb_build_object('ok',true);
+  end if;
+end $$;
+revoke all on function public.local_ai_relay(text,uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function public.local_ai_relay(text,uuid,text,jsonb) to service_role;
+
 
 -- Named presets use the same validated queue and BLE bridge as manual changes.
 alter table public.room_controllers
@@ -1248,3 +1368,130 @@ drop trigger if exists room_run_preset_schedule on public.room_controllers;
 create trigger room_run_preset_schedule after update of last_seen on public.room_controllers
 for each row when (new.preset_schedule_enabled and new.key_hash is not null and new.last_seen is not null)
 execute function public.room_run_preset_schedule();
+
+-- Per-project To Do column. An existing board link stays available as the
+-- default board in the picker until the owner selects a column.
+alter table public.projects add column if not exists todo_column_name text;
+create index if not exists projects_todo_column_idx
+  on public.projects (todo_board_id, todo_column_name) where todo_column_name is not null;
+create index if not exists tasks_board_column_idx on public.tasks (board_id, column_name);
+
+create or replace function public.check_project_todo_column()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  board_columns jsonb;
+  default_columns constant jsonb := '["Backlog","In Progress","Review","Done"]'::jsonb;
+begin
+  if new.todo_board_id is null then
+    new.todo_column_name := null;
+  elsif new.todo_column_name is not null then
+    select b.columns into board_columns from public.boards b
+      where b.id = new.todo_board_id and b.user_id = new.user_id for share;
+    if not found then
+      raise exception 'Choose a To Do board you own.';
+    end if;
+    board_columns := case when jsonb_typeof(board_columns) = 'array' and board_columns <> '[]'::jsonb
+      then board_columns else default_columns end;
+    if not (board_columns ? new.todo_column_name) then
+      raise exception 'That To Do column is no longer available. Choose another column.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists check_project_todo_column on public.projects;
+create trigger check_project_todo_column
+  before insert or update of todo_board_id, todo_column_name, user_id on public.projects
+  for each row execute function public.check_project_todo_column();
+
+-- Check cards entering a board. Older clients save column renames and same-board
+-- card moves separately, so leave those edits to the client or the atomic RPC.
+create or replace function public.check_task_todo_column()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  board_columns jsonb;
+  default_columns constant jsonb := '["Backlog","In Progress","Review","Done"]'::jsonb;
+begin
+  if new.board_id is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if old.board_id is not distinct from new.board_id and old.user_id is not distinct from new.user_id then
+      return new;
+    end if;
+  end if;
+  -- Board RLS already includes owners and accepted collaborators.
+  select b.columns into board_columns from public.boards b
+    where b.id = new.board_id for share;
+  if not found then
+    raise exception 'That To Do board is no longer available.';
+  end if;
+  board_columns := case when jsonb_typeof(board_columns) = 'array' and board_columns <> '[]'::jsonb
+    then board_columns else default_columns end;
+  if new.column_name is null or not (board_columns ? new.column_name) then
+    raise exception 'That To Do column is no longer available. Refresh the board and try again.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists check_task_todo_column on public.tasks;
+create trigger check_task_todo_column
+  before insert or update of board_id, column_name, user_id on public.tasks
+  for each row execute function public.check_task_todo_column();
+
+create or replace function public.update_todo_columns(
+  p_board_id uuid, p_expected jsonb, p_columns jsonb,
+  p_previous_name text default null, p_target_name text default null
+) returns void language plpgsql security invoker set search_path = '' as $$
+declare
+  owner_id uuid := auth.uid();
+  current_columns jsonb;
+  default_columns constant jsonb := '["Backlog","In Progress","Review","Done"]'::jsonb;
+begin
+  select b.columns into current_columns from public.boards b
+    where b.id = p_board_id and b.user_id = owner_id for update;
+  if not found then
+    raise exception 'This To Do board is no longer available.';
+  end if;
+  current_columns := case when jsonb_typeof(current_columns) = 'array' and current_columns <> '[]'::jsonb
+    then current_columns else default_columns end;
+  if current_columns is distinct from p_expected then
+    raise exception 'The columns changed in another window. Try again with the refreshed board.';
+  end if;
+  if jsonb_typeof(p_columns) is distinct from 'array' then
+    raise exception 'Enter at least one column.';
+  end if;
+  if jsonb_array_length(p_columns) = 0 or exists (
+    select 1 from jsonb_array_elements(p_columns) as entries(value)
+    group by value having count(*) > 1 or jsonb_typeof(value) <> 'string' or btrim(value #>> '{}') = ''
+  ) then
+    raise exception 'Use unique, non-empty column names.';
+  end if;
+  if p_previous_name is null then
+    if p_target_name is not null or not (p_columns @> current_columns) then
+      raise exception 'Specify a destination when removing a To Do column.';
+    end if;
+  elsif p_target_name is null or not (current_columns ? p_previous_name)
+    or p_columns ? p_previous_name or not (p_columns ? p_target_name)
+    or not (p_columns @> (current_columns - p_previous_name)) then
+    raise exception 'The source or destination column is invalid.';
+  end if;
+
+  update public.boards set columns = p_columns where id = p_board_id and user_id = owner_id;
+
+  if p_previous_name is not null then
+    update public.tasks set column_name = p_target_name
+      where board_id = p_board_id and column_name = p_previous_name;
+    update public.projects
+      set todo_column_name = case when current_columns ? p_target_name then null else p_target_name end
+      where todo_board_id = p_board_id and user_id = owner_id and todo_column_name = p_previous_name;
+  end if;
+end;
+$$;
+
+revoke all on function public.check_project_todo_column() from public, anon, authenticated;
+revoke all on function public.check_task_todo_column() from public, anon, authenticated;
+revoke all on function public.update_todo_columns(uuid, jsonb, jsonb, text, text) from public, anon;
+grant execute on function public.update_todo_columns(uuid, jsonb, jsonb, text, text) to authenticated;

@@ -6,7 +6,8 @@
 // the screen they grow proportionally to fill it, and when they overflow the canvas scrolls.
 //
 // Saved shape (user_settings.dashboard_widgets):
-//   v7: { v: 7, widths: [px, …], columns: [[{ uid, id, cfg, h }, …], …] }
+//   v7: { v: 7, widths: [px, …], columns: [[{ uid, id, cfg, h }, …], …],
+//         configs?: [{ id, name, widths, columns }], active?: id|null }   (saved layouts, see below)
 //   v6: { v: 6, cols: [leftPct, middlePct], columns: [3 columns] }   (migrated on load)
 
 export const LAYOUT_VERSION = 7;
@@ -99,13 +100,94 @@ export function setColumnWidth(widths, index, width) {
   return w;
 }
 
-/** The payload saved to user_settings.dashboard_widgets. */
-export function serializeLayout(columns, widths) {
-  return {
+const serializeColumns = (columns) => columns.map((col) => col.map(({ uid, id, cfg, h }) => ({ uid, id, cfg, h })));
+
+/**
+ * The payload saved to user_settings.dashboard_widgets. `configs` / `active` (saved layouts)
+ * are only written when given, so a dashboard without saved layouts keeps the plain v7 shape.
+ */
+export function serializeLayout(columns, widths, { configs, active } = {}) {
+  const out = {
     v: LAYOUT_VERSION,
     widths: normalizeWidths(widths, columns.length),
-    columns: columns.map((col) => col.map(({ uid, id, cfg, h }) => ({ uid, id, cfg, h }))),
+    columns: serializeColumns(columns),
   };
+  if (Array.isArray(configs) && configs.length) {
+    out.configs = configs.map((c) => ({
+      id: c.id,
+      name: c.name,
+      widths: normalizeWidths(c.widths, c.columns.length),
+      columns: serializeColumns(c.columns),
+    }));
+    out.active = configs.some((c) => c.id === active) ? active : null;
+  }
+  return out;
+}
+
+/* ---------------- saved layouts ("configurations") ----------------
+   Named copies of the whole layout, shown as buttons in the dashboard header. One may be
+   active: the live layout is that configuration, and edits made in Customize are written
+   back to it when you press Done (or forked off with "Save as new").
+   Saved inside dashboard_widgets: { …v7, configs: [{ id, name, widths, columns }], active }. */
+
+export const MAX_CONFIGS = 8;
+export const CONFIG_NAME_MAX = 24;
+
+/** Trim, collapse whitespace and cap the length. Empty string means "no usable name". */
+export const cleanConfigName = (name) =>
+  String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, CONFIG_NAME_MAX).trim();
+
+/**
+ * Stored configs → a clean list. Panel ids are checked by the caller's `cleanColumn` (which knows
+ * the panel registry); this keeps only well-formed entries, unique ids, ≤ MAX_CONFIGS.
+ */
+export function normalizeConfigs(list, cleanColumn = (c) => (Array.isArray(c) ? c : [])) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const c of list) {
+    if (out.length >= MAX_CONFIGS) break;
+    if (!c || typeof c.id !== 'string' || !c.id || seen.has(c.id) || !Array.isArray(c.columns) || !c.columns.length) continue;
+    const name = cleanConfigName(c.name);
+    if (!name) continue;
+    seen.add(c.id);
+    const columns = c.columns.slice(0, MAX_COLS).map(cleanColumn);
+    out.push({ id: c.id, name, columns, widths: normalizeWidths(c.widths, columns.length) });
+  }
+  return out;
+}
+
+/** Add a configuration (the given layout under a new id). No-op when full or the name is empty. */
+export function addConfig(configs, name, columns, widths, id) {
+  const clean = cleanConfigName(name);
+  if (!clean || configs.length >= MAX_CONFIGS) return { configs, id: null };
+  const newId = id || `cfg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return {
+    configs: [...configs, { id: newId, name: clean, columns, widths: normalizeWidths(widths, columns.length) }],
+    id: newId,
+  };
+}
+
+/** Overwrite one configuration's layout (the name stays). */
+export const updateConfigLayout = (configs, id, columns, widths) =>
+  configs.map((c) => (c.id === id ? { ...c, columns, widths: normalizeWidths(widths, columns.length) } : c));
+
+/** Rename; an empty name leaves it unchanged. */
+export function renameConfig(configs, id, name) {
+  const clean = cleanConfigName(name);
+  return clean ? configs.map((c) => (c.id === id ? { ...c, name: clean } : c)) : configs;
+}
+
+export const removeConfig = (configs, id) => configs.filter((c) => c.id !== id);
+
+/** Move a configuration one place left (−1) or right (+1) in the header. */
+export function moveConfig(configs, id, dir) {
+  const i = configs.findIndex((c) => c.id === id);
+  const to = i + dir;
+  if (i === -1 || to < 0 || to >= configs.length) return configs;
+  const next = [...configs];
+  [next[i], next[to]] = [next[to], next[i]];
+  return next;
 }
 
 /* ---------------- horizontal scrolling ---------------- */

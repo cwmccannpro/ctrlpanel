@@ -1,7 +1,7 @@
 import { socialSections } from './socialPlatforms.js';
 
 // Stable route/folder IDs keep visibility choices intact after a rename.
-// `dock: true` links render at the bottom of the sidebar, just above the footer.
+// `dock: true` links start at the bottom until the user changes their placement.
 export const TOP_LINKS = [
   { to: '/', label: 'Dashboard', icon: 'ti-layout-dashboard', end: true },
   { to: '/calendar', label: 'Calendar', icon: 'ti-calendar' },
@@ -14,14 +14,56 @@ export const TOP_LINKS = [
   { to: '/drive', label: 'Drive', icon: 'ti-car', dock: true },
 ];
 
-export function sidebarNavigation({ projects = [], crmBoards = [], socials } = {}) {
+export const SIDEBAR_ROOT = 'root';
+export const SIDEBAR_PINNED = 'sidebar:pinned';
+export const sidebarEntryId = (entry) => entry.id || entry.to;
+
+const SETTINGS_LINK = { to: '/settings', label: 'Settings', icon: 'ti-settings', dock: true, alwaysVisible: true };
+const PINNED_DIVIDER = { id: SIDEBAR_PINNED, label: 'Pinned to bottom' };
+
+function orderEntries(entries, saved) {
+  if (!Array.isArray(saved)) return entries;
+  const remaining = new Map(entries.map((entry) => [sidebarEntryId(entry), entry]));
+  const ordered = [];
+  for (const id of saved) {
+    if (!remaining.has(id)) continue;
+    ordered.push(remaining.get(id));
+    remaining.delete(id);
+  }
+  return [...ordered, ...remaining.values()];
+}
+
+export function orderedSidebarEntries(navigation, order) {
+  const saved = order?.[SIDEBAR_ROOT];
+  const dividerIndex = Array.isArray(saved) ? saved.indexOf(SIDEBAR_PINNED) : -1;
+  const orderedIds = new Set(dividerIndex < 0 ? [] : saved);
+  const aboveDivider = new Set(dividerIndex < 0 ? [] : saved.slice(0, dividerIndex));
+  const pinned = (entry) => {
+    const id = sidebarEntryId(entry);
+    return orderedIds.has(id) ? !aboveDivider.has(id) : Boolean(entry.dock);
+  };
+  const entries = [...navigation.links, ...navigation.folders, SETTINGS_LINK];
+  return [
+    ...orderEntries(entries.filter((entry) => !pinned(entry)), saved),
+    PINNED_DIVIDER,
+    ...orderEntries(entries.filter(pinned), saved),
+  ].map((entry) => entry.items ? { ...entry, items: orderEntries(entry.items, order?.[entry.id]) } : entry);
+}
+
+// Keep the saved slots of pages that haven't loaded or are temporarily unavailable.
+export function mergeSidebarOrder(saved, moved) {
+  if (!Array.isArray(saved)) return moved;
+  const known = new Set(moved);
+  let index = 0;
+  const retained = [...new Set(saved.filter((id) => typeof id === 'string'))]
+    .map((id) => known.has(id) ? moved[index++] : id);
+  return [...retained, ...moved.slice(index)];
+}
+
+export function sidebarNavigation({ projects = [], socials } = {}) {
   return {
     links: TOP_LINKS,
     folders: [
-      {
-        id: 'folder:crm', label: 'CRM', icon: 'ti-users', indexTo: '/crm', emptyLabel: 'No CRM pages yet',
-        items: crmBoards.map((b) => ({ label: b.name || 'Untitled', to: `/crm/${b.id}` })),
-      },
       {
         id: 'folder:projects', label: 'Projects', icon: 'ti-folder', indexTo: '/projects', emptyLabel: 'No projects yet',
         items: projects.map((p) => ({ label: p.name || 'Untitled', to: `/projects/${p.id}` })),

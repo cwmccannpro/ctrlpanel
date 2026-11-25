@@ -64,7 +64,8 @@ test('unrecognized settings and arbitrary native commands are rejected', () => {
 });
 test('all top-level CTRLpanel sections have destinations and display choices normalize independently', () => {
   const paths = DRIVE_SECTIONS.map(s => s.to);
-  for (const path of ['/', '/calendar', '/todo', '/context', '/habits', '/health', '/room', '/finance', '/crm', '/projects', '/socials', '/settings']) assert.ok(paths.includes(path));
+  for (const path of ['/', '/calendar', '/todo', '/context', '/habits', '/health', '/room', '/finance', '/projects', '/socials', '/settings']) assert.ok(paths.includes(path));
+  assert.ok(!paths.includes('/crm'));
   assert.equal(new Set(paths).size, paths.length);
   assert.equal(DRIVE_FACES.length, 13);
   assert.equal(DRIVE_THEMES.length, 6);

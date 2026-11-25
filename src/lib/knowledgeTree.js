@@ -8,14 +8,14 @@ export function filterKnowledgeNotes(notes, query = '') {
   return notes.filter(note => `${note.title} ${note.folder} ${note.content} ${(note.tags || []).join(' ')}`.toLowerCase().includes(needle));
 }
 
-export function buildKnowledgeTree(notes, paths = []) {
+export function buildKnowledgeTree(notes, paths = [], names = {}) {
   const root = { name: 'Vault', path: '', folders: [], notes: [], count: 0 };
   const folders = new Map([['', root]]);
   const folderFor = path => {
     if (folders.has(path)) return folders.get(path);
     const parts = path.split('/');
     const parentPath = parts.slice(0, -1).join('/');
-    const node = { name: parts.at(-1), path, folders: [], notes: [], count: 0 };
+    const node = { name: Object.hasOwn(names, path) ? names[path] : parts.at(-1), path, folders: [], notes: [], count: 0 };
     folderFor(parentPath).folders.push(node);
     folders.set(path, node);
     return node;

@@ -16,7 +16,7 @@ export default function Socials() {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [setupPlatform, setSetupPlatform] = useState('');
+  const [setupPanel, setSetupPanel] = useState(null);
 
   useEffect(() => {
     const platform = PLATFORM_LIST.find(({ id }) => ['connected', 'error'].includes(params.get(id)));
@@ -24,19 +24,27 @@ export default function Socials() {
     const failed = params.get(platform.id) === 'error';
     setNotice({ failed, platform: platform.id, text: failed
       ? params.get('message') || `Could not connect to ${platform.name}.`
-      : `${platform.name} connected. Select a channel to view its analytics.` });
+      : `${platform.name} connected. Select an account to view its analytics.` });
     setParams({}, { replace: true });
   }, [params, setParams]);
 
   const connect = async platform => {
     setBusy(platform);
     setError('');
+    setSetupPanel(null);
     try { await socialApi[platform].connect(); }
-    catch (e) { setError(e.message || 'Could not start sign-in.'); setBusy(''); }
+    catch (e) {
+      if (e.setup) setSetupPanel({ platform, setup: e.setup });
+      else setError(e.message || 'Could not start sign-in.');
+      setBusy('');
+    }
   };
   const check = async () => {
     setBusy('check');
-    try { await socials.reload(); } finally { setBusy(''); }
+    try {
+      await socials.reload();
+      setSetupPanel(current => current && { platform: current.platform });
+    } finally { setBusy(''); }
   };
   const rename = async (platform, account, apply) => {
     const next = prompt('Rename account', accountLabel(platform, account));
@@ -58,7 +66,7 @@ export default function Socials() {
     meta, state: meta.id === 'youtube' ? { ...socials, accounts: socials.channels } : socials[meta.id],
   }));
   const total = socialSections(socials).length;
-  const selected = platforms.find(({ meta }) => meta.id === setupPlatform);
+  const selected = platforms.find(({ meta }) => meta.id === setupPanel?.platform);
 
   return (
     <div className="fade-in">
@@ -67,44 +75,41 @@ export default function Socials() {
       {notice && <Card className={`yt-notice ${notice.failed ? 'is-error' : ''}`} static>
         <i className={`ti ${notice.failed ? 'ti-alert-triangle' : 'ti-circle-check'}`} aria-hidden="true" />
         <span role={notice.failed ? 'alert' : 'status'}>{notice.text}</span>
-        {notice.failed && <button className="btn btn--sm" onClick={() => setSetupPlatform(notice.platform)}>Connection setup</button>}
+        {notice.failed && <button className="btn btn--sm" onClick={() => setSetupPanel({ platform: notice.platform })}>Connection setup</button>}
         <button className="btn btn--ghost btn--icon" onClick={() => setNotice(null)} aria-label="Dismiss"><i className="ti ti-x" aria-hidden="true" /></button>
       </Card>}
 
-      {!socials.loaded ? <div className="placeholder" style={{ minHeight: 200 }}><Spinner large /></div> : (
-        <div className="social-sections">
-          <Card className="card-section" static>
-            <h2 className="social-overview-title">Connect an account</h2>
-            <div className="social-connect-options">
-              {platforms.map(({ meta, state }) => {
-                const label = state.ready ? `Sign in with ${meta.name}` : `Set up ${meta.name}`;
-                return <button key={meta.id} className="btn social-connect-button" disabled={Boolean(busy)}
-                  aria-expanded={state.ready ? undefined : setupPlatform === meta.id}
-                  onClick={() => state.ready ? connect(meta.id) : setSetupPlatform(current => current === meta.id ? '' : meta.id)}>
-                  <i className={`ti ${meta.icon}`} aria-hidden="true" />
-                  <span>{busy === meta.id ? 'Opening sign-in…' : label}
-                    {meta.id === 'instagram' && <small>Business or Creator</small>}
-                  </span>
-                </button>;
-              })}
-            </div>
-            {error && <p className="social-connect-error" role="alert">{error}</p>}
-            {selected && <SocialConnectionSetup key={setupPlatform} platform={setupPlatform} setup={selected.state.setup}
-              error={selected.state.error} onRetry={check} busy={Boolean(busy)} onClose={() => setSetupPlatform('')} />}
-          </Card>
-          {total > 0 && <>
-            <section aria-labelledby="connected-social-accounts">
-              <h2 className="social-overview-title" id="connected-social-accounts">Connected accounts</h2>
-              {platforms.filter(({ state }) => state.accounts.length).map(({ meta, state }) =>
-                <SocialPlatformSection key={meta.id} platform={meta.id} accounts={state.accounts} ready={state.ready} busy={Boolean(busy)}
-                  onConnect={() => connect(meta.id)} onOpen={a => navigate(meta.path(a.id))}
-                  onRename={a => rename(meta.id, a, state.rename)}
-                  onDisconnect={a => disconnect(meta.id, a, state.disconnect)} />)}
-            </section>
-            <SocialAnalyticsOverview socials={socials} />
-          </>}
-        </div>
-      )}
+      <div className="social-sections">
+        <Card className="card-section" static>
+          <h2 className="social-overview-title">Connect an account</h2>
+          <div className="social-connect-options">
+            {PLATFORM_LIST.map(meta => (
+              <button key={meta.id} className="btn social-connect-button" disabled={Boolean(busy)}
+                onClick={() => connect(meta.id)}>
+                <i className={`ti ${meta.icon}`} aria-hidden="true" />
+                <span>{busy === meta.id ? 'Opening sign-in…' : `Sign in with ${meta.name}`}
+                  {meta.id === 'instagram' && <small>Business or Creator</small>}
+                </span>
+              </button>
+            ))}
+          </div>
+          {error && <p className="social-connect-error" role="alert">{error}</p>}
+          {selected && <SocialConnectionSetup key={selected.meta.id} platform={selected.meta.id}
+            setup={setupPanel.setup || selected.state.setup} error={setupPanel.setup ? '' : selected.state.error}
+            onRetry={check} busy={Boolean(busy)} onClose={() => setSetupPanel(null)} />}
+        </Card>
+        {!socials.loaded ? <div className="placeholder" style={{ minHeight: 200 }}><Spinner large /></div> : total > 0 && <>
+          <section aria-labelledby="connected-social-accounts">
+            <h2 className="social-overview-title" id="connected-social-accounts">Connected accounts</h2>
+            {platforms.filter(({ state }) => state.accounts.length).map(({ meta, state }) =>
+              <SocialPlatformSection key={meta.id} platform={meta.id} accounts={state.accounts} ready={state.ready} busy={Boolean(busy)}
+                onConnect={() => connect(meta.id)} onOpen={a => navigate(meta.path(a.id))}
+                onRename={a => rename(meta.id, a, state.rename)}
+                onDisconnect={a => disconnect(meta.id, a, state.disconnect)} />)}
+          </section>
+          <SocialAnalyticsOverview socials={socials} />
+        </>}
+      </div>
     </div>
   );
 }

@@ -7,7 +7,8 @@ import { PLATFORMS, socialSections } from '../lib/socialPlatforms.js';
 import { insert, remove, queryTable } from '../lib/supabase.js';
 import { saveNote } from '../lib/knowledge.js';
 import { notifyDataChanged } from '../lib/useData.js';
-import { projectForBoard } from '../lib/links.js';
+import { projectForTask } from '../lib/links.js';
+import { projectCrmPath } from '../lib/projectRoutes.js';
 import { AI_ACTIONS } from '../lib/prompts.js';
 import {
   PAGES, dayKey, formatDue, parseCapture, rankItems, readCaptureBoard, writeCaptureBoard, taskRowFromCapture,
@@ -226,7 +227,7 @@ function Palette({ onClose, modKey, cacheRef }) {
     realBoards.forEach((b) => list.push(nav(`board:${b.id}`, 'Boards', b.name || 'Untitled', `/todo/${b.id}`, 'ti-layout-kanban', 'To Do board')));
     crmBoards.rows
       .filter((b) => !String(b.id).startsWith('tmp-'))
-      .forEach((b) => list.push(nav(`crm:${b.id}`, 'CRM', b.name || 'Untitled', `/crm/${b.id}`, 'ti-users', 'CRM page')));
+      .forEach((b) => list.push(nav(`crm:${b.id}`, 'CRM', b.name || 'Untitled', projectCrmPath(projects.rows, b.id), 'ti-users', 'CRM page')));
     socialSections(socials).forEach((s) => list.push(nav(`social:${s.key}`, 'Socials', s.label, s.to, PLATFORMS[s.platform].icon, `${PLATFORMS[s.platform].name} ${PLATFORMS[s.platform].noun}`)));
 
     remote.notes.forEach((n) => {
@@ -238,7 +239,7 @@ function Palette({ onClose, modKey, cacheRef }) {
       .filter((t) => t.column_name !== 'Done')
       .forEach((t) => {
         const board = realBoards.find((b) => b.id === t.board_id);
-        const project = projectForBoard(projects.rows, t.board_id);
+        const project = projectForTask(t, projects.rows);
         const hint = [project?.name || board?.name, t.due_date && `due ${formatDue(t.due_date)}`].filter(Boolean).join(' · ');
         list.push(nav(`task:${t.id}`, 'Tasks', t.title, t.board_id ? `/todo/${t.board_id}` : '/todo', 'ti-checkbox', hint || t.column_name || 'Task'));
       });

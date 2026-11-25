@@ -103,9 +103,8 @@ on the next pass. Status and baselines are stored in ignored
 
 ## Linked project context files
 
-`tools/ctrlpanel-file-sync.mjs` pushes curated, shallow Markdown context files from
-several local projects into the Knowledge Base. It is one-way (local file ->
-CTRLpanel) and config-driven: the projects live in the ignored local file
+`tools/ctrlpanel-file-sync.mjs` links curated Markdown from several local projects to
+the Knowledge Base. Projects live in the ignored local file
 `tools/context-projects.json` (see `tools/context-projects.example.json`). Each entry has:
 
 - `name` and `key` - display name and stable key slug (never change `key` once synced;
@@ -120,6 +119,9 @@ CTRLpanel) and config-driven: the projects live in the ignored local file
   `AGENT.md`, `GEMINI.md`, `README.md`, `CHANNEL.md`, `EDITORIAL.md`, `STYLE.md`,
   `LEARNINGS.md`, `AUTOMATION.md`, `LONGFORM.md`, `*CONTEXT*.md`,
   `MASTER_CONTROLLER_PROMPT.md`, `SETUP_INSTRUCTIONS.md`).
+- `twoWayFiles` - exact relative paths, also included in the scan. Use it for notes
+  you want to edit from either side, such as `CHANNEL.md`, `DECISIONS.md`, or a
+  channel's schedule. Other notes continue to update from disk.
 - Optional `exclude`, `labels` (per-file title overrides), `kind`, `scope`, `enabled`.
 
 `globalExclude` keeps `ONYX_CONTEXT.md` out: that file has its own live two-way sync
@@ -129,8 +131,10 @@ files are never read. Canonical Obsidian symlink targets are followed. Empty fil
 files over 750 KB are skipped, and a file that looks like it contains credentials is
 skipped (recorded in the status file) instead of being uploaded.
 
-Each project gets an index note (titled with the project name) linking its context notes;
-real filename references between files become wiki links.
+Each project gets an index note linking its files and marking two-way entries. One-way
+notes also get wiki links based on filename references. Two-way notes contain the
+file's Markdown directly and keep the same on-disk path when the note is edited,
+renamed, or moved in Context. A source rename changes the linked identity.
 
 Commands (run from this checkout):
 
@@ -139,6 +143,8 @@ Commands (run from this checkout):
 - Preview: `node tools/ctrlpanel-file-sync.mjs --dry-run [--project "My Project"]`
   (read-only API checks; `--offline` skips the network entirely).
 - Synchronize now: `node tools/ctrlpanel-file-sync.mjs [--project "My Project"]`.
+- Keep both sides current: `node tools/ctrlpanel-file-sync.mjs --watch [--project "My Project"]`
+  runs a sync pass each minute while the process is open.
 - Results: `.context-sync-status.local` (per-project notes, statuses, skipped files and reasons).
 
 Local `.env.local` contains `CTRLPANEL_URL` and a revocable `CTRLPANEL_CONTEXT_KEY` created
@@ -155,11 +161,18 @@ Project attachment requires `migrations/20261005-project-knowledge-vault-sync.sq
 deployed database (`save_context_note_v2`). Until then notes are saved unassigned and the
 status file says so; once the migration is applied the next run attaches them.
 
-Source files are authoritative. If a Knowledge note's content, title, or folder
-changes outside this bridge, the bridge marks a conflict and leaves both copies
-intact. Reconcile the edit into the source and make the Knowledge note match the
-next generated content to resume. It never deletes notes when a source disappears or a
-project is removed from the config, never overwrites browser edits blindly, and never
-writes changes back to local files. Local hashes are saved in `.context-sync-state.local`;
-a lost state causes changed existing notes to pause rather than overwrite them. These
-`.local` files are ignored.
+Two-way sync keeps the existing note key. Its first pass replaces a verified
+one-way copy with the file's Markdown, removing the generated footer. Run a
+`--dry-run` when enabling a previously linked file. If both copies changed, or
+an existing note cannot be matched to the prior sync, the bridge reports a
+conflict and preserves both versions. Merge the Markdown and save it on both
+sides to restore the baseline. A missing source file is reported and left missing.
+If a linked Context note is deleted while its source still exists, the next pass
+recreates the note. Keep `.context-sync-state.local` in this checkout so the bridge
+can tell which side changed. Choose writable files inside their project root for
+two-way sync. A symlink into a separate vault can be managed by that vault's own
+bridge.
+
+One-way linked notes pause when edited in Context. Reconcile the source and the
+generated note to resume. Removing a source or project from the configuration
+leaves its notes in Context.

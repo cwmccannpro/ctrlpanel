@@ -5,6 +5,12 @@ also available in the sidebar, command palette, and optional Home dashboard pane
 Power, brightness, and color support individual lights or the room. Room white
 temperature applies only to bulbs, 2700–6500 K.
 
+Presets change the whole room. Day uses bright white, Relax uses warm white at
+40%, Work uses bright purple, Party uses red, and Night turns every light off.
+The daily schedule runs through the desktop heartbeat in Eastern time: Day at
+7 AM, Work at 5 PM, Party at 9 PM, and Night at midnight. Relax is manual. The
+paired bridge must connect during the scheduled minute for the preset to queue.
+
 ## Connection and security
 
 The browser sends a Supabase Bearer session to `/api/room/*`. `backend/room.js`
@@ -48,11 +54,21 @@ prevent control. Close the vendor apps and check the desktop antenna placement.
 | Bulb 1 | LEDnetWF02003529CCF3 | 08:65:F0:29:CC:F3 | lednetwf-v5 |
 | Bulb 2 | LEDnetWF0200352AC5D4 | 08:65:F0:2A:C5:D4 | lednetwf-v5 |
 | Light bar | MELK-OA21 14 | BE:28:D2:00:01:14 | melk-oa21 |
+| Headboard | ELK-BLEDDM F9 | BE:68:7D:0C:48:02 | elk-bleddm |
 
-Both bulbs advertise product 0x35, BLE v5. A fourth Lotus Lantern/BLEDOM light
-has not yet been identified. Do not enroll an unnamed nearby device by guessing.
-`lotus-lantern` packet support is implemented for the standard unencrypted fff3
-profile; encrypted ELK-* variants need separate verification before enrollment.
+Both bulbs advertise product 0x35, BLE v5. Do not enroll an unnamed nearby device
+by guessing. `lotus-lantern` packet support is implemented for the standard
+unencrypted fff3 profile; encrypted ELK-* variants need separate verification.
+
+The headboard (Lotus Lantern app) is an ELK-BLEDDM controller: service fff0,
+write fff3, notify fff4, no login. Its `elk-bleddm` profile uses the bytes from
+elkbledom's ELK-BLEDDM model entry (on `7e0404f00001ff00ef`, off
+`7e0404000000ff00ef`, color `7e000503RRGGBB00ef`, brightness
+`7e0401NNff00ff00ef`), written without response with a 0.3 s settle. Red/off/on
+was verified on the hardware on 2026-11-21. It has no white-temperature channel
+in Room Control. It advertises rarely (seconds to minutes apart) and is easiest
+to find just after power-up, so a command can fail with "Not in Bluetooth range"
+until it advertises again; power-cycling it makes it reachable.
 
 ## Install / reconnect
 
@@ -88,6 +104,7 @@ Discovery never automatically controls an unknown nearby device.
 ## API and verification
 
 - Session: `GET /api/room/status`, `POST /api/room/command` `{target,patch}`,
+  `POST /api/room/preset` `{preset}` (queues ordered single-setting commands),
   `POST /api/room/pair`, `POST /api/room/revoke`.
 - Desktop: `POST /api/room/bridge/poll`, `POST /api/room/bridge/ack` `{id,results}`.
 - Exactly one setting per command: `power:boolean`, `brightness:1..100`,
@@ -111,3 +128,4 @@ the unified color packet keeps transition bytes zero to avoid long fades.
 - [LEDnetWF commands](https://github.com/8none1/lednetwf_ble/blob/main/protocol_docs/05_basic_commands.md)
 - [MELK-OA21 protocol](https://github.com/tgmstudios/duoco-stripx-ha/blob/main/custom_components/duoco_stripx/protocol.py)
 - [Lotus Lantern protocol](https://github.com/Rxflex/LotusLantern/blob/main/docs/PROTOCOL.md)
+- [ELK-BLEDDM (elkbledom models.json)](https://github.com/dave-code-ruiz/elkbledom/blob/main/custom_components/elkbledom/models.json)

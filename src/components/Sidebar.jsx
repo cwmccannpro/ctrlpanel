@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { useWorkspace } from './WorkspaceProvider.jsx';
 import { useAuth } from './AuthProvider.jsx';
 import Modal from './shared/Modal.jsx';
-import { sidebarNavigation, visibleSidebarNavigation } from '../lib/sidebarNavigation.js';
+import { SIDEBAR_PINNED, orderedSidebarEntries, sidebarNavigation, visibleSidebarNavigation } from '../lib/sidebarNavigation.js';
 
 const SidebarVisibility = lazy(() => import('./SidebarVisibility.jsx'));
 
@@ -37,8 +37,8 @@ function Folder({ folder, collapsed, open, onToggle }) {
     <div className="nav-subitem nav-subitem--empty">{folder.emptyLabel}</div>
   );
 
-  const links = items.map((item, i) => (
-    <NavLink key={`${item.to}-${i}`} to={item.to} end className={subClass}>
+  const links = items.map((item) => (
+    <NavLink key={item.to} to={item.to} end className={subClass}>
       {item.label}
     </NavLink>
   ));
@@ -109,7 +109,7 @@ function Folder({ folder, collapsed, open, onToggle }) {
 }
 
 export default function Sidebar({ collapsed = false, drawer = false, open = false, onClose }) {
-  const { projects, crmBoards, socials } = useWorkspace();
+  const { projects, socials } = useWorkspace();
   const { settings, updateUiPreferences } = useAuth();
   const [customizing, setCustomizing] = useState(false);
   const customizeButtonRef = useRef(null);
@@ -191,13 +191,23 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
     };
   }, [updateUiPreferences, width]);
 
-  // CRM, Projects + Socials are dynamic per-user; Finance is fixed, and Health is a plain top-level link. `indexTo`
+  // Projects and Socials are dynamic per-user. `indexTo`
   // is the section's overview page — reached from the header's manage button,
   // never by clicking the folder itself.
-  const navigation = sidebarNavigation({ projects: projects.rows, crmBoards: crmBoards.rows, socials, settings });
-  const { links: allLinks, folders } = visibleSidebarNavigation(navigation, settings?.ui_preferences?.sidebarVisibility);
-  const links = allLinks.filter((link) => !link.dock);
-  const docked = allLinks.filter((link) => link.dock);
+  const navigation = sidebarNavigation({ projects: projects.rows, socials });
+  const preferences = settings?.ui_preferences;
+  const visible = visibleSidebarNavigation(navigation, preferences?.sidebarVisibility);
+  const entries = orderedSidebarEntries(visible, preferences?.sidebarOrder);
+  const pinnedAt = entries.findIndex((entry) => entry.id === SIDEBAR_PINNED);
+  const pinned = entries.slice(pinnedAt + 1);
+  const renderEntry = (entry) => entry.items ? (
+    <Folder key={entry.id} folder={entry} collapsed={collapsed} open={isOpen(entry.label)} onToggle={toggleFolder} />
+  ) : (
+    <NavLink key={entry.to} to={entry.to} end={entry.end} className={navClass} title={entry.label}>
+      <i className={`ti ${entry.icon}`} />
+      {!collapsed && <span>{entry.label}</span>}
+    </NavLink>
+  );
 
   return (
     <><aside
@@ -222,35 +232,13 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
 
       <div className="sidebar-divider" />
 
-      <nav className="sidebar-nav">
-        {links.map((link) => (
-          <NavLink key={link.to} to={link.to} end={link.end} className={navClass} title={link.label}>
-            <i className={`ti ${link.icon}`} />
-            {!collapsed && <span>{link.label}</span>}
-          </NavLink>
-        ))}
-
-        {!collapsed && <div className="sidebar-divider" />}
-
-        {folders.map((folder) => (
-          <Folder
-            key={folder.id}
-            folder={folder}
-            collapsed={collapsed}
-            open={isOpen(folder.label)}
-            onToggle={toggleFolder}
-          />
-        ))}
+      <nav className="sidebar-nav" aria-label="Sidebar">
+        {entries.slice(0, pinnedAt).map(renderEntry)}
       </nav>
 
-      {docked.length > 0 && (
-        <nav className="sidebar-dock" aria-label="Devices">
-          {docked.map((link) => (
-            <NavLink key={link.to} to={link.to} end={link.end} className={navClass} title={link.label}>
-              <i className={`ti ${link.icon}`} />
-              {!collapsed && <span>{link.label}</span>}
-            </NavLink>
-          ))}
+      {pinned.length > 0 && (
+        <nav className="sidebar-dock" aria-label="Pinned sidebar pages">
+          {pinned.map(renderEntry)}
         </nav>
       )}
 
@@ -259,10 +247,6 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
           <i className="ti ti-adjustments" aria-hidden="true" />
           {!collapsed && <span>Customize sidebar</span>}
         </button>
-        <NavLink to="/settings" className={navClass} title="Settings">
-          <i className="ti ti-settings" />
-          {!collapsed && <span>Settings</span>}
-        </NavLink>
       </div>
 
       {!collapsed && !drawer && (
@@ -285,7 +269,7 @@ export default function Sidebar({ collapsed = false, drawer = false, open = fals
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
       }}>
-        <Modal title="Sidebar sections" onClose={closeCustomize}>
+        <Modal title="Customize sidebar" onClose={closeCustomize}>
           <Suspense fallback={<div className="body-text" role="status">Loading sidebar choices…</div>}>
             <SidebarVisibility autoFocus />
           </Suspense>

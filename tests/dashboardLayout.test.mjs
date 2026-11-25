@@ -126,3 +126,47 @@ test('arrow buttons know when there is more canvas and step one column at a time
   assert.equal(scrollStep(100, 1000, 2000, -1, 340), 0, 'clamped to the start');
   assert.equal(scrollStep(0, 1000, 800, 1, 340), 0, 'nothing to scroll');
 });
+
+test('saved layouts: names are cleaned, the list is capped and malformed entries dropped', async () => {
+  const { CONFIG_NAME_MAX, MAX_CONFIGS, cleanConfigName, normalizeConfigs } = await import('../src/lib/dashboardLayout.js');
+  assert.equal(cleanConfigName('  Deep   work \n'), 'Deep work');
+  assert.equal(cleanConfigName('x'.repeat(40)).length, CONFIG_NAME_MAX);
+  assert.equal(cleanConfigName(null), '');
+  const good = (id, name = id) => ({ id, name, widths: [300], columns: [[item('a')]] });
+  const list = normalizeConfigs([
+    good('one'), null, { id: 'nocols', name: 'x', columns: [] }, { id: '', name: 'x', columns: [[]] },
+    good('one', 'dupe'), good('blank', '   '), good('two'),
+  ]);
+  assert.deepEqual(list.map((c) => c.id), ['one', 'two']);
+  assert.deepEqual(list[0].widths, [300]);
+  assert.equal(normalizeConfigs(Array.from({ length: 20 }, (_, i) => good(`c${i}`))).length, MAX_CONFIGS);
+  assert.deepEqual(normalizeConfigs('nope'), []);
+});
+
+test('saved layouts: add, update, rename, move and remove', async () => {
+  const { MAX_CONFIGS, addConfig, moveConfig, removeConfig, renameConfig, updateConfigLayout } = await import('../src/lib/dashboardLayout.js');
+  let { configs, id } = addConfig([], '  Focus ', cols(), [300, 300, 300], 'f');
+  assert.equal(id, 'f');
+  assert.equal(configs[0].name, 'Focus');
+  assert.equal(addConfig(configs, '   ', cols(), []).id, null, 'empty name refused');
+  ({ configs } = addConfig(configs, 'Review', [[item('z')]], [500], 'r'));
+  configs = updateConfigLayout(configs, 'f', [[item('q')]], [400]);
+  assert.deepEqual(configs[0].columns, [[item('q')]]);
+  assert.deepEqual(configs[0].widths, [400]);
+  assert.equal(renameConfig(configs, 'r', 'Weekly')[1].name, 'Weekly');
+  assert.equal(renameConfig(configs, 'r', ' ')[1].name, 'Review', 'blank rename ignored');
+  assert.deepEqual(moveConfig(configs, 'r', -1).map((c) => c.id), ['r', 'f']);
+  assert.equal(moveConfig(configs, 'f', -1), configs, 'already first');
+  assert.deepEqual(removeConfig(configs, 'f').map((c) => c.id), ['r']);
+  const full = Array.from({ length: MAX_CONFIGS }, (_, i) => ({ id: `c${i}`, name: 'n', columns: [[]], widths: [300] }));
+  assert.equal(addConfig(full, 'more', [[]], []).id, null, 'capped');
+});
+
+test('saved layouts ride along in the payload only when there are some', () => {
+  assert.equal('configs' in serializeLayout(cols(), []), false);
+  const configs = [{ id: 'a', name: 'A', columns: [[{ ...item('x'), extra: 1 }]], widths: [] }];
+  const out = serializeLayout(cols(), [], { configs, active: 'a' });
+  assert.equal(out.active, 'a');
+  assert.deepEqual(out.configs, [{ id: 'a', name: 'A', widths: [DEFAULT_COL_W], columns: [[item('x')]] }]);
+  assert.equal(serializeLayout(cols(), [], { configs, active: 'gone' }).active, null, 'unknown active id dropped');
+});

@@ -3,6 +3,11 @@
 /** A board's columns, or the defaults when it has none. */
 export const columnsOf = (board, defaults) => (board?.columns?.length ? board.columns : defaults);
 
+const PRIORITY_RANK = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
+export const compareTaskPriority = (a, b) =>
+  (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9)
+  || String(a.created_at || '').localeCompare(String(b.created_at || ''));
+
 /**
  * Columns for the combined "All Boards" view: the default columns, then every custom
  * column any board (or task) uses — otherwise tasks sitting in "Doing" or "Inbox" are

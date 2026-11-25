@@ -103,6 +103,7 @@ async function authRequest(path, options = {}) {
     const err = new Error(body?.error || `API ${res.status}`);
     err.code = body?.code;
     err.status = res.status;
+    if (body?.setup) err.setup = body.setup;
     throw err;
   }
   return body;

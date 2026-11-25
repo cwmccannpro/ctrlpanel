@@ -9,6 +9,11 @@
 // added, reordered, widened and removed in Customize mode. The whole layout is saved
 // per user in `user_settings.dashboard_widgets` (shape: lib/dashboardLayout.js).
 //
+// Outside Customize the columns fuse into one seamless surface (no per-panel or per-column
+// separation). Named layouts ("configurations") can be saved from Customize → Saved layouts
+// and appear as buttons left of "Capture context"; pressing Done writes the edits back to the
+// active one.
+//
 // Panels themselves live in components/dashboardPanels.jsx.
 // ============================================================
 import { Fragment, useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -20,14 +25,17 @@ import { SortableContext, verticalListSortingStrategy, arrayMove, useSortable } 
 import { CSS } from '@dnd-kit/utilities';
 import Modal from '../components/shared/Modal.jsx';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
+import DashboardLayouts from '../components/DashboardLayouts.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
+import { useToast } from '../components/Toaster.jsx';
 import { saveUserSettings } from '../lib/supabase.js';
 import { PANELS, PANELS_BY_ID, DEFAULT_LAYOUT, LAYOUTS } from '../components/dashboardPanels.jsx';
 import { financeDebtEnabled } from '../lib/financeSheet.js';
 import { greeting, formatClock, formatLongDate, clamp } from '../lib/helpers.js';
 import {
-  DEFAULT_COL_W, MAX_COLS, addColumn, moveColumn, normalizeWidths, overflowInfo, removeColumn,
-  scrollStep, serializeLayout, setColumnWidth, widthsFromPercent,
+  DEFAULT_COL_W, MAX_COLS, addColumn, addConfig, moveColumn, moveConfig, normalizeConfigs, normalizeWidths,
+  overflowInfo, removeColumn, removeConfig, renameConfig, scrollStep, serializeLayout, setColumnWidth,
+  updateConfigLayout, widthsFromPercent,
 } from '../lib/dashboardLayout.js';
 import { scrollParent, useMiddleClickPan } from '../lib/useMiddleClickPan.js';
 
@@ -64,12 +72,21 @@ const cleanColumn = (col) =>
  * percentage-based one (v6, converted to pixels using the canvas width) and the older
  * board-panel arrays (v4/v5).
  */
-function normalize(saved, containerWidth) {
+function normalize(saved, containerWidth, configs = []) {
   const fresh = (layout) => {
     const columns = defaultColumns(layout);
     return { columns, widths: normalizeWidths(undefined, columns.length) };
   };
   if (!saved || Array.isArray(saved)) return fresh();
+
+  // A saved layout is active: the live layout is that configuration (or a Customize draft of
+  // it) — take it exactly as stored, never through the default-layout migrations below.
+  const activeConfig = configs.find((c) => c.id === saved.active);
+  if (activeConfig) {
+    if (!Array.isArray(saved.columns) || !saved.columns.length) return { columns: activeConfig.columns, widths: activeConfig.widths };
+    const columns = saved.columns.slice(0, MAX_COLS).map(cleanColumn);
+    return { columns, widths: normalizeWidths(saved.widths, columns.length) };
+  }
 
   if (Array.isArray(saved.columns) && saved.columns.length) {
     const oldDefault = [['board', 'board', 'board'], ['networth', 'cashflow', 'investing', 'youtube'], ['habits_grid', 'habits_trend', 'macros', 'supplements', 'fitness']];
@@ -218,7 +235,7 @@ function Column({ index, count, width, items, editing, onRemove, onHeight, onCfg
           );
         })}
       </SortableContext>
-      {items.length === 0 && <div className="dash2-col-empty">Drop a panel here</div>}
+      {editing && items.length === 0 && <div className="dash2-col-empty">Drop a panel here</div>}
       {editing && (
         <button className="dash2-add" onClick={() => onAdd(index)}>
           <i className="ti ti-plus" /> Add panel
@@ -235,6 +252,10 @@ export default function Dashboard() {
   const [columns, setColumns] = useState(null);
   const [widths, setWidths] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [configs, setConfigs] = useState([]); // saved layouts: [{ id, name, columns, widths }]
+  const [active, setActive] = useState(null); // id of the saved layout on screen, if any
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
+  const toast = useToast();
   const [picker, setPicker] = useState(null); // column index when open (columns.length = a new column)
   const [panelQuery, setPanelQuery] = useState('');
   const openPicker = (column) => { setPanelQuery(''); setPicker(column); };
@@ -252,6 +273,9 @@ export default function Dashboard() {
   // saving from inside one would fire twice under StrictMode.
   const columnsRef = useRef(null);
   const widthsRef = useRef(null);
+  const configsRef = useRef([]);
+  const activeRef = useRef(null);
+  const editingRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
@@ -262,17 +286,38 @@ export default function Dashboard() {
   // Load saved layout once settings arrive.
   useEffect(() => {
     if (initRef.current || !settings) return;
-    const { columns: cols, widths: w } = normalize(settings.dashboard_widgets, canvasRef.current?.clientWidth || 0);
+    const saved = settings.dashboard_widgets;
+    const savedConfigs = normalizeConfigs(saved?.configs, cleanColumn);
+    const { columns: cols, widths: w } = normalize(saved, canvasRef.current?.clientWidth || 0, savedConfigs);
+    const act = savedConfigs.some((c) => c.id === saved?.active) ? saved.active : null;
     columnsRef.current = cols;
     widthsRef.current = w;
+    configsRef.current = savedConfigs;
+    activeRef.current = act;
     setColumns(cols);
     setWidths(w);
+    setConfigs(savedConfigs);
+    setActive(act);
     initRef.current = true;
   }, [settings]);
 
+  const setConfigList = (next, nextActive = activeRef.current) => {
+    configsRef.current = next;
+    activeRef.current = next.some((c) => c.id === nextActive) ? nextActive : null;
+    setConfigs(next);
+    setActive(activeRef.current);
+  };
+
   const persist = (nextColumns, nextWidths) => {
     if (!user?.id) return;
-    const payload = serializeLayout(nextColumns ?? columnsRef.current ?? [], nextWidths ?? widthsRef.current ?? []);
+    const cols = nextColumns ?? columnsRef.current ?? [];
+    const w = nextWidths ?? widthsRef.current ?? [];
+    // Outside Customize the active saved layout follows the live one (panel settings, Day Plan
+    // height…). Customize edits are a draft until Done, so "Save as new" can fork from them.
+    if (activeRef.current && !editingRef.current) {
+      setConfigList(updateConfigLayout(configsRef.current, activeRef.current, cols, w));
+    }
+    const payload = serializeLayout(cols, w, { configs: configsRef.current, active: activeRef.current });
     saveQueue.current = saveQueue.current
       .catch(() => {})
       .then(() => saveUserSettings(user.id, { dashboard_widgets: payload }))
@@ -364,6 +409,40 @@ export default function Dashboard() {
   const applyLayout = (key) => {
     const cols = defaultColumns(LAYOUTS[key]);
     commit(cols, normalizeWidths(undefined, cols.length));
+  };
+
+  /* ---- saved layouts ---- */
+  const startEditing = () => { editingRef.current = true; setEditing(true); };
+  const finishEditing = () => {
+    editingRef.current = false;
+    setEditing(false);
+    setLayoutsOpen(false);
+    persist(); // writes the edits back to the active saved layout
+  };
+  const switchConfig = (id) => {
+    const cfg = configsRef.current.find((c) => c.id === id);
+    if (!cfg || id === activeRef.current) return;
+    activeRef.current = id;
+    setActive(id);
+    commit(cfg.columns, cfg.widths);
+  };
+  const saveConfigAs = (name) => {
+    const r = addConfig(configsRef.current, name, columnsRef.current || [], widthsRef.current || []);
+    if (!r.id) return false;
+    setConfigList(r.configs, r.id);
+    persist();
+    return true;
+  };
+  const changeConfigs = (next) => { setConfigList(next); persist(); };
+  const deleteConfig = (id) => {
+    const before = configsRef.current;
+    const wasActive = activeRef.current;
+    const gone = before.find((c) => c.id === id);
+    changeConfigs(removeConfig(before, id));
+    toast({
+      message: `Deleted the “${gone?.name || 'layout'}” layout`,
+      action: { label: 'Undo', onClick: () => { setConfigList(before, wasActive); persist(); } },
+    });
   };
 
   const addPanel = (colIndex, id) => {
@@ -481,7 +560,27 @@ export default function Dashboard() {
               </button>
             </div>
           )}
+          {!editing && configs.length > 0 && (
+            <div className="segmented dash2-configs" role="group" aria-label="Saved layouts">
+              {configs.map((c) => (
+                <button
+                  key={c.id}
+                  className={c.id === active ? 'active' : ''}
+                  aria-pressed={c.id === active}
+                  title={c.id === active ? `${c.name} (showing)` : `Switch to ${c.name}`}
+                  onClick={() => switchConfig(c.id)}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
           <Link className="btn btn--sm" to="/context"><i className="ti ti-notebook" /> Capture context</Link>
+          {editing && (
+            <button className="btn btn--sm" onClick={() => setLayoutsOpen(true)}>
+              <i className="ti ti-bookmarks" /> Saved layouts
+            </button>
+          )}
           {editing && ['today', 'work'].map((key) => (
             <button key={key} className="btn btn--sm" onClick={() => applyLayout(key)}>
               {key === 'today' ? 'Today layout' : 'Work layout'}
@@ -499,8 +598,10 @@ export default function Dashboard() {
           )}
           <button
             className={`btn btn--sm ${editing ? 'btn--accent' : ''}`}
-            onClick={() => setEditing((v) => !v)}
-            title={editing ? 'Finish editing' : 'Customize dashboard'}
+            onClick={editing ? finishEditing : startEditing}
+            title={editing
+              ? (active ? `Finish editing and save to “${configs.find((c) => c.id === active)?.name}”` : 'Finish editing')
+              : 'Customize dashboard'}
           >
             <i className={`ti ${editing ? 'ti-check' : 'ti-layout-grid'}`} /> {editing ? 'Done' : 'Customize'}
           </button>
@@ -516,10 +617,12 @@ export default function Dashboard() {
         onDragCancel={() => setActiveId(null)}
       >
         <div className="dash2-canvas" ref={canvasRef}>
-          <div className={`dash2 ${editing ? 'is-editing' : ''}`} ref={rowRef}>
+          <div className={`dash2 ${editing ? 'is-editing' : 'is-seamless'}`} ref={rowRef}>
             {shown.map((items, i) => (
               <Fragment key={i}>
-                {i > 0 && <div className="dash2-divider" onPointerDown={startResize(i - 1)} title="Drag to resize" />}
+                {i > 0 && (editing
+                  ? <div className="dash2-divider" onPointerDown={startResize(i - 1)} title="Drag to resize" />
+                  : <div className="dash2-divider" aria-hidden="true" />)}
                 <Column
                   index={i}
                   count={shown.length}
@@ -553,6 +656,18 @@ export default function Dashboard() {
           )}
         </DragOverlay>
       </DndContext>
+
+      {layoutsOpen && (
+        <DashboardLayouts
+          configs={configs}
+          active={active}
+          onClose={() => setLayoutsOpen(false)}
+          onSaveAs={saveConfigAs}
+          onRename={(id, name) => changeConfigs(renameConfig(configsRef.current, id, name))}
+          onMove={(id, dir) => changeConfigs(moveConfig(configsRef.current, id, dir))}
+          onDelete={deleteConfig}
+        />
+      )}
 
       {picker !== null && (
         <Modal title="Add a panel" onClose={() => setPicker(null)} className="dash2-picker-modal">

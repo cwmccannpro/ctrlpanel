@@ -1,5 +1,37 @@
 # CTRLpanel — Project Context for Agents
 
+## Dashboard: seamless view + saved layouts (2026-11-21)
+- Outside Customize the row is `.dash2.is-seamless`: the columns fuse into ONE surface (no per-column card,
+  no gutters, no rules between panels); Customize (`.is-editing`) brings the per-column surfaces, dividers
+  and tools back. Column widths only drag in Customize now. Styles: end of `styles/dashboardOptions.css`.
+- **Saved layouts** ("configurations"): `dashboard_widgets.configs [{id,name,widths,columns}]` + `active`
+  (pure helpers in `lib/dashboardLayout.js`, ≤8, names ≤24 chars, tests in `dashboardLayout.test.mjs`).
+  They show as a segmented switcher left of "Capture context" (view mode only). Customize → Saved layouts
+  (`components/DashboardLayouts.jsx`) saves the current layout as a new one, renames, reorders, deletes
+  (toast Undo). Customize edits are a draft: **Done** writes them to the active layout, "Save" there forks a
+  new one and leaves the active one untouched. Outside Customize every persist mirrors the live layout into
+  the active config (panel settings stick). With an active config, `normalize()` skips the default-layout
+  migrations. Local preview without sign-in: launch config `dashboard-fixture` (`.android-tools/`, gitignored).
+
+## Meal estimates on the owner's desktop model (2026-11-21)
+- `/api/nutrition/analyze` tries the owner's **Windows desktop model first** and falls back to Claude. `backend/localAi.js`
+  (`estimateOnDesktop`) enqueues the validated meal, waits up to `LOCAL_WAIT_MS` (42 s, ~1.5 s polls to stay inside a Worker's
+  subrequest budget) and returns `{ estimate, usage:{estimated_cost_usd:0}, engine:{kind:'desktop',model} }`. Off / not ready / busy /
+  failed / junk / timeout → `{ skipped }` → Claude, as before (`engine.kind:'claude'`). Desktop estimates never touch the AI spend limits.
+- The meal contract is shared: `backend/mealPrompt.js` (`validateMealInput`, `mealInstructions('claude'|'local')`, `mealEstimateSchema`,
+  `finishMealEstimate`, `looseMicros`). `claude.js` uses it unchanged (Claude's prompt is byte-identical); local results drop invalid micros.
+- Relay = Room Control's pattern: `local_ai_bridges` + `local_ai_jobs` + `local_ai_relay` RPC, service-role only, RLS on, no browser
+  policies (`migrations/20261121-local-ai.sql`, also in the schema). Routes live in the nutrition dispatcher, so no route-table edits:
+  session `GET local/status`, `POST local/pair|revoke`; desktop `ctla_` key `POST local/bridge/poll|complete`. The photo is cleared
+  from the row at claim, expired rows are scrubbed, and a result is deleted once read. One running job per desktop; ≤2 queued.
+- Desktop: `tools/local-ai-bridge.mjs` (Node, outbound only, Ollama on loopback, DPAPI key via PowerShell, single instance via named
+  pipe, log `.local-ai/bridge.log`), pure parts in `tools/local-ai-core.mjs`, installer `tools/local-ai-install.ps1` (hidden logon task
+  "CTRLpanel Local AI Bridge" via `conhost --headless`). Default model `qwen2.5vl:7b`. `.local-ai/` is gitignored.
+- Local tuning, measured on the owner's RTX 5060 (8 GB): `num_ctx` 4096 (8192 spills to CPU), `num_predict` 1200 + one retry (≈1/12
+  answers run away), and `localMealSchema()` makes the model list `items` before totals, which `parseOllamaReply` sums in code (fixes
+  heavy undercounting). Desktop estimates are still rougher than Claude and rarely include micros. Don't raise these limits casually.
+- UI: `LocalAiSetup.jsx` in Settings → Nutrition; the meal editor says where an estimate ran. Tests: `tests/localAi.test.mjs`.
+
 ## Weekly Review + Agents folder removed (2026-11-19)
 - `/review` and the whole Agents folder (`/agents`, Opportunities + Industry Problems agents) are gone:
   pages, sidebar/palette entries, the Opportunities and Industry Problems dashboard panels, the
@@ -55,6 +87,10 @@
   `.room-local/` is private and gitignored. Never print keys or seed unknown lights.
 - Tests: `roomControl.test.mjs`, `room_protocol_test.py`; operation and protocol
   references: `docs/room-control.md`. Last-sent settings are not live readings.
+- Fourth light (2026-11-21): `headboard`, ELK-BLEDDM F9, profile `elk-bleddm`
+  (elkbledom bytes, write without response + 0.3 s settle via
+  `NO_RESPONSE_PROFILES` / `SETTLE_SECONDS` in `room_protocol.py`). It advertises
+  rarely, so commands can miss until it advertises again (power-cycle helps).
 
 ## AI access + spend limits (2026-10-12)
 - **Every `/api/ai/*` route needs a signed-in user** (Bearer token only — never `?token=`). One dispatcher, `backend/ai.js`
@@ -649,8 +685,8 @@ hardcode `#e11d48` in components; use `var(--accent)`. Shared styles live in
 - `NutritionMealEditor` supports mobile camera/gallery and plain meal descriptions.
   Nutrition values are read-only estimates; corrections re-analyze the input.
   No manual macro fields. Changing input invalidates the estimate before saving.
-  Token-based analysis cost is shown. Photos go to Claude but are not persisted.
-  `backend/claude.js` is the only vision caller and keeps `claude-sonnet-4-6`.
+  Token-based analysis cost is shown. Photos go to the desktop model or Claude but are not persisted.
+  `backend/claude.js` is the only Claude vision caller and keeps `claude-sonnet-4-6`; the desktop path is above.
 - `backend/nutritionApi.js` has one dispatcher used in Express + Worker: public
   `/openapi.json`, session `/status` + `/analyze`, key-auth `/check` + `/log`.
   External ownership comes only from the key. Native writes remain anon/RLS.

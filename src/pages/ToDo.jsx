@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   PointerSensor,
@@ -12,23 +12,17 @@ import Badge from '../components/shared/Badge.jsx';
 import Modal from '../components/shared/Modal.jsx';
 import { useCrud } from '../lib/useData.js';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
-import { projectForBoard } from '../lib/links.js';
-import { canDropInColumn, columnsOf, primaryBoard } from '../lib/boards.js';
+import { projectForTask, projectsForColumn } from '../lib/links.js';
+import { canDropInColumn, columnsOf, compareTaskPriority, primaryBoard } from '../lib/boards.js';
+import { updateTodoColumns } from '../lib/supabase.js';
+import { KANBAN_COLUMNS as DEFAULT_COLUMNS } from '../lib/mockData.js';
 import { useToast } from '../components/Toaster.jsx';
 import { useAuth } from '../components/AuthProvider.jsx';
 import { relativeDay } from '../lib/helpers.js';
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
-const DEFAULT_COLUMNS = ['Backlog', 'In Progress', 'Review', 'Done'];
 
-// Cards always auto-sort by priority within a column (Urgent/High → Low);
-// within the same tier the existing manual order (creation order) holds.
-const PRIORITY_RANK = { Urgent: 0, High: 1, Medium: 2, Low: 3 };
-const byPriority = (a, b) =>
-  (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) ||
-  String(a.created_at || '').localeCompare(String(b.created_at || ''));
-
-function KanbanCard({ task, boardName, project, onProject, onClick }) {
+function KanbanCard({ task, onClick }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform ? { transform: `translate(${transform.x}px, ${transform.y}px)`, zIndex: 50 } : undefined;
   return (
@@ -36,12 +30,6 @@ function KanbanCard({ task, boardName, project, onProject, onClick }) {
       <span className="kanban-card-title">{task.title}</span>
       <div className="kanban-card-meta">
         <Badge variant={task.priority}>{task.priority}</Badge>
-        {boardName && <span className="badge">{boardName}</span>}
-        {project && (
-          <button className="badge badge--link" title={`Open project: ${project.name}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onProject(project.id); }}>
-            <i className="ti ti-folder" /> {project.name}
-          </button>
-        )}
         {task.project_id && <span className="badge">{task.project_id}</span>}
         {task.due_date && <span className="list-row-meta">{relativeDay(task.due_date)}</span>}
       </div>
@@ -49,28 +37,29 @@ function KanbanCard({ task, boardName, project, onProject, onClick }) {
   );
 }
 
-function Column({ name, index, total, tasks, boardNameFor, projectFor, onProject, locked, onCardClick, onAdd, onMove, onRename, onDelete }) {
+function Column({ name, index, total, tasks, projects, focused, locked, onCardClick, onAdd, onMove, onRename, onDelete }) {
   const { setNodeRef, isOver } = useDroppable({ id: name });
   return (
-    <div ref={setNodeRef} className={`kanban-col ${isOver ? 'drag-over' : ''}`}>
+    <div ref={setNodeRef} data-todo-focus={focused || undefined} className={`kanban-col ${isOver ? 'drag-over' : ''}`}>
       <div className="kanban-col-head">
         <div className="row" style={{ gap: 6 }}>
           <span>{name}</span>
           <span className="kanban-col-count">{tasks.length}</span>
         </div>
-        {!locked && (
-          <div className="col-actions">
-            <button title="Move left" onClick={() => onMove(index, -1)} disabled={index === 0}><i className="ti ti-chevron-left" /></button>
-            <button title="Move right" onClick={() => onMove(index, 1)} disabled={index === total - 1}><i className="ti ti-chevron-right" /></button>
-            <button title="Rename column" onClick={() => onRename(name)}><i className="ti ti-pencil" /></button>
-            <button title="Delete column" onClick={() => onDelete(name)}><i className="ti ti-trash" /></button>
-          </div>
-        )}
+        <div className="col-actions">
+          <button title="Move left" onClick={() => onMove(index, -1)} disabled={locked || index === 0}><i className="ti ti-chevron-left" /></button>
+          <button title="Move right" onClick={() => onMove(index, 1)} disabled={locked || index === total - 1}><i className="ti ti-chevron-right" /></button>
+          <button title="Rename column" onClick={() => onRename(name)} disabled={locked}><i className="ti ti-pencil" /></button>
+          <button title="Delete column" onClick={() => onDelete(name)} disabled={locked}><i className="ti ti-trash" /></button>
+        </div>
       </div>
+      {projects.length > 0 && <div className="kanban-column-projects">
+        {projects.map((project) => <Link className="badge badge--link" key={project.id} to={`/projects/${project.id}`}><i className="ti ti-folder" aria-hidden="true" /> {project.name}</Link>)}
+      </div>}
       {tasks.map((t) => (
-        <KanbanCard key={t.id} task={t} boardName={boardNameFor?.(t)} project={projectFor?.(t)} onProject={onProject} onClick={() => onCardClick(t)} />
+        <KanbanCard key={t.id} task={t} onClick={() => onCardClick(t)} />
       ))}
-      <button className="kanban-add" onClick={() => onAdd(name)}>
+      <button className="kanban-add" onClick={() => onAdd(name)} disabled={locked}>
         <i className="ti ti-plus" /> Add card
       </button>
     </div>
@@ -84,8 +73,13 @@ export default function ToDo() {
   const tasks = useCrud('tasks', 'created_at');
   const { boardId: boardIdParam } = useParams();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const focusedColumn = params.get('column');
+  const taskId = params.get('task');
+  const kanban = useRef(null);
   const goToBoard = (id, opts) => navigate(id ? `/todo/${id}` : '/todo', opts);
   const [editing, setEditing] = useState(null);
+  const [changingColumns, setChangingColumns] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const ownedBoards = useMemo(
@@ -112,15 +106,52 @@ export default function ToDo() {
     () => (boardId ? ownedTasks.filter((t) => t.board_id === boardId) : []),
     [ownedTasks, boardId]
   );
-  const boardProject = board ? projectForBoard(projects.rows, board.id) : null;
   const openProject = (pid) => navigate(`/projects/${pid}`);
   // The editor can show a different board's columns once a task is moved to a project.
   const editBoard = editing ? ownedBoards.find((b) => b.id === (editing.board_id || boardId)) : null;
-  const editColumns = editBoard?.columns?.length ? editBoard.columns : columns;
-  const editProject = editing ? projectForBoard(projects.rows, editing.board_id || boardId) : null;
-  const projectChoices = projects.rows.filter((p) => p.todo_board_id && ownedBoards.some((b) => b.id === p.todo_board_id));
+  const editColumns = editBoard ? columnsOf(editBoard, DEFAULT_COLUMNS) : columns;
+  const editProject = editing ? projectForTask(editing, projects.rows) : null;
+  const projectChoices = projects.rows.filter((p) => p.todo_column_name && ownedBoards.some(
+    (b) => b.id === p.todo_board_id && columnsOf(b, DEFAULT_COLUMNS).includes(p.todo_column_name)
+  ));
 
-  const setColumns = (next) => board && boards.patch(board.id, { columns: next });
+  useEffect(() => {
+    if (focusedColumn && boardId === boardIdParam) {
+      kanban.current?.querySelector('[data-todo-focus]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [focusedColumn, boardId, boardIdParam]);
+
+  useEffect(() => {
+    if (!taskId || tasks.loading || !boardId || boardId !== boardIdParam) return;
+    const task = visibleTasks.find((row) => row.id === taskId);
+    if (task) setEditing(task);
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('task');
+      return next;
+    }, { replace: true });
+  }, [taskId, tasks.loading, boardId, boardIdParam, visibleTasks, setParams]);
+
+  async function setColumns(next, previous, target) {
+    if (!board || changingColumns) return;
+    setChangingColumns(true);
+    try {
+      await updateTodoColumns(board.id, columns, next, previous, target);
+      await Promise.all([boards.reload(), ...(previous ? [tasks.reload(), projects.reload()] : [])]);
+      if (focusedColumn && focusedColumn === previous) {
+        setParams((current) => {
+          const params = new URLSearchParams(current);
+          params.set('column', target);
+          return params;
+        }, { replace: true });
+      }
+    } catch (error) {
+      toast({ tone: 'error', message: error.message });
+      await boards.reload();
+    } finally {
+      setChangingColumns(false);
+    }
+  }
 
   /* ---- Board actions ---- */
   const addBoard = async () => {
@@ -142,26 +173,25 @@ export default function ToDo() {
 
   /* ---- Column actions (stored on board.columns) ---- */
   const addColumn = () => {
-    const name = prompt('New column name?');
+    const name = prompt('New column name?')?.trim();
     if (!name) return;
     if (columns.includes(name)) return alert('That column already exists.');
     setColumns([...columns, name]);
   };
   const renameColumn = (col) => {
-    const name = prompt('Rename column', col);
+    const name = prompt('Rename column', col)?.trim();
     if (!name || name === col) return;
     if (columns.includes(name)) return alert('That column already exists.');
-    setColumns(columns.map((c) => (c === col ? name : c)));
-    // Re-tag cards in the renamed column so they stay put.
-    visibleTasks.filter((t) => t.column_name === col).forEach((t) => tasks.patch(t.id, { column_name: name }));
+    setColumns(columns.map((c) => (c === col ? name : c)), col, name);
   };
   const deleteColumn = (col) => {
     if (columns.length <= 1) return alert('A board needs at least one column.');
     const remaining = columns.filter((c) => c !== col);
     const target = remaining[0];
-    if (!confirm(`Delete column "${col}"? Its cards move to "${target}".`)) return;
-    visibleTasks.filter((t) => t.column_name === col).forEach((t) => tasks.patch(t.id, { column_name: target }));
-    setColumns(remaining);
+    const linked = projectsForColumn(projects.rows, boardId, col);
+    const unlink = linked.length ? ` Projects linked here will need a new column.` : '';
+    if (!confirm(`Delete column "${col}"? Its cards move to "${target}".${unlink}`)) return;
+    setColumns(remaining, col, target);
   };
   const moveColumn = (idx, dir) => {
     const j = idx + dir;
@@ -173,7 +203,7 @@ export default function ToDo() {
 
   /* ---- Task actions ---- */
   const onDragEnd = ({ active, over }) => {
-    if (!over) return;
+    if (!over || changingColumns) return;
     const task = ownedTasks.find((t) => t.id === active.id);
     if (!canDropInColumn(task, ownedBoards, DEFAULT_COLUMNS, over.id)) {
       toast({ tone: 'error', message: `“${over.id}” isn’t a column on that task’s board.` });
@@ -226,8 +256,7 @@ export default function ToDo() {
         <button className="btn" onClick={addBoard}><i className="ti ti-plus" /> Board</button>
         {board && <button className="btn btn--ghost btn--icon" onClick={renameBoard} title="Rename board"><i className="ti ti-pencil" /></button>}
         {board && <button className="btn btn--ghost btn--icon" onClick={deleteBoard} title="Delete board"><i className="ti ti-trash" /></button>}
-        {boardProject && <button className="btn btn--ghost" onClick={() => openProject(boardProject.id)} title="Open this board's project"><i className="ti ti-folder" /> {boardProject.name} <i className="ti ti-arrow-up-right" /></button>}
-        {board && <button className="btn" style={{ marginLeft: 'auto' }} onClick={addColumn}><i className="ti ti-columns-3" /> Add column</button>}
+        {board && <button className="btn" style={{ marginLeft: 'auto' }} disabled={changingColumns} onClick={addColumn}><i className="ti ti-columns-3" /> Add column</button>}
       </div>
 
       {!board ? (
@@ -235,16 +264,17 @@ export default function ToDo() {
           {boards.loading ? 'Loading boards…' : 'Create a board to start adding tasks.'}
         </p>
       ) : <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="kanban" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(220px, 1fr))` }}>
+        <div ref={kanban} className="kanban" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(220px, 1fr))` }}>
           {columns.map((col, i) => (
             <Column
               key={col}
               name={col}
               index={i}
               total={columns.length}
-              tasks={visibleTasks.filter((t) => t.column_name === col).sort(byPriority)}
-              onProject={openProject}
-              locked={!board}
+              tasks={visibleTasks.filter((t) => t.column_name === col).sort(compareTaskPriority)}
+              projects={projectsForColumn(projects.rows, boardId, col)}
+              focused={focusedColumn === col}
+              locked={changingColumns}
               onCardClick={setEditing}
               onAdd={openNew}
               onMove={moveColumn}
@@ -301,21 +331,20 @@ export default function ToDo() {
           </div>
           {projectChoices.length > 0 && (
             <div className="field">
-              <label className="field-label">Project</label>
+              <label className="field-label" htmlFor="task-project-column">Project column</label>
               <div className="row" style={{ gap: 8 }}>
                 <select
                   className="select"
+                  id="task-project-column"
                   value={editProject?.id || ''}
                   onChange={(e) => {
                     const p = projects.rows.find((x) => x.id === e.target.value);
                     if (!p) return;
-                    const target = ownedBoards.find((b) => b.id === p.todo_board_id);
-                    // Moving a task into a project means moving it to that project's board.
-                    setEditing({ ...editing, board_id: p.todo_board_id, column_name: target?.columns?.[0] || editing.column_name });
+                    setEditing({ ...editing, board_id: p.todo_board_id, column_name: p.todo_column_name });
                   }}
                 >
-                  {!editProject && <option value="">Not in a project</option>}
-                  {projectChoices.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {!editProject && <option value="">Choose a project column</option>}
+                  {projectChoices.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.todo_column_name}</option>)}
                 </select>
                 {editProject && (
                   <button type="button" className="btn btn--ghost" onClick={() => { setEditing(null); openProject(editProject.id); }}>
@@ -323,7 +352,6 @@ export default function ToDo() {
                   </button>
                 )}
               </div>
-              <div className="list-row-meta" style={{ marginTop: 4 }}>Choosing a project moves this task to that project’s board.</div>
             </div>
           )}
         </Modal>

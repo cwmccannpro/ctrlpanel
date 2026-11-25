@@ -105,6 +105,20 @@ export async function remove(table, id) {
   return supabase.from(table).delete().eq('id', id);
 }
 
+export async function updateTodoColumns(boardId, expected, columns, previous = null, target = null) {
+  if (!supabase) throw new Error('Supabase is not configured.');
+  const { error } = await supabase.rpc('update_todo_columns', {
+    p_board_id: boardId,
+    p_expected: expected,
+    p_columns: columns,
+    p_previous_name: previous,
+    p_target_name: target,
+  });
+  if (error) throw new Error(error.code === 'PGRST202'
+    ? 'Apply the Project To Do columns schema update before editing columns.'
+    : error.message);
+}
+
 /* ---------------- Storage ---------------- */
 
 // Short-lived signed URL for a private object (bucket RLS scopes it to the

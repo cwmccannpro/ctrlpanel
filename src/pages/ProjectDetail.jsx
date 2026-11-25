@@ -1,321 +1,117 @@
-import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import Card from '../components/shared/Card.jsx';
+import { lazy, Suspense, useCallback, useRef, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import Badge from '../components/shared/Badge.jsx';
 import Spinner from '../components/shared/Spinner.jsx';
-import ServiceLinks from '../components/ServiceLinks.jsx';
-import KnowledgeBase from './KnowledgeBase.jsx';
+import ProjectSettings from '../components/ProjectSettings.jsx';
 import { useWorkspace } from '../components/WorkspaceProvider.jsx';
-import { useRows, useCrud } from '../lib/useData.js';
-import { useCalendarEvents } from '../lib/useCalendarEvents.js';
-import { queryTable } from '../lib/supabase.js';
-import { projectDigest } from '../lib/links.js';
-import { relativeDay } from '../lib/helpers.js';
-import { formatDate } from '../lib/helpers.js';
+import { projectPath } from '../lib/projectRoutes.js';
+import '../styles/projects.css';
 
+const ProjectDashboard = lazy(() => import('../components/ProjectDashboard.jsx'));
+const ProjectResources = lazy(() => import('../components/ProjectResources.jsx'));
 const ExcalidrawBoard = lazy(() => import('../components/ExcalidrawBoard.jsx'));
+const KnowledgeBase = lazy(() => import('./KnowledgeBase.jsx'));
+const ProjectCrm = lazy(() => import('../components/ProjectCrm.jsx'));
 
-const STATUSES = ['Active', 'Paused', 'Complete'];
-const TABS = ['Project Dashboard', 'Context', 'Excalidraw', 'Files & Links', 'People'];
+const TABS = [
+  { id: '', label: 'Project Dashboard', icon: 'ti-layout-dashboard' },
+  { id: 'crm', label: 'CRM', icon: 'ti-address-book' },
+  { id: 'excalidraw', label: 'Excalidraw', icon: 'ti-pencil' },
+  { id: 'context', label: 'Context', icon: 'ti-notebook' },
+];
 const statusVariant = { Active: 'green', Paused: 'warm', Complete: 'accent' };
 
-function Rollup({ icon, title, onClick, children }) {
-  return (
-    <Card className="card-section" onClick={onClick} style={{ cursor: 'pointer' }}>
-      <div className="card-section-title">
-        <span><i className={`ti ${icon}`} style={{ marginRight: 6, color: 'var(--accent)' }} />{title}</span>
-        <i className="ti ti-arrow-up-right muted" />
-      </div>
-      {children}
-    </Card>
-  );
-}
-
 export default function ProjectDetail() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { projects, crmBoards, todoBoards } = useWorkspace();
-  const tasksCrud = useCrud('tasks', 'created_at');
-  const tasks = tasksCrud.rows;
-  const { rows: contacts } = useRows('crm_contacts', []);
-  const [tab, setTab] = useState('Project Dashboard');
-  const [knowledgeDirty, setKnowledgeDirty] = useState(false);
-  const [newLink, setNewLink] = useState({ title: '', url: '', type: 'link' });
-
-  const project = projects.rows.find((p) => p.id === id);
-
-  // projects.patch is stable (memoized in useCrud), so depend on it directly —
-  // depending on the whole `projects` object would recreate these every render
-  // and make ExcalidrawBoard's onPersist churn, causing a save/re-render loop.
-  const patch = useCallback((changes) => projects.patch(id, changes), [projects.patch, id]);
-  const persistScene = useCallback(
-    (scene, thumb) => patch(thumb ? { excalidraw: scene, excalidraw_preview: thumb } : { excalidraw: scene }),
-    [patch]
-  );
-
-  // Cross-links: notes written for this project, and calendar events that mention it.
-  const calendarEvents = useCalendarEvents();
-  const [projectNotes, setProjectNotes] = useState([]);
-  useEffect(() => {
-    let alive = true;
-    queryTable('knowledge_notes', { select: 'id,title,content,folder,pinned,updated_at,project_id', filters: { project_id: id }, order: 'updated_at', limit: 30 })
-      .then(({ data }) => { if (alive) setProjectNotes(data || []); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [id, tab]);
-  const digest = useMemo(
-    () => (project ? projectDigest({ project, tasks, boards: todoBoards.rows, notes: projectNotes, events: calendarEvents }) : null),
-    [project, tasks, todoBoards.rows, projectNotes, calendarEvents]
-  );
+  const { id, tab = '' } = useParams();
+  const { projects } = useWorkspace();
+  const project = projects.rows.find((row) => row.id === id);
 
   if (!project) {
     return (
       <div className="placeholder fade-in">
         <i className="ti ti-folder-off" />
-        <h2>{projects.loading ? 'Loading…' : 'Project not found'}</h2>
-        {!projects.loading && <button className="btn btn--accent" onClick={() => navigate('/projects')}>Back to Projects</button>}
+        <h2>{projects.loading ? 'Loading project…' : projects.error ? 'Could not load this project' : 'Project not found'}</h2>
+        {!projects.loading && <Link className="btn" to="/projects">Back to Projects</Link>}
       </div>
     );
   }
+  if (!TABS.some((item) => item.id === tab)) return <Navigate replace to={projectPath(id)} />;
+  return <ProjectWorkspace key={id} project={project} tab={tab} />;
+}
 
-  const del = () => {
-    if (!confirm(`Delete project "${project.name}"?`)) return;
-    projects.remove(id);
+function ProjectWorkspace({ project, tab }) {
+  const navigate = useNavigate();
+  const { projects } = useWorkspace();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsTrigger = useRef(null);
+  const id = project.id;
+  const crmEnabled = Boolean(project.crm_board_id);
+  const activeTab = tab === 'crm' && !crmEnabled ? '' : tab;
+  const updateProject = projects.patch;
+  const patch = useCallback(async (changes) => {
+    const result = await updateProject(id, changes);
+    if (result.error) throw new Error(result.error.message);
+    return result;
+  }, [id, updateProject]);
+  const persistScene = useCallback((scene, thumbnail) => updateProject(
+    id, thumbnail ? { excalidraw: scene, excalidraw_preview: thumbnail } : { excalidraw: scene }
+  ), [id, updateProject]);
+
+  function openSettings(event) {
+    settingsTrigger.current = event.currentTarget;
+    setSettingsOpen(true);
+  }
+
+  function closeSettings() {
+    setSettingsOpen(false);
+    requestAnimationFrame(() => settingsTrigger.current?.focus());
+  }
+
+  async function saveSettings(changes) {
+    await patch(changes);
+    if (changes.crm_board_id === null && tab === 'crm') navigate(projectPath(id), { replace: true });
+  }
+
+  async function deleteProject() {
+    const { error } = await projects.remove(id);
+    if (error) throw new Error(error.message);
     navigate('/projects');
-  };
-
-  /* ---- Derived data shared by Dashboard + tabs ---- */
-  const entries = project.files || [];
-  const recentEntries = [...entries]
-    .sort((a, b) => (b.added_at || '').localeCompare(a.added_at || ''))
-    .slice(0, 3);
-
-  const linkedContacts = project.crm_board_id ? contacts.filter((c) => c.board_id === project.crm_board_id) : [];
-
-  /* ---- Charter ---- */
-  const charter = project.charter || {};
-  const metrics = charter.metrics || [];
-  const patchCharter = (changes) => patch({ charter: { ...charter, ...changes } });
-  const setMetric = (i, changes) => patchCharter({ metrics: metrics.map((m, j) => (j === i ? { ...m, ...changes } : m)) });
-
-  /* ---- Files & Links ops ---- */
-  const addEntry = () => {
-    if (!newLink.title.trim() || !newLink.url.trim()) return;
-    patch({ files: [...entries, { ...newLink, added_at: new Date().toISOString() }] });
-    setNewLink({ title: '', url: '', type: 'link' });
-  };
-  const removeEntry = (i) => patch({ files: entries.filter((_, j) => j !== i) });
+  }
 
   return (
-    <div className="fade-in" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div className="page-header">
-        <div className="row" style={{ gap: 10 }}>
-          <button className="btn btn--ghost btn--icon" onClick={() => navigate('/projects')} title="Back"><i className="ti ti-arrow-left" /></button>
-          <div>
-            <div className="row">
-              <span className="list-row-dot" style={{ background: project.color }} />
-              <h1 className="page-title">{project.name}</h1>
-            </div>
-            <div className="page-header-sub"><Badge variant={statusVariant[project.status]}>{project.status}</Badge></div>
+    <div className="project-workspace fade-in">
+      <header className="project-heading">
+        <Link className="btn btn--ghost project-back" to="/projects"><i className="ti ti-arrow-left" /> Projects</Link>
+        <div className="project-title-row">
+          <div className="project-identity">
+            <h1 className="page-title">{project.name}</h1>
+            {project.status && <Badge variant={statusVariant[project.status]}>{project.status}</Badge>}
           </div>
+          <button className="btn btn--ghost project-settings-trigger" type="button" aria-haspopup="dialog" onClick={openSettings}>
+            <i className="ti ti-settings" aria-hidden="true" /> Settings
+          </button>
         </div>
-        <button className="btn btn--danger" onClick={del}><i className="ti ti-trash" /> Delete</button>
-      </div>
-
-      <Card className="card-section" static style={{ flex: 1, overflowY: 'auto' }}>
-        <div className="tabs">
-          {TABS.map((t) => (
-            <button key={t} className={`tab ${tab === t ? 'active' : ''}`} onClick={() => { if (t === tab || !knowledgeDirty || window.confirm('Discard unsaved Context edits?')) setTab(t); }}>{t}</button>
+        <nav className="tabs project-tabs" aria-label="Project sections">
+          {TABS.filter(({ id: section }) => section !== 'crm' || crmEnabled).map(({ id: section, label, icon }) => (
+            <Link key={section} className={`tab${section === activeTab ? ' active' : ''}`} aria-current={section === activeTab ? 'page' : undefined} to={projectPath(id, section)}>
+              <i className={`ti ${icon}`} aria-hidden="true" />{label}
+            </Link>
           ))}
-        </div>
+        </nav>
+      </header>
 
-        {tab === 'Context' && <KnowledgeBase key={id} projectId={id} onDirtyChange={setKnowledgeDirty} />}
-        {/* ============ 1. PROJECT DASHBOARD ============ */}
-        {tab === 'Project Dashboard' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Services — quick links to this project's related services */}
-            <ServiceLinks
-              value={project.service_links || []}
-              onChange={(next) => patch({ service_links: next })}
-            />
-
-            {/* Charter — editable, persisted per project */}
-            <Card className="card-section" static>
-              <div className="card-section-title">Charter</div>
-              <div className="field">
-                <label className="field-label">Summary / vision</label>
-                <textarea className="textarea" value={charter.summary || ''} onChange={(e) => patchCharter({ summary: e.target.value })} placeholder="What is this project, and where is it going?" />
-              </div>
-              <div className="field">
-                <label className="field-label">Current objective</label>
-                <input className="input" value={charter.objective || ''} onChange={(e) => patchCharter({ objective: e.target.value })} placeholder="The one thing being pushed right now" />
-              </div>
-              <label className="field-label">Key metrics</label>
-              {metrics.length === 0 && <p className="body-text">No metrics yet.</p>}
-              {metrics.map((m, i) => (
-                <div className="edit-row" key={i}>
-                  <input className="input" value={m.label || ''} onChange={(e) => setMetric(i, { label: e.target.value })} placeholder="Metric" style={{ flex: 2 }} />
-                  <input className="input" value={m.value || ''} onChange={(e) => setMetric(i, { value: e.target.value })} placeholder="Value" style={{ width: 140 }} />
-                  <button className="btn btn--ghost btn--icon" onClick={() => patchCharter({ metrics: metrics.filter((_, j) => j !== i) })} title="Remove"><i className="ti ti-trash" /></button>
-                </div>
-              ))}
-              <button className="btn btn--sm" style={{ marginTop: 8 }} onClick={() => patchCharter({ metrics: [...metrics, { label: '', value: '' }] })}>
-                <i className="ti ti-plus" /> Add metric
-              </button>
-            </Card>
-
-            {/* Roll-ups — live, read-only, click through to their tab */}
-            <div className="grid grid-3">
-              <Rollup icon="ti-alarm" title="Coming up" onClick={() => navigate(project.todo_board_id ? `/todo/${project.todo_board_id}` : '/todo')}>
-                {!project.todo_board_id ? (
-                  <p className="body-text">Link a To Do board to see deadlines here.</p>
-                ) : digest.overdue.length + digest.dueSoon.length + digest.events.length === 0 ? (
-                  <p className="body-text">Nothing due in the next 14 days.</p>
-                ) : (
-                  <>
-                    {digest.overdue.slice(0, 3).map((t) => (
-                      <div className="list-row" key={t.id}>
-                        <span className="list-row-title">{t.title}</span>
-                        <span className="list-row-meta text-red">{relativeDay(t.due_date)}</span>
-                      </div>
-                    ))}
-                    {digest.dueSoon.slice(0, 4).map((t) => (
-                      <div className="list-row" key={t.id}>
-                        <span className="list-row-title">{t.title}</span>
-                        <span className="list-row-meta">{relativeDay(t.due_date)}</span>
-                      </div>
-                    ))}
-                    {digest.events.slice(0, 2).map((e, i) => (
-                      <div className="list-row" key={e.id || i}>
-                        <i className="ti ti-calendar" style={{ color: 'var(--accent)' }} />
-                        <span className="list-row-title">{e.title}</span>
-                        <span className="list-row-meta">{formatDate(e.starts_at)}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </Rollup>
-
-              <Rollup icon="ti-notebook" title="Context" onClick={() => setTab('Context')}>
-                <div className="value-md" style={{ marginBottom: 6 }}>{digest.notes.length}</div>
-                {digest.notes.length === 0 ? (
-                  <p className="body-text">No notes yet. Write one in the Context tab.</p>
-                ) : (
-                  digest.notes.slice(0, 3).map((n) => (
-                    <div className="list-row" key={n.id}>
-                      {n.pinned && <i className="ti ti-pin-filled" style={{ color: 'var(--accent)', fontSize: 12 }} />}
-                      <span className="list-row-title">{n.title || 'Untitled'}</span>
-                    </div>
-                  ))
-                )}
-              </Rollup>
-
-              <Rollup icon="ti-pencil" title="Excalidraw" onClick={() => setTab('Excalidraw')}>
-                {project.excalidraw_preview ? (
-                  <img src={project.excalidraw_preview} alt="Canvas preview" className="rollup-thumb" />
-                ) : (
-                  <div className="rollup-thumb rollup-thumb--empty"><i className="ti ti-pencil" /> Empty canvas</div>
-                )}
-              </Rollup>
-
-              <Rollup icon="ti-link" title="Files & Links" onClick={() => setTab('Files & Links')}>
-                <div className="value-md" style={{ marginBottom: 6 }}>{entries.length}</div>
-                {recentEntries.map((f, i) => (
-                  <div className="list-row" key={i}>
-                    <i className={`ti ${f.type === 'file' ? 'ti-file' : 'ti-link'}`} style={{ color: 'var(--accent)' }} />
-                    <span className="list-row-title">{f.title}</span>
-                    {f.added_at && <span className="list-row-meta">{formatDate(f.added_at)}</span>}
-                  </div>
-                ))}
-              </Rollup>
-
-              <Rollup icon="ti-users" title="People" onClick={() => setTab('People')}>
-                {!project.crm_board_id ? (
-                  <p className="body-text">Not linked to a CRM page.</p>
-                ) : (
-                  <>
-                    <div className="value-md" style={{ marginBottom: 6 }}>{linkedContacts.length}</div>
-                    <p className="body-text">{linkedContacts.slice(0, 4).map((c) => c.business_name).join(', ') || 'No contacts yet.'}{linkedContacts.length > 4 ? '…' : ''}</p>
-                  </>
-                )}
-              </Rollup>
-            </div>
-          </div>
-        )}
-
-        {/* ============ 2. EXCALIDRAW ============ */}
-        {tab === 'Excalidraw' && (
-          <Suspense fallback={<div className="placeholder" style={{ minHeight: 300 }}><Spinner large /></div>}>
-            <ExcalidrawBoard initialScene={project.excalidraw || null} onPersist={persistScene} />
-          </Suspense>
-        )}
-
-        {/* ============ 5. FILES & LINKS ============ */}
-        {tab === 'Files & Links' && (
-          <div>
-            <div className="toolbar">
-              <input className="input" placeholder="Label" value={newLink.title} onChange={(e) => setNewLink({ ...newLink, title: e.target.value })} style={{ width: 180 }} />
-              <input className="input" placeholder="https://…" value={newLink.url} onChange={(e) => setNewLink({ ...newLink, url: e.target.value })} style={{ flex: 1, minWidth: 200 }} />
-              <div className="segmented">
-                <button className={newLink.type === 'link' ? 'active' : ''} onClick={() => setNewLink({ ...newLink, type: 'link' })}>Link</button>
-                <button className={newLink.type === 'file' ? 'active' : ''} onClick={() => setNewLink({ ...newLink, type: 'file' })}>File</button>
-              </div>
-              <button className="btn btn--accent" onClick={addEntry} disabled={!newLink.title.trim() || !newLink.url.trim()}>
-                <i className="ti ti-plus" /> Add
-              </button>
-            </div>
-            {entries.length === 0 && <p className="body-text">No files or links yet. Add a URL with a label above.</p>}
-            {entries.map((f, i) => (
-              <div className="list-row" key={i}>
-                <i className={`ti ${f.type === 'file' ? 'ti-file' : 'ti-link'}`} style={{ color: 'var(--accent)' }} />
-                <a className="list-row-title" href={f.url} target="_blank" rel="noreferrer">{f.title}</a>
-                <span className="list-row-meta">{f.url}</span>
-                {f.added_at && <span className="list-row-meta">{formatDate(f.added_at)}</span>}
-                <button className="btn btn--ghost btn--icon" onClick={() => removeEntry(i)} title="Remove"><i className="ti ti-x" /></button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ============ 6. PEOPLE ============ */}
-        {tab === 'People' && (
-          <div>
-            <div className="field" style={{ maxWidth: 340 }}>
-              <label className="field-label">Linked CRM page</label>
-              <div className="row">
-                <select
-                  className="select"
-                  value={project.crm_board_id || ''}
-                  onChange={(e) => patch({ crm_board_id: e.target.value || null })}
-                >
-                  <option value="">— Not linked —</option>
-                  {crmBoards.rows.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-                {project.crm_board_id && (
-                  <button className="btn btn--icon" title="Open CRM page" onClick={() => navigate(`/crm/${project.crm_board_id}`)}>
-                    <i className="ti ti-external-link" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {!project.crm_board_id ? (
-              <p className="body-text">Link this project to a CRM page to see its contacts here. Records stay in sync with the CRM module.</p>
-            ) : linkedContacts.length === 0 ? (
-              <p className="body-text">No contacts on the linked CRM page yet.</p>
-            ) : (
-              linkedContacts.map((c) => (
-                <div className="list-row" key={c.id}>
-                  <i className="ti ti-user" style={{ color: 'var(--accent)' }} />
-                  <span className="list-row-title">{c.business_name}</span>
-                  {c.email && <span className="list-row-meta">{c.email}</span>}
-                  {c.lead_temp && <Badge variant={c.lead_temp}>{c.lead_temp}</Badge>}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </Card>
+      <div className="project-tab-content">
+        <Suspense fallback={<div className="placeholder project-loading"><Spinner large /></div>}>
+          {activeTab === '' && <ProjectDashboard project={project} patch={patch} />}
+          {activeTab === 'crm' && <ProjectCrm project={project} onBoardChange={(boardId) => saveSettings({ crm_board_id: boardId })} />}
+          {activeTab === 'excalidraw' && <ExcalidrawBoard initialScene={project.excalidraw || null} onPersist={persistScene} />}
+          {activeTab === 'context' && <div className="project-context">
+            <KnowledgeBase projectId={id} />
+            <ProjectResources project={project} patch={patch} />
+          </div>}
+        </Suspense>
+      </div>
+      {settingsOpen && <ProjectSettings project={project} onSave={saveSettings} onDelete={deleteProject} onClose={closeSettings} />}
     </div>
   );
 }

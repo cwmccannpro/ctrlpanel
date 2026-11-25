@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { sidebarNavigation, sidebarItemVisible, visibleSidebarNavigation } from '../src/lib/sidebarNavigation.js';
+import { mergeSidebarOrder, orderedSidebarEntries, sidebarEntryId, sidebarNavigation, sidebarItemVisible, visibleSidebarNavigation } from '../src/lib/sidebarNavigation.js';
 import { PAGES } from '../src/lib/commandPalette.js';
 
 const workspace = {
@@ -112,4 +112,32 @@ test('sidebar visibility leaves widget settings and other preferences intact', (
   assert.equal(paths(visible).includes('/finance/debt'), false);
   assert.ok(paths(visible).includes('/finance'));
   assert.deepEqual(settings, before);
+});
+
+test('saved sidebar order can move folders, devices and Settings across the pinned divider', () => {
+  const defaults = orderedSidebarEntries(all).map(sidebarEntryId);
+  assert.deepEqual(defaults.slice(-4), ['sidebar:pinned', '/room', '/drive', '/settings']);
+  const order = { root: ['folder:projects', '/drive', '/settings', '/todo', 'sidebar:pinned', '/calendar', '/room'] };
+  const visible = visibleSidebarNavigation(all, { '/todo': false, '/settings': false });
+  const entries = orderedSidebarEntries(visible, order).map(sidebarEntryId);
+  assert.deepEqual(entries.slice(0, 3), ['folder:projects', '/drive', '/settings']);
+  assert.deepEqual(entries.slice(-3), ['sidebar:pinned', '/calendar', '/room']);
+  assert.ok(entries.indexOf('/context') < entries.indexOf('sidebar:pinned'));
+  assert.equal(entries.includes('/todo'), false);
+  assert.equal(orderedSidebarEntries(all, order).map(sidebarEntryId)[3], '/todo');
+});
+
+test('folder order survives project renames and hidden pages, and new projects stay visible', () => {
+  const navigation = sidebarNavigation({ projects: [
+    { id: 'project-1', name: 'Renamed' }, { id: 'project-2', name: 'Second' }, { id: 'project-3', name: 'New' },
+  ] });
+  const order = { 'folder:projects': ['/projects/project-2', '/projects/project-1', '/projects/project-2', '/projects/deleted'] };
+  const items = (nav) => orderedSidebarEntries(nav, order).find(({ id }) => id === 'folder:projects').items;
+  assert.deepEqual(items(navigation).map(({ label }) => label), ['Second', 'Renamed', 'New']);
+  assert.deepEqual(items(visibleSidebarNavigation(navigation, { '/projects/project-2': false })).map(({ label }) => label), ['Renamed', 'New']);
+});
+
+test('reordering available items keeps a slot for pages temporarily missing from a folder', () => {
+  assert.deepEqual(mergeSidebarOrder(['/socials/a', '/socials/offline', '/socials/b'], ['/socials/b', '/socials/a', '/socials/new']),
+    ['/socials/b', '/socials/offline', '/socials/a', '/socials/new']);
 });

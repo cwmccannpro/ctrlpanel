@@ -2,7 +2,9 @@
 // src/main.jsx and the test harness so both render exactly the same pages.
 
 import { lazy } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { useWorkspace } from './components/WorkspaceProvider.jsx';
+import { projectCrmPath } from './lib/projectRoutes.js';
 
 // Every page is its own chunk: a first visit downloads the shell + the page you open; the
 // rest are fetched on demand (and warmed while idle — see lib/prefetch.js).
@@ -16,7 +18,6 @@ const loaders = {
   Projects: () => import('./pages/Projects.jsx'),
   ProjectDetail: () => import('./pages/ProjectDetail.jsx'),
   KnowledgeBase: () => import('./pages/KnowledgeBase.jsx'),
-  CRM: () => import('./pages/CRM.jsx'),
   Settings: () => import('./pages/Settings.jsx'),
   Health: () => import('./pages/health/Health.jsx'),
   Finance: () => import('./pages/finance/Finance.jsx'),
@@ -35,7 +36,6 @@ const Habits = lazy(loaders.Habits);
 const Projects = lazy(loaders.Projects);
 const ProjectDetail = lazy(loaders.ProjectDetail);
 const KnowledgeBase = lazy(loaders.KnowledgeBase);
-const CRM = lazy(loaders.CRM);
 const Settings = lazy(loaders.Settings);
 const Health = lazy(loaders.Health);
 const Finance = lazy(loaders.Finance);
@@ -55,7 +55,6 @@ export const pageLoaders = [
   loaders.KnowledgeBase,
   loaders.Projects,
   loaders.ProjectDetail,
-  loaders.CRM,
   loaders.Settings,
   loaders.Health,
   loaders.Finance,
@@ -71,6 +70,13 @@ function LegacyKnowledgeRoute() {
   return <Navigate replace to={{ pathname: '/context', search, hash }} />;
 }
 
+function LegacyCrmRoute() {
+  const { boardId } = useParams();
+  const { projects } = useWorkspace();
+  if (boardId && projects.loading) return <p className="body-text">Loading projects…</p>;
+  return <Navigate replace to={projectCrmPath(projects.rows, boardId)} />;
+}
+
 export const appChildren = [
   { path: 'drive', element: <Drive /> },
   { path: 'room', element: <RoomControl /> },
@@ -80,11 +86,11 @@ export const appChildren = [
   { path: 'todo/:boardId', element: <ToDo /> },
   { path: 'habits', element: <Habits /> },
   { path: 'projects', element: <Projects /> },
-  { path: 'projects/:id', element: <ProjectDetail /> },
+  { path: 'projects/:id/:tab?', element: <ProjectDetail /> },
   { path: 'context', element: <KnowledgeBase /> },
   { path: 'knowledge', element: <LegacyKnowledgeRoute /> },
-  { path: 'crm', element: <CRM /> },
-  { path: 'crm/:boardId', element: <CRM /> },
+  { path: 'crm', element: <LegacyCrmRoute /> },
+  { path: 'crm/:boardId', element: <LegacyCrmRoute /> },
   { path: 'health', element: <Health /> },
   // Existing links open the combined page at their section; queries are retained.
   { path: 'health/nutrition', element: <Health /> },

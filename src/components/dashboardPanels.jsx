@@ -37,7 +37,7 @@ import { useRows, useCrud } from '../lib/useData.js';
 import { useTaskDragSource } from '../lib/useTaskDragSource.js';
 import { finance, youtube } from '../lib/api.js';
 import { KANBAN_COLUMNS, SUPPLEMENT_TIMINGS } from '../lib/mockData.js';
-import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps, typeColor } from '../lib/fitnessPlan.js';
+import { planByDay, dayPlan, dayKeyFor, dayLabel, nextDayKey, setsReps } from '../lib/fitnessPlan.js';
 import {
   relativeDay, formatDate, parseLocalDate, currency, percent, compactCurrency, compactNumber, number, lifeStats, channelLabel,
 } from '../lib/helpers.js';
@@ -323,18 +323,17 @@ function FitnessPanel() {
   const today = dayKeyFor();
   const plan = dayPlan(byDay[today]);
   const tomorrow = dayPlan(byDay[nextDayKey(today)]);
-  const color = typeColor(plan.type);
   return (
     <>
       <div className="dash2-train-head">
         <PanelTitle to="/health#fitness">Today’s Training · {dayLabel(today)}</PanelTitle>
-        {plan.planned && !plan.rest && <span className="dash2-fit-badge" style={{ background: color }}><i className="ti ti-barbell" /> {plan.type}</span>}
+        {plan.planned && !plan.rest && <span className="dash2-fit-badge"><i className="ti ti-barbell" /> {plan.type}</span>}
       </div>
       {loading ? null : !plan.planned ? (
         <Empty>Nothing planned for today. Set up your week under Health → Fitness.</Empty>
       ) : plan.rest ? (
         <div className="dash2-fit">
-          <span className="dash2-fit-badge" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}><i className="ti ti-bed" /> Rest day</span>
+          <span className="dash2-fit-badge dash2-fit-badge--rest"><i className="ti ti-bed" /> Rest day</span>
         </div>
       ) : plan.exercises.length === 0 ? (
         <Empty>{plan.type} day — add your exercises under Health → Fitness.</Empty>
@@ -343,7 +342,7 @@ function FitnessPanel() {
           {plan.exercises.map((ex) => (
             <li className="dash2-train-ex" key={ex.id}>
               <span className="dash2-train-name">{ex.name}{ex.weight ? <span className="muted"> · {ex.weight}</span> : null}</span>
-              <span className="dash2-train-sets" style={{ color }}>{setsReps(ex)}</span>
+              <span className="dash2-train-sets">{setsReps(ex)}</span>
             </li>
           ))}
         </ol>
@@ -487,7 +486,6 @@ function ProjectsPanel() {
         ) : (
           active.map((p) => (
             <div className="dash2-task" key={p.id} onClick={() => navigate(`/projects/${p.id}`)} title={p.name}>
-              <span className="dash2-dot" style={{ background: p.color || 'var(--accent)' }} />
               <span className="dash2-task-title">{p.name}</span>
               <span className="dash2-task-meta">{p.status || 'Active'}</span>
             </div>

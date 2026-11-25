@@ -4,6 +4,7 @@
 import { dayKey, currency } from './helpers.js';
 import { currentStreak } from './habits.js';
 import { doneColumn } from './commandPalette.js';
+import { hasProjectColumn, tasksOfProject } from './links.js';
 import { eventsForDay } from './calendarView.js';
 import {
   rowDay, weekWindows, isoWeek, delta, habitStats, taskStats, workoutStats, nutritionStats, spendStats,
@@ -253,14 +254,14 @@ export function weekKpis({ habits = [], habitLogs = [], tasks = [], boards = [],
 /* ============================================================
    Work
    ============================================================ */
-/** Task completion per project (via the project's To Do board), most urgent first. */
+/** Task completion per project (via its To Do column), most urgent first. */
 export function projectProgress({ projects = [], tasks = [], boards = [], today = new Date(), includeComplete = false }) {
   const t = dayKey(today);
   const byId = boardIndex(boards);
   return projects
     .filter((p) => includeComplete || (p.status || 'Active') !== 'Complete')
     .map((p) => {
-      const mine = p.todo_board_id ? tasks.filter((x) => x.board_id === p.todo_board_id) : [];
+      const mine = tasksOfProject(tasks, p);
       const open = mine.filter((x) => !isTaskDone(x, byId));
       const overdue = open.filter((x) => x.due_date && rowDay(x.due_date) < t).length;
       const next = open.filter((x) => x.due_date).sort((a, b) => rowDay(a.due_date).localeCompare(rowDay(b.due_date)))[0] || null;
@@ -268,7 +269,7 @@ export function projectProgress({ projects = [], tasks = [], boards = [], today 
         id: p.id, name: p.name, color: p.color || null, status: p.status || 'Active',
         total: mine.length, open: open.length, done: mine.length - open.length, overdue,
         pct: pct(mine.length - open.length, mine.length), next,
-        linked: Boolean(p.todo_board_id),
+        linked: hasProjectColumn(p),
       };
     })
     .sort((a, b) => b.overdue - a.overdue || b.open - a.open || String(a.name).localeCompare(String(b.name)));

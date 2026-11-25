@@ -33,6 +33,19 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(char, WRITE_LOTUS)
                 self.assertEqual(packets[0].hex(), expected)
 
+    def test_elk_bleddm_frames(self):
+        # Bytes match elkbledom's ELK-BLEDDM model entry; verified on hardware 2026-11-21.
+        for patch, expected in [({'power': False}, '7e0404000000ff00ef'),
+                                ({'power': True}, '7e0404f00001ff00ef'),
+                                ({'brightness': 50}, '7e040132ff00ff00ef'),
+                                ({'color': '#ff0000'}, '7e000503ff000000ef'),
+                                ({'color': '#123456'}, '7e00050312345600ef')]:
+            char, packets = frames('elk-bleddm', patch)
+            self.assertEqual(char, WRITE_LOTUS)
+            self.assertEqual(packets[0].hex(), expected)
+        with self.assertRaises(ValueError):
+            frames('elk-bleddm', {'temperature': 3500})
+
     def test_invalid_inputs_cannot_become_raw_writes(self):
         for patch in [{'brightness': True}, {'brightness': 101}, {'color': '112233'}, {'power': 1}, {'temperature': 2600}, {'raw': '7e'}, {}]:
             with self.assertRaises(ValueError):

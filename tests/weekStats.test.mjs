@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
   delta, habitStats, isoWeek, nutritionStats, rowDay, spendStats, taskStats, weekWindows, workoutStats,
 } from '../src/lib/weekStats.js';
-import { eventsMentioning, notesOfProject, projectDigest, projectForBoard, projectForTask, tasksOfProject } from '../src/lib/links.js';
+import { eventsMentioning, notesOfProject, projectDigest, projectsForColumn, projectForTask, tasksOfProject, todoColumnPath } from '../src/lib/links.js';
 import { AI_ACTIONS, overduePrompt, planMyDayPrompt } from '../src/lib/prompts.js';
 
 // Thursday 1 Oct 2026, 9pm local — the evening case that breaks UTC-based days.
@@ -125,20 +125,26 @@ test('workouts, nutrition and spending', () => {
 /* ---------------- project links ---------------- */
 
 const projects = [
-  { id: 'p1', name: 'Website Redesign', todo_board_id: 'b1' },
+  { id: 'p1', name: 'Website Redesign', todo_board_id: 'b1', todo_column_name: 'Todo' },
   { id: 'p2', name: 'Thesis', todo_board_id: null },
   { id: 'p3', name: 'Q4', todo_board_id: 'b3' },
 ];
 
-test('a task finds its project through its board', () => {
-  assert.equal(projectForBoard(projects, 'b1').id, 'p1');
-  assert.equal(projectForBoard(projects, 'nope'), null);
-  assert.equal(projectForBoard(projects, 'tmp-123'), null);
-  assert.equal(projectForBoard(projects, null), null);
-  assert.equal(projectForTask({ board_id: 'b1' }, projects).name, 'Website Redesign');
+test('a task finds its project only through the exact board and column', () => {
+  assert.equal(projectsForColumn(projects, 'b1', 'Todo')[0].id, 'p1');
+  assert.deepEqual(projectsForColumn(projects, 'b1', 'Done'), []);
+  assert.deepEqual(projectsForColumn(projects, 'tmp-123', 'Todo'), []);
+  assert.equal(projectForTask({ board_id: 'b1', column_name: 'Todo' }, projects).name, 'Website Redesign');
   assert.equal(projectForTask({ board_id: null }, projects), null);
-  assert.equal(tasksOfProject([{ id: 1, board_id: 'b1' }, { id: 2, board_id: 'b9' }], projects[0]).length, 1);
-  assert.equal(tasksOfProject([{ id: 1, board_id: 'b1' }], projects[1]).length, 0);
+  const cards = [
+    { id: 1, board_id: 'b1', column_name: 'Todo' },
+    { id: 2, board_id: 'b1', column_name: 'Done' },
+    { id: 3, board_id: 'b9', column_name: 'Todo' },
+    { id: 4, board_id: 'b3', column_name: 'Todo' },
+  ];
+  assert.deepEqual(tasksOfProject(cards, projects[0]).map((task) => task.id), [1]);
+  assert.deepEqual(tasksOfProject(cards, projects[2]), [], 'old board-only links do not read every task');
+  assert.equal(todoColumnPath('b1', 'Design / review', 'task-1'), '/todo/b1?column=Design+%2F+review&task=task-1');
   assert.equal(notesOfProject([{ id: 'n1', project_id: 'p1' }, { id: 'n2', project_id: null }], 'p1').length, 1);
 });
 
@@ -169,7 +175,7 @@ test('project digest: open work, overdue, due soon, notes and events', () => {
     events: [{ title: 'Website Redesign sync', starts_at: '2026-10-03T10:00:00Z' }],
     today: '2026-10-01',
   });
-  assert.deepEqual([d.total, d.open], [4, 3]);
+  assert.deepEqual([d.total, d.open], [3, 3]);
   assert.deepEqual(d.overdue.map((t) => t.title), ['late']);
   assert.deepEqual(d.dueSoon.map((t) => t.title), ['soon']);
   assert.equal(d.notes.length, 1);

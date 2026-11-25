@@ -250,7 +250,7 @@
   flex: 1;
   padding: 4px 0;
 }
-/* Room Control + Drive: docked at the bottom, just above the footer's divider. */
+/* Pages pinned below the main sidebar navigation. */
 .sidebar-dock {
   padding: 4px 0 2px;
 }
@@ -2553,8 +2553,10 @@ table.data-table {
 .dash2-fit-badge {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 12px; border-radius: 999px;
-  font-size: 13px; font-weight: 600; color: #fff;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  background: var(--accent-dim);
 }
+.dash2-fit-badge--rest { color: var(--text-secondary); background: var(--bg-elevated); }
 .dash2-fit-sub { font-size: 12px; color: var(--text-secondary); }
 
 /* ---- Master Controller bottom dock (hover-reveal, bubbles up) ---- */
@@ -3125,6 +3127,9 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 .kanban { overflow-x:auto; padding-bottom:16px; gap:20px; }
 .kanban-col { border:0; background:transparent; padding:0; gap:10px; }
 .kanban-col-head { padding:8px 2px 14px; font-size:11px; font-weight:500; }
+.kanban-col[data-todo-focus] { outline: 1px solid var(--accent); outline-offset: -1px; }
+.kanban-column-projects { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 9px; }
+.kanban-column-projects a { text-decoration: none; }
 .kanban-col-count { background:transparent; font-weight:400; }
 .kanban-card { padding:16px; border:1px solid var(--border-bright); border-radius:10px; background:var(--bg-surface); transition:border-color 160ms ease,box-shadow 160ms ease; }
 .kanban-card:hover { border-color:var(--text-secondary); box-shadow:0 4px 18px rgba(0,0,0,.12); }

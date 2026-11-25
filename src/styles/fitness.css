@@ -83,7 +83,7 @@
 .dash2-train-ex { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: .5px solid var(--border); font-size: 13px; }
 .dash2-train-ex:last-child { border-bottom: 0; }
 .dash2-train-name { min-width: 0; overflow-wrap: anywhere; }
-.dash2-train-sets { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dash2-train-sets { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dash2-train-next { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
 @media (max-width: 1100px) {
   .fitness-ex-row { grid-template-columns: 26px minmax(0, 1fr) 70px 90px 95px; }

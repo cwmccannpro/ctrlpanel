@@ -40,7 +40,7 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
       const result = await (mode === 'photo' ? analyzeMealPhoto(photo, context) : analyzeMealDescription(description));
       if (!active.current) return;
       setEstimate(result.estimate);
-      setCost(result.usage?.estimated_cost_usd ?? null);
+      setCost(result.engine?.kind === 'desktop' ? { desktop: result.engine.model || 'local model' } : result.usage?.estimated_cost_usd ?? null);
     } catch (e) { if (active.current) setError(e.message); }
     finally { if (active.current) setBusy(''); }
   };
@@ -103,7 +103,8 @@ export default function NutritionMealEditor({ meal, photoMode = false, date, tim
         {estimate.assumptions?.length > 0 && <p className="list-row-meta">{estimate.assumptions.join(' ')}</p>}
         {estimate.confidence === 'low' && <p className="list-row-meta">Some ingredients or portions are unclear. Add a detail above to improve the estimate.</p>}
         <p className="list-row-meta">Need a correction? Change the description or photo details, then estimate again.</p>
-        {cost !== null && <p className="nutrition-analysis-cost">Estimated analysis cost: {(cost * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}¢ USD</p>}
+        {cost?.desktop ? <p className="nutrition-analysis-cost">Estimated on your computer ({cost.desktop}) · no API cost</p>
+          : cost !== null && <p className="nutrition-analysis-cost">Estimated by Claude · analysis cost {(cost * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}¢ USD</p>}
       </section>}
       <details className="nutrition-meal-date"><summary>Meal date · {mealDate === nutritionDay(new Date(), timeZone) ? 'Today' : mealDate}</summary>
         <label className="field-label" htmlFor="meal-date">Date · {timeZone}</label><input id="meal-date" className="input" type="date" value={mealDate} onChange={(e) => e.target.value && setMealDate(e.target.value)} disabled={Boolean(busy)} />

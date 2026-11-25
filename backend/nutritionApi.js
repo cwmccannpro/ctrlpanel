@@ -3,6 +3,8 @@
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeNutritionMeal } from './claude.js';
+import { validateMealInput } from './mealPrompt.js';
+import { estimateOnDesktop, handleLocalAiBridge, handleLocalAiUser, localAiStatus } from './localAi.js';
 import { AI_ESTIMATE_USD, withAiLease } from './aiGuard.js';
 import { nutritionEntry, nutritionTimeZone, nutritionDayRange, nutritionTotals, nutritionGoals, nutritionMicros, micronutrientTotals, micronutrientGoals } from '../src/lib/nutrition.js';
 import { nutritionOpenApi } from '../src/lib/nutritionIntegration.js';
@@ -111,6 +113,15 @@ export async function handleNutritionRequest(method, url, headers, body) {
     throw fail('Photo is too large. Choose a smaller image.', 413);
   }
   const path = url.pathname.replace(/\/$/, '');
+  if (path.startsWith('/api/nutrition/local/')) {
+    const sub = path.slice('/api/nutrition/local/'.length);
+    if (sub.startsWith('bridge/')) {
+      if (method !== 'POST') throw fail('Desktop model endpoint not found.', 404);
+      return handleLocalAiBridge(admin(), apiKeyFromHeaders((name) => headers.get(name)), sub, body || {});
+    }
+    const { user } = await sessionClient(headers);
+    return handleLocalAiUser(admin(), user.id, sub, method);
+  }
   if (path === '/api/nutrition/openapi.json' && method === 'GET') return nutritionOpenApi(process.env.FRONTEND_URL || url.origin);
   if ((path === '/api/nutrition/log' && method === 'POST') || (path === '/api/nutrition/check' && method === 'GET')) {
     const userId = await userIdForApiKey(apiKeyFromHeaders((name) => headers.get(name)));
@@ -125,24 +136,38 @@ export async function handleNutritionRequest(method, url, headers, body) {
   if ((path === '/api/nutrition/status' && method === 'GET') || (path === '/api/nutrition/analyze' && method === 'POST')) {
     const { client, user } = await sessionClient(headers);
     const settings = await settingsFor(client, user.id);
+    const desktopDb = credentials().service ? admin() : null;
     if (method === 'GET') {
-      const [keys, logs] = await Promise.all([
+      const [keys, logs, local] = await Promise.all([
         client.from('api_keys').select('id').limit(1), client.from('nutrition_logs').select('id,notes').limit(1),
+        desktopDb ? localAiStatus(desktopDb, user.id) : { paired: false, online: false, unavailable: true },
       ]);
       return {
         ready: Boolean(credentials().service) && !keys.error && !logs.error,
-        photoReady: Boolean(settings.apiKey || process.env.ANTHROPIC_API_KEY) && !logs.error,
+        photoReady: Boolean(settings.apiKey || process.env.ANTHROPIC_API_KEY || local.online) && !logs.error,
+        claudeReady: Boolean(settings.apiKey || process.env.ANTHROPIC_API_KEY),
+        local,
         timezone: settings.timezone,
         message: keys.error || logs.error ? 'Apply the nutrition tables in supabase-schema.sql before logging.' :
           !credentials().service ? 'The server needs SUPABASE_SERVICE_ROLE_KEY for custom GPT uploads.' : '',
       };
     }
-    if (!settings.apiKey && !process.env.ANTHROPIC_API_KEY) throw fail('Add an Anthropic key in Settings → Connectors to estimate meals from a photo or description.', 503);
+    let input;
+    try { input = validateMealInput(body || {}); } catch (e) { throw fail(e.message); }
+    // The owner's desktop model goes first when it's on: no API cost and no
+    // AI spend-limit use. Off, busy, slow or unusable → Claude, as before.
+    const desktop = desktopDb ? await estimateOnDesktop(desktopDb, user.id, input) : { skipped: 'offline' };
+    if (desktop.result) return desktop.result;
+    if (!settings.apiKey && !process.env.ANTHROPIC_API_KEY) {
+      throw fail(desktop.skipped === 'failed'
+        ? 'Your desktop model could not estimate this meal. Try again with more detail, or add an Anthropic key in Settings → Connectors as a fallback.'
+        : 'Turn on your desktop model or add an Anthropic key in Settings → Connectors to estimate meals from a photo or description.', 503);
+    }
     // Photo/description estimates on the server's key count against the per-user limits.
     return withAiLease({ user, apiKey: settings.apiKey, estimateUsd: AI_ESTIMATE_USD.nutrition }, async (track) => {
       const result = await analyzeNutritionMeal({ ...body, apiKey: settings.apiKey });
       track(result.usage);
-      return result;
+      return { ...result, engine: { kind: 'claude', model: 'claude-sonnet-4-6' } };
     });
   }
   throw fail('Nutrition endpoint not found.', 404);

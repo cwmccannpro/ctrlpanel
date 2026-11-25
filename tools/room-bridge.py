@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ROOT / '.room-local'
 sys.path.insert(0, str(LOCAL / 'pydeps'))
 from bleak import BleakClient, BleakScanner
-from room_protocol import frames
+from room_protocol import frames, NO_RESPONSE_PROFILES, SETTLE_SECONDS
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
@@ -94,12 +94,13 @@ async def send_light(device, patch, previous, discovery=None):
             char = client.services.get_characteristic(characteristic)
             if char is None:
                 raise RuntimeError('Expected light service is unavailable; protocol needs checking.')
-            response = 'write' in char.properties
+            profile = device['profile']
+            response = 'write' in char.properties and profile not in NO_RESPONSE_PROFILES
             if not response and 'write-without-response' not in char.properties:
                 raise RuntimeError('Light characteristic is not writable.')
             for packet in packets:
                 await client.write_gatt_char(char, packet, response=response)
-                await asyncio.sleep(.15)
+                await asyncio.sleep(SETTLE_SECONDS.get(profile, .15))
     finally:
         if scanner:
             await scanner.start()

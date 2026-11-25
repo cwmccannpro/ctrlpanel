@@ -16,8 +16,10 @@
       "files": [
         "README.md",
         "AGENTS.md",
+        "CHANNEL.md",
         "docs/*.md"
       ],
+      "twoWayFiles": ["CHANNEL.md"],
       "exclude": [
         "SECRET_NOTES.md"
       ]

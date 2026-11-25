@@ -8,6 +8,10 @@ import re
 WRITE_BULB = '0000ff01-0000-1000-8000-00805f9b34fb'
 NOTIFY_BULB = '0000ff02-0000-1000-8000-00805f9b34fb'
 WRITE_LOTUS = '0000fff3-0000-1000-8000-00805f9b34fb'
+# ELK-BLEDDM controllers are written without response, with a short settle
+# after each write (elkbledom models.json / ELK_BLEDDM_COMMAND_SETTLE_TIME).
+NO_RESPONSE_PROFILES = frozenset({'elk-bleddm'})
+SETTLE_SECONDS = {'elk-bleddm': .3}
 
 def wrapped(payload, sequence=1, response=False):
     payload = bytes(payload)
@@ -55,5 +59,15 @@ def frames(profile, patch, previous=None, sequence=1):
             payload = [0x7e, 4, 1, value, 255, 255, 255, 0, 0xef]
         else:
             payload = [0x7e, 7, 5, 3, *[int(value[i:i+2], 16) for i in (1, 3, 5)], 0x10, 0xef]
+        return WRITE_LOTUS, [bytes(payload)]
+    if profile == 'elk-bleddm':
+        if key == 'temperature':
+            raise ValueError('This light has no white-temperature channel')
+        if key == 'power':
+            payload = [0x7e, 4, 4, 0xf0, 0, 1, 255, 0, 0xef] if value else [0x7e, 4, 4, 0, 0, 0, 255, 0, 0xef]
+        elif key == 'brightness':
+            payload = [0x7e, 4, 1, value, 255, 0, 255, 0, 0xef]
+        else:
+            payload = [0x7e, 0, 5, 3, *[int(value[i:i+2], 16) for i in (1, 3, 5)], 0, 0xef]
         return WRITE_LOTUS, [bytes(payload)]
     raise ValueError('Unknown Bluetooth profile')

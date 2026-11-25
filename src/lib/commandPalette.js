@@ -192,7 +192,7 @@ export const PAGES = [
   { label: 'Context', to: '/context', icon: 'ti-notebook', keywords: 'knowledge base notes docs wiki constellation' },
   { label: 'Habits', to: '/habits', icon: 'ti-repeat', keywords: 'streak routine tracker' },
   { label: 'Projects', to: '/projects', icon: 'ti-folder', keywords: 'overview manage' },
-  { label: 'CRM', to: '/crm', icon: 'ti-users', keywords: 'contacts people pages' },
+  { label: 'Unassigned CRM', to: '/crm', icon: 'ti-users', keywords: 'contacts people pages' },
   { label: 'Health', to: '/health', icon: 'ti-heart', keywords: 'nutrition supplements fitness wellness' },
   { label: 'Nutrition', to: '/health#nutrition', icon: 'ti-heart', keywords: 'health food calories macros micronutrients vitamins minerals' },
   { label: 'Supplements', to: '/health#supplements', icon: 'ti-heart', keywords: 'health stack' },

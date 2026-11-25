@@ -1,14 +1,16 @@
 // Local-only bridge: filesystem discovery stays off the Worker and browser.
-// One-way, config-driven sync of project context files into the CTRLpanel Knowledge Base.
+// Config-driven sync of selected project Markdown with the CTRLpanel Knowledge Base.
 //   node tools/ctrlpanel-file-sync.mjs                    sync every project in the config
 //   node tools/ctrlpanel-file-sync.mjs --dry-run          preview (read-only API checks)
 //   node tools/ctrlpanel-file-sync.mjs --project "Name"   limit to one project (repeatable)
-//   node tools/ctrlpanel-file-sync.mjs --add --name "Name" --root "C:\path" --folder "Projects/Name" [--match "CTRLpanel project"] [--files "README.md,docs/*.md"] [--exclude "X.md"] [--key slug]
+//   node tools/ctrlpanel-file-sync.mjs --add --name "Name" --root "C:\path" --folder "Projects/Name" [--match "CTRLpanel project"] [--files "README.md,docs/*.md"] [--two-way-files "CHANNEL.md"] [--exclude "X.md"] [--key slug]
 import dotenv from 'dotenv';
 import { readFile, writeFile, open, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFUZED_GUY, collectProject, noteHash, syncDecision } from './contentContext.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+import { CONFUZED_GUY, collectProject, hash, normalizeProjectMarkdown, noteHash, syncDecision } from './contentContext.mjs';
+import { projectFileDecision, writeProjectFile } from './projectContextSync.mjs';
 
 const workspace = fileURLToPath(new URL('..', import.meta.url));
 dotenv.config({ path: path.join(workspace, '.env.local'), quiet: true });
@@ -64,6 +66,7 @@ async function addProject() {
   if (config.projects.some(p => p.name.toLowerCase() === name.toLowerCase() || p.key === key)) throw new Error(`A project named "${name}" or keyed "${key}" already exists in the config.`);
   const entry = { name, key, root: path.resolve(root), folder, project: args.one('match') || null, kind: args.one('kind') || 'Project' };
   if (list(args.values.files).length) entry.files = list(args.values.files);
+  if (list(args.values['two-way-files']).length) entry.twoWayFiles = list(args.values['two-way-files']);
   if (list(args.values.exclude).length) entry.exclude = list(args.values.exclude);
   await collectProject(entry); // validates the root before saving
   config.projects.push(entry);
@@ -75,9 +78,22 @@ const PROJECT_PENDING = 'saved without project link: the deployed database needs
 let projectWritesUnavailable = false;
 async function syncNote(note, state, dryRun) {
   const { notes: found } = await api('GET', { params: { external_key: note.external_key } });
-  const remote = found[0], decision = syncDecision(note, remote, state[note.external_key]);
+  const remote = found[0], baseline = state[note.external_key];
+  const decision = note.twoWay ? projectFileDecision(note, remote, baseline) : syncDecision(note, remote, baseline);
   const base = { title: note.title, folder: note.folder, external_key: note.external_key };
+  if (note.twoWay) base.direction = 'two-way';
+  if (note.twoWay && decision === 'conflict') return { ...base, status: 'conflict', message: 'Local and Context copies differ without a shared baseline. Merge the edits and make both copies match.' };
   if (decision === 'conflict') return { ...base, status: 'conflict', message: 'Knowledge note was edited outside the sync. Source retained; reconcile both copies before continuing.' };
+  const remember = body => {
+    state[note.external_key] = note.twoWay ? { bodyHash: hash(normalizeProjectMarkdown(body)) } : noteHash(note);
+  };
+  if (decision === 'pull') {
+    if (!dryRun) {
+      await writeProjectFile(note.twoWay, remote.content);
+      remember(remote.content);
+    }
+    return { ...base, status: dryRun ? 'would pull' : 'pulled' };
+  }
   // Attach to the matching project only when the note has no project yet; never override a manual assignment.
   const attach = Boolean(note.project_id) && (!remote || !remote.project_id) && !projectWritesUnavailable;
   const pending = Boolean(note.project_id) && (!remote || !remote.project_id) && projectWritesUnavailable ? PROJECT_PENDING : undefined;
@@ -85,8 +101,15 @@ async function syncNote(note, state, dryRun) {
   const status = decision === 'unchanged' ? (attach ? 'attached' : 'unchanged') : decision;
   const message = kept || pending;
   if (dryRun) return { ...base, status: `would ${({ unchanged: 'skip (unchanged)', attached: 'attach to project' })[status] || status}`, ...(message ? { message } : {}) };
-  if (status === 'unchanged') { state[note.external_key] = noteHash(note); return { ...base, status, ...(message ? { message } : {}) }; }
-  const { project_id, ...fields } = note;
+  if (status === 'unchanged') { remember(note.twoWay?.body); return { ...base, status, ...(message ? { message } : {}) }; }
+  const { project_id, twoWay, ...fields } = note;
+  if (twoWay) {
+    fields.content = twoWay.body;
+    if (remote) {
+      fields.title = remote.title;
+      fields.folder = remote.folder;
+    }
+  }
   const post = withProject => api('POST', { body: { ...fields, ...(withProject ? { project_id } : {}), ...(remote ? { expected_updated_at: remote.updated_at } : {}) } });
   try {
     try { await post(attach); }
@@ -97,14 +120,14 @@ async function syncNote(note, state, dryRun) {
       projectWritesUnavailable = true;
       if (status === 'attached') return { ...base, status: 'unchanged', message: PROJECT_PENDING };
       await post(false);
-      state[note.external_key] = noteHash(note);
+      remember(fields.content);
       return { ...base, status, message: PROJECT_PENDING };
     }
   } catch (e) {
     if (e.status === 409) return { ...base, status: 'conflict', message: 'Note changed during sync (409). Source retained; it will be retried next run.' };
     throw e;
   }
-  state[note.external_key] = noteHash(note);
+  remember(fields.content);
   return { ...base, status, ...(message ? { message } : {}) };
 }
 
@@ -152,7 +175,7 @@ async function run() {
       entry.skipped = collected.skipped;
       if (!collected.notes.length) entry.message = 'No context files found; nothing to sync.';
       for (const note of collected.notes) {
-        if (offline) { entry.notes.push({ title: note.title, folder: note.folder, external_key: note.external_key, bytes: Buffer.byteLength(note.content), status: 'preview' }); continue; }
+        if (offline) { entry.notes.push({ title: note.title, folder: note.folder, external_key: note.external_key, bytes: Buffer.byteLength(note.twoWay?.body ?? note.content), ...(note.twoWay ? { direction: 'two-way' } : {}), status: 'preview' }); continue; }
         try { entry.notes.push(await syncNote(note, state, dryRun)); }
         catch (e) { entry.notes.push({ title: note.title, folder: note.folder, external_key: note.external_key, status: 'error', message: e.message }); }
         if (!dryRun) await writeFile(statePath, JSON.stringify(state, null, 2));
@@ -174,4 +197,15 @@ async function run() {
     if (summary.error || summary.conflict || summary.project_errors) process.exitCode = 1;
   } finally { if (lock) { await lock.close(); await unlink(lockPath); } }
 }
-await run();
+if (args.flags.has('watch') && !['add', 'dry-run', 'offline'].some(flag => args.flags.has(flag))) {
+  console.log('Syncing project context every minute. Press Ctrl+C to stop.');
+  while (true) {
+    process.exitCode = 0;
+    projectWritesUnavailable = false;
+    try { await run(); }
+    catch (error) { console.error(error.message); process.exitCode = 1; }
+    await delay(60_000);
+  }
+} else {
+  await run();
+}

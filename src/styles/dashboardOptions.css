@@ -33,3 +33,57 @@
   .dash2-panel-actions .btn, .dash2-panel-setting .dash2-select, .dash2-panel-head--wrap .btn { min-height: 44px; }
   .dash2-instagram-range > button, .dash2-picker-modal .segmented > button { min-height: 44px; }
 }
+
+/* ---- Seamless view: outside Customize the columns fuse into one surface ----
+   No card per column, no gutters, no rules between panels: one sheet, structured by
+   spacing and type alone. Customize brings the per-column surfaces back for editing. */
+.dash2.is-seamless {
+  align-items: stretch;
+  width: max-content;            /* the sheet grows with the columns when the canvas scrolls */
+  min-width: 100%;
+  min-height: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.dash2.is-seamless::after { display: none; }
+.dash2-page .dash2.is-seamless .dash2-surface {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+.dash2.is-seamless .dash2-panel + .dash2-panel { border-top: 0; }
+.dash2-page .dash2.is-seamless .dash2-panel { padding: 18px 22px; }
+.dash2.is-seamless .dash2-divider { flex-basis: 0; cursor: default; pointer-events: none; }
+.dash2.is-seamless .dash2-divider::before { display: none; }
+/* Columns that stack on narrow screens stay on the one sheet too. */
+@media (max-width: 1100px) {
+  .dash2.is-seamless { width: auto; min-height: 0; gap: 0; }
+}
+
+/* ---- Saved layouts: header switcher + the Customize → Saved layouts dialog ---- */
+.dash2-configs { flex-wrap: wrap; max-width: 100%; }
+.dash2-configs button { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.dash2-layout-new { display: flex; gap: 8px; }
+.dash2-layout-new .input { flex: 1; min-width: 0; }
+.dash2-layout-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dash2-layout-row { display: flex; align-items: center; gap: 4px; }
+.dash2-layout-row .input { flex: 1; min-width: 0; margin-right: 4px; }
+.dash2-layout-row .dash2-tool:disabled { opacity: 0.3; cursor: default; }
+.dash2-layout-badge {
+  flex-shrink: 0;
+  margin-right: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+@media (max-width: 760px) {
+  .dash2-configs button, .dash2-layout-row .dash2-tool { min-height: 40px; min-width: 40px; }
+  .dash2-layout-new .input, .dash2-layout-row .input { font-size: 16px; }
+}

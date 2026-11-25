@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 // content like charts.
 export default function Modal({ title, onClose, children, footer, wide = false, className = '' }) {
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && !e.defaultPrevented && onClose?.();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
